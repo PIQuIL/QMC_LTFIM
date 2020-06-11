@@ -1,0 +1,163 @@
+\documentclass[12pt]{article}
+
+% packages
+\usepackage{setspace}
+\usepackage{array}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{amsmath,bm}
+\usepackage{amssymb}
+\usepackage{bbold}
+\usepackage{physics}
+\usepackage{xcolor}
+\usepackage{indentfirst}
+\usepackage{enumerate}
+\usepackage{mathtools}
+\usepackage{cancel}
+
+\allowdisplaybreaks
+
+\title{Notes on SSE for Rydberg}
+\author{Isaac De Vlugt}
+\date{\today}
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+This is motivated by our need to make an SSE QMC for the Rydberg hamiltonian.
+\begin{align*}
+    H = & -\Omega \sum_{i = 1}^N \sigma^x_i - h \sum_{i=1}^n n_i - \sum_{\expval{i,j}} V_{ij} n_i n_j \\
+\end{align*}
+Here, $n_i$ is simply an occupation number (i.e. either 0 or 1). We can therefore trivially map this to spin-$\frac{1}{2}$ with $n_i = \frac{1}{2}\left(\sigma_i^z + \mathbb{1} \right)$. The hamiltonian then becomes the following.
+\begin{align*}
+    H = & - \Omega \sum_{i = 1}^N \sigma^x_i - \frac{h}{2} \sum_{i=1}^N \left(\sigma_i^z + \mathbb{1}\right) - \sum_{\expval{i,j}} V_{ij} \left(\sigma_i^z + \mathbb{1}\right) \left(\sigma_j^z + \mathbb{1}\right) \\
+    =   & - \Omega \sum_{i = 1}^N \sigma^x_i - \frac{h}{2} \sum_{i=1}^N \left(\sigma_i^z + \mathbb{1}\right) - \sum_{\expval{i,j}} V_{ij} \left(\sigma_i^z \sigma_j^z + \sigma_i^z + \sigma_j^z + \mathbb{1}\right) \\
+\end{align*}
+This is extremely similar to a LTFIM (general $J_{ij}$ for all pairs, assuming $J_{ij} > 0 \quad \forall \quad i,j$ as in the Rydberg case since $V_{ij} = \frac{C}{R_{ij}^6}$).
+\begin{align*}
+    H = & -\Omega \sum_{i = 1}^N \sigma^x_i - h \sum_{i=1}^N \sigma_i^z + \sum_{\expval{i,j}} J_{ij} \sigma_i^z \sigma_j^z \qquad \mathrm{LTFIM} \\
+\end{align*}
+Thus, if an efficient SSE formalism exists for such a Hamiltonian, then it is foreseeable that one may exist for the Rydberg Hamiltonian. So, let's work with the LTFIM as a toy model for the Rydberg Hamiltonian.
+
+\section{Longitudinal Field TFIM (LTFIM)}
+
+In the SSE formalism, we must decompose the Hamiltonian into diagonal or off-diagonal site or bond operators. Let's adopt the following Hamiltonian decomposition and disregard general $J_{ij}$ interactions for now.
+\begin{align*}
+    H_{0,0}  = & 1                           \\
+    H_{-1,a} = & \Omega \sigma_i^x           \\
+    H_{0,a}  = & \Omega                      \\
+    H_{1,a}  = & h(\sigma_i^z + 2)           \\
+    H_{2,a}  = & J(\sigma_i^z\sigma_j^z + 1)
+\end{align*}
+We've added a constant shift to the LTFIM Hamiltonian of $N\Omega + 2Nh + \sum_{\expval{i,j}}J$. Here are our matrix elements.
+\begin{align*}
+    \matrixel{\uparrow}{H_{-1,a}}{\downarrow} = & \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = \Omega       \\
+    \matrixel{\uparrow}{H_{0,a}}{\uparrow} =    & \matrixel{\downarrow}{H_{0,a}}{\downarrow} = \Omega      \\
+    \matrixel{\uparrow}{H_{1,a}}{\uparrow} =    & 3h \qquad \matrixel{\downarrow}{H_{1,a}}{\downarrow} = h \\
+    \matrixel{\uparrow\uparrow}{H_{2,a}}{\uparrow\uparrow} =& \matrixel{\downarrow\downarrow}{H_{2,a}}{\downarrow\downarrow} = 2J
+\end{align*}
+All other matrix elements are zero. 
+
+This is quite similar to the TFIM SSE formalism. However, the added complexity in an SSE formalism for LTFIM is in the matrix element $H_{1,a}$. The vanilla TFIM allows for an SSE expansion wherein the clusters that are formed can always flip to a new cluster with the same value of matrix elements. Here, however, this is not the case. If a cluster terminates on the $H_{1,a}$ site operator, the new flipped cluster now contains a matrix element of $H_{-1,a}$ which is not the same value as the original matrix element in general.
+
+\subsection{Diagonal Updates (Finite $T$)}
+
+The diagonal update proceeds similarily to that for the regular TFIM. Traverse the list of all $M$ operators in the propagation sequence, ignore off-diagonal operators (still only the $H_{-1,a}$ operator), and perform this MH procedure.
+
+\begin{enumerate}
+    \item If a diagonal operator is encountered ($H_{0,a}, H_{1,a}$, $H_{2,a}$), remove it with probability
+          \begin{align*}
+              P = & \mathrm{min}\left(\frac{M-n+1}{\beta\left[2N\Omega + 4Nh + 4\sum_{\expval{i,j}} J\right]},1\right)
+          \end{align*}
+        (The value of the denominator comes from summing all diagonal matrix elements)
+    \item If the null operator, $H_{0,0}$, is encountered, insert a diagonal operator with the following procedure.
+          \begin{itemize}
+              \item Decide whether or not to insert a diagonal operator with the probability
+                    \begin{align*}
+                        P = \mathrm{min}\left(\frac{\beta\left[2N\Omega + 4Nh + 4\sum_{\expval{i,j}} J\right]}{M-n},1\right).
+                    \end{align*}
+              \item If it was decided to insert a diagonal operator, choose the operator to insert with probabilities
+                    \begin{align*}
+                        P_{H_{0,a}} = & \frac{2N\Omega}{2N\Omega + 4Nh + 4\sum_{\expval{i,j}} J}, \\
+                        P_{H_{1,a}} = & \frac{4Nh}{2N\Omega + 4Nh + 4\sum_{\expval{i,j}} J}                           \\
+                        P_{H_{2,a}} = & \frac{4\sum_{\expval{i,j}} J}{2N\Omega + 4Nh + 4\sum_{\expval{i,j}} J}.
+                    \end{align*}
+              \item If it was decided to insert $H_{0,a}$, then choose a random site (probability $1 / N$) to put the operator. Note that it can be put at any site regardless of spin! \\
+              
+                    If it was decided to insert $H_{1,a}$, then choose to insert it at a site with $\uparrow$ with probability $3h / (h + 3h) = 3/4$ or at a site with $\downarrow$ probability $1/4$. \\
+
+                    If it was decided to insert $H_{2,a}$, then choose a random bond $(k,l)$ to put the operator. If the chosen bond has a local spin configuration that prevents the insertion (i.e. spins are antiparallel), then do not insert the bond operator and the entire move has failed.
+          \end{itemize}
+\end{enumerate}
+
+\subsection{Off-Diagonal Updates}
+
+Loop formation rules should follow the TFIM SSE loop formation rules. Form loops by starting at a site operator and ending on site operators, flip the loops with probability $\frac{1}{2}$ (vanilla Swendsen-Wang procedure). Since the applicability of the SW procedure to a MC simulation only cares about if we can write the partition function as a sum of weighted cluster configurations (exactly what SSE is!) that are independent of each other (i.e. clusters don't ``overlap''), then flipping said clusters with probability $\frac{1}{2}$ (or, really, any probability if you're feeling fancy) is totally fine. As stated previously, if a cluster terminates on the $H_{1,a}$ site operator, it must flip to a matrix element of $H_{-1,a}$.
+
+\newpage
+
+\section{SSE Rydberg}
+
+In the SSE formalism, we can decompose the Rydberg hamiltonian similarily to how we would for a regular TFIM as follows.
+\begin{align*}
+    H_{-1,a} = & \Omega \sigma_i^x                                                                               \\
+    H_{0,0}  = & \mathbb{1}                                                                                      \\
+    H_{1,a}  = & \Omega \mathbb{1}                                                                               \\
+    H_{2,a}  = & \frac{h}{2} \left(\sigma_i^z + 2\mathbb{1}\right) + V_{ij}\left(\sigma_j^z + 2\mathbb{1}\right) \\
+    H_{3,a} =  & V_{ij}\left(\sigma_i^z \sigma_j^z + \sigma_i^z + 3\mathbb{1}\right)
+\end{align*}
+We've added a constant shift of $\frac{1}{2}Nh + 4\sum_{\expval{i,j}} V_{ij}$ to the Hamiltonian. Here are the matrix elements.
+\begin{align*}
+    \matrixel{\uparrow}{H_{-1,a}}{\downarrow} =              & \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = \Omega                                                                   \\
+    \matrixel{\uparrow}{H_{1,a}}{\uparrow} =                 & \matrixel{\downarrow}{H_{1,a}}{\downarrow} = \Omega                                                                  \\
+    \matrixel{\uparrow\uparrow}{H_{2,a}}{\uparrow\uparrow} = & \frac{3}{2}h + 3V_{ij}  \qquad \matrixel{\downarrow\downarrow}{H_{2,a}}{\downarrow\downarrow} = \frac{h}{2} + V_{ij} \\ \matrixel{\downarrow\uparrow}{H_{2,a}}{\downarrow\uparrow} = & \frac{h}{2} + 3V_{ij} \qquad \matrixel{\uparrow\downarrow}{H_{2,a}}{\uparrow\downarrow} = \frac{3}{2}h + V_{ij} \\
+    \matrixel{\uparrow\uparrow}{H_{3,a}}{\uparrow\uparrow} = & 5V_{ij}  \qquad \matrixel{\downarrow\downarrow}{H_{3,a}}{\downarrow\downarrow} = 3V_{ij}                             \\ \matrixel{\downarrow\uparrow}{H_{3,a}}{\downarrow\uparrow} = & V_{ij} \qquad \matrixel{\uparrow\downarrow}{H_{3,a}}{\uparrow\downarrow} = 3V_{ij} \\
+\end{align*}
+All other matrix elements are zero.
+
+\section{Diagonal Updates (Finite $T$)}
+
+The diagonal update proceeds similarily to that for the regular TFIM. Traverse the list of all $M$ operators in the propagation sequence, ignore off-diagonal operators (still only the $H_{-1,a}$ operator), and perform this MH procedure.
+
+\begin{enumerate}
+    \item If a diagonal operator is encountered ($H_{1,a}$, $H_{2,a}$ or $H_{3,a}$), remove it with probability
+          \begin{align*}
+              P = & \mathrm{min}\left(\frac{M-n+1}{\beta\left[N\Omega + 4Nh + 12\sum_{\expval{i,j}} V_{ij} + 8\sum_{\expval{i,j}} V_{ij}\right]},1\right) \\
+              =   & \mathrm{min}\left(\frac{M-n+1}{\beta\left[N\Omega + 4Nh + 20\sum_{\expval{i,j}}V_{ij}\right]},1\right)
+          \end{align*}
+    \item If the null operator, $H_{0,0}$, is encountered, insert a diagonal operator with the following procedure.
+          \begin{itemize}
+              \item Decide whether or not to insert a diagonal operator with the probability
+                    \begin{align*}
+                        P = \mathrm{min}\left(\frac{\beta\left[N\Omega + 4Nh + 20\sum_{\expval{i,j}}V_{ij}\right]}{M-n},1\right).
+                    \end{align*}
+              \item If it was decided to insert a diagonal operator, choose the operator to insert with probabilities
+                    \begin{align*}
+                        P_{H_{0,a}} = & \frac{4Nh + 8\sum_{\expval{i,j}}V_{ij}}{N\Omega + 4Nh + 20\sum_{\expval{i,j}}V_{ij}}, \\
+                        P_{H_{1,a}} = & \frac{N\Omega}{N\Omega + 4Nh + 20\sum_{\expval{i,j}}V_{ij}}                           \\
+                        P_{H_{2,a}} = & \frac{12\sum_{\expval{i,j}}V_{ij}}{N\Omega + 4Nh + 20\sum_{\expval{i,j}}V_{ij}}.
+                    \end{align*}
+              \item If a site operator is chosen (i.e. it was decided to insert $H_{1,a}$), then choose a random site (probability $1 / N$) to put the operator. Note that it can be put at any site regardless of spin! \\
+
+                    If a bond operator is chosen ($H_{2,a}$ or $H_{3,a}$), then choose a random bond $(k,l)$ to put the operator with probability
+                    \begin{align*}
+                        P = \frac{V_{kl}}{\sum_{\expval{i,j}} V_{ij}}.
+                    \end{align*}
+                    Notice that any bond is fine (regardless of spins)! No rejection step needed.
+          \end{itemize}
+\end{enumerate}
+
+Now we can see why the Hamiltonian was chosen to be decomposed in this way. Diagonal operators all have non-zero diagonal elements (no need to reject bonds/sites that were chosen to insert the operator in).
+
+\section{Off-Diagonal Updates and Forming Loops}
+
+Loop formation rules should follow the TFIM SSE loop formation rules. Form loops by starting at a site operator and ending on site operators, flip the loops with probability $\frac{1}{2}$ (vanilla SW procedure). Since the applicability of the SW procedure to a MC simulation only cares about if we can write the partition function as a sum of weighted cluster configurations (exactly what SSE is!) that are independent of each other (i.e. clusters don't ``overlap''), then flipping said clusters with probability $\frac{1}{2}$ (or, really, any probability if you're feeling fancy) is totally fine.
+
+Diagonal bond operators, when flipped, simply stay there but the matrix element changes (of course). For example,
+\begin{align*}
+    \matrixel{\uparrow\downarrow}{H_{2,a}}{\uparrow\downarrow} = 3 V_{ij} \Rightarrow \matrixel{\downarrow\uparrow}{H_{2,a}}{\downarrow\uparrow} = V_{ij}.
+\end{align*}
+We also have the nice property that there is only one diagonal site operator, $H_{1,a}$. When encountered in loop formation it flips to the off-diagonal site operator $H_{-1,a}$ just like in the vanilla TFIM formalism.
+
+\end{document}
