@@ -2,14 +2,13 @@ include("lattice.jl")
 include("updates.jl")
 include("measurements.jl")
 
+# N, Nb defined in lattice.jl
+
 M = 300  
 J = 1.0 # interaction strength
 Omega = 1.0 # long. field strength
 h = 1.0 # transverse field strength
 β = 4.0
-
-N = 4
-Nb = N - 1 # number of bonds
 
 # ~~~ PRE-SIMULATION CALCULATIONS ~~~
 
