@@ -9,7 +9,6 @@ function sample_diag_op()
     return op
 end
 
-
 function DiagonalUpdate()
     # follow procedure in Notes.pdf
 
@@ -132,6 +131,30 @@ function LinkedList()
         # H1a in Notes.pdf
         if operator_list[i,1] == 2
             # TODO
+            
+            site = operator_list[i,2]                                                                                                     
+            #lower or left leg is automatically included
+            #must decide later to pass through or halt at right leg                                                 
+            push!(LinkList,First[site])                                            
+            push!(LegType,spin_prop[site]) #the spin of the vertex leg             
+            current_link = size(LinkList)                                          
+            LinkList[First[site]] = current_link[1] #completes backwards link      
+            First[site] = current_link[1] + 1                                        
+            push!(Associates,nullt)                                                
+            #upper or right leg         
+            rr = rand()
+
+            #halt?
+            P_stop = Ω / (Ω + h)
+            if P_stop > rr
+                push!(LinkList,-99) #we don't yet know what this links to            
+                push!(LegType,spin_prop[site]) #the spin of the vertex leg             
+                push!(Associates,nullt)
+
+            # pass through?
+            else
+                 
+            end 
              
  
         # H-1a in Notes.pdf
@@ -214,7 +237,6 @@ function LinkedList()
     end #i                                                                      
                                                                                 
     global lsize = size(LinkList)                                               
-    println("ABC", LinkList)                                                    
     #DEBUG                                                                      
     if spin_prop != spin_right                                                  
         println("Basis state propagation error: LINKED LIST")                   
@@ -294,7 +316,7 @@ function ClusterUpdate()
     end 
 
     ocount += 1  #next one is leg N + 1
-    for i = 1:2*M  
+    for i = 1:M  
         if operator_list[i,1] != -2 && operator_list[i,1] != -1
             ocount += 4
         else
