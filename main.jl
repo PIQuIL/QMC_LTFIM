@@ -1,36 +1,35 @@
+using Distributions
+
 include("lattice.jl")
 include("updates.jl")
 include("measurements.jl")
 
-# N, Nb defined in lattice.jl
-
-M = 300  
+M = 1000
 J = 1.0 # interaction strength
-Omega = 1.0 # long. field strength
+Ω = 0.0 # long. field strength
 h = 1.0 # transverse field strength
-β = 4.0
+β = 1.0
+MCS = 10000
 
 # ~~~ PRE-SIMULATION CALCULATIONS ~~~
 
 # constant shift in Hamiltonian
 constant = 2*N*Ω + N*h + Nb*J
+println("Constant shift to Hamiltonian: ", constant/N)
 
 # used in denominator / numerator for probabilities in diag update
-c1 = β*(2*N*Ω + 4*N*h + 4*Nb*J)
+c1 = 2*N*Ω + 4*N*h + 4*Nb*J
 
-P_H1a = 2*N*Ω / constant
-P_H2a = 4*N*h / constant
-P_H3a = 4*Nb*J / constant
-diagProbs = [P_H1a, P_H2a, P_H3a]
+P_H0a = 4*N*h / c1
+P_H1a = 2*N*Ω / c1
+P_H2a = 4*Nb*J / c1
+diagProbs = [P_H0a, P_H1a, P_H2a]
 
 # for choosing which diag operator to insert in diag update
 d = Multinomial(1, diagProbs)
 labels = [1,2,3]
 
 spin_left = rand(0:1, N)
-LinkList = []
-LegType = []
-Associates = []
 
 # operator list contains the operator types (integers) at every time slice
 # also contains the position of the operator (i,j)
@@ -47,18 +46,29 @@ operator_list = zeros(Int, M, 3)
 # (3, i, j) : diagonal operator (J - interactions) - bond
 
 # equilibrate
-for i = 1:2000
+for i = 1:5000
     DiagonalUpdate()
     LinkedList()
     ClusterUpdate()
 end
 
-M2 = 0
+#DiagonalUpdate()
+#LinkedList()
+#@show LinkList
+#@show FlagForH1a
+#@show in_cluster
+#ClusterUpdate()
+#@show operator_list
+
+ener = 0
 for i = 1:MCS
     DiagonalUpdate()
     LinkedList()
-    global M2 += Measure()
+    if i%100 == 0
+        global ener += Measure()
+    end
     ClusterUpdate()
-end
+end 
 
-println(M2)
+#println(ener/(N*MCS/100) + constant/N)
+println(ener/(N*MCS/100))
