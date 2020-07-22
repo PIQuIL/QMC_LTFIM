@@ -1,0 +1,13 @@
+⟨M⟩   =  0.0006900000000000 +/- 0.0017439396928382
+⟨|M|⟩ =  0.4276700000000000 +/- 0.0011010430663504
+⟨M^2⟩ =  0.3041300000000000 +/- 0.0010907847308765
+⟨E⟩   = -1.0786249999999997 +/- 0.0034638852577360
+
+Correlation time: 1.0089594280593055
+
+Operator list length: 20000
+Number of MC measurements: 100000
+Number of equilibration steps: 10000
+Number of skips between measurements: 100
+
+Samples outputted to file: /home/isaac/Documents/QMC_LTFIM/data/sims/mixedstate/beta=1.BC_name=OBC_Dim=1_J=1_h=1_nX=4_skip=100_samples.txt

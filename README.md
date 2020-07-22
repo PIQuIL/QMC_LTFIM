@@ -1,1 +1,2 @@
-## Stochastic Series Expansion QMC for TFIM + Longitudinal field (LTFIM)
+# QMC_TFIM.jl
+An SSE QMC implementation of the transverse field Ising model
