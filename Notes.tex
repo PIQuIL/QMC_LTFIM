@@ -122,20 +122,20 @@ The diagonal update proceeds similarily to that for the regular TFIM. Traverse t
 \begin{enumerate}
     \item If a diagonal operator is encountered ($H_{0,a}, H_{1,a}$, $H_{2,a}$), remove it with probability
           \begin{align}
-              P = & \mathrm{min}\left(\frac{M-n+1}{\beta\left[2N\Omega + 4Nh + 4N_b J\right]},1\right)
+              P = & \mathrm{min}\left(\frac{M-n+1}{\beta\left[4N\Omega + Nh + 2N_b J\right]},1\right)
           \end{align}
         (The value of the denominator comes from summing all diagonal matrix elements)
     \item If the null operator, $H_{0,0}$, is encountered, insert a diagonal operator with the following procedure.
           \begin{itemize}
               \item Decide whether or not to insert a diagonal operator with the probability
                     \begin{align}
-                        P = \mathrm{min}\left(\frac{\beta\left[2N\Omega + 4Nh + 4N_b J\right]}{M-n},1\right).
+                        P = \mathrm{min}\left(\frac{\beta\left[4N\Omega + Nh + 2N_b J\right]}{M-n},1\right).
                     \end{align}
               \item If it was decided to insert a diagonal operator, choose the operator to insert with probabilities
                     \begin{align}
-                        P_{H_{0,a}} = & \frac{2N\Omega}{2N\Omega + 4Nh + 4N_b J}, \\
-                        P_{H_{1,a}} = & \frac{4Nh}{2N\Omega + 4Nh + 4N_bJ}                           \\
-                        P_{H_{2,a}} = & \frac{4\sum_{\expval{i,j}} J}{2N\Omega + 4Nh + 4N_b J}.
+                        P_{H_{0,a}} = & \frac{4N\Omega}{4N\Omega + Nh + 2N_b J}, \\
+                        P_{H_{1,a}} = & \frac{Nh}{4N\Omega + Nh + 2N_bJ}                           \\
+                        P_{H_{2,a}} = & \frac{2N_bJ}{4N\Omega + Nh + 2N_b J}.
                     \end{align}
               \item If it was decided to insert $H_{0,a}$, then choose a random site (probability $1 / N$) to put the operator. Note that it can be put at any site regardless of spin! \\
               

@@ -22,10 +22,9 @@ function LTFIM(lattice::L, h::Float64, J::Float64, Ω::Float64) where {L<:Bounde
 
     Ns, Nb = length(lattice), length(bond_spin)
 
-    # TODO, is this right?
     P_h = h * Ns
     P_J = 2 * J * Nb
-    P_Ω = 4 * Ω * N
+    P_Ω = 4 * Ω * Ns
 
     P_normalization = P_h + P_J + P_Ω
     P_h /= P_normalization
