@@ -56,7 +56,7 @@ function init_mc_cli(parsed_args)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
     # path = "$(Dim)D/$(nX)/$(BC_name)/J$(J)/h$(h)/skip$(skip)/"
-    d = @ntuple Dim nX BC_name J h skip
+    d = @ntuple Dim nX BC_name J h Ω skip
     mc_opts = @ntuple M MCS EQ_MCS skip
 
     H = LTFIM(lattice, h, J, Ω)
