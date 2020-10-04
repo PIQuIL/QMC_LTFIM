@@ -29,39 +29,43 @@ This is motivated by our need to make an SSE QMC for the Rydberg hamiltonian.
 \begin{align}
     H = & -\Omega \sum_{i = 1}^N \sigma^x_i - h \sum_{i=1}^n n_i - \sum_{\expval{i,j}} V_{ij} n_i n_j
 \end{align}
-Here, $n_i$ is simply an occupation number (i.e. either 0 or 1). We can therefore trivially map this to spin-$\frac{1}{2}$ with $n_i = \frac{1}{2}\left(\sigma_i^z + \mathbb{1} \right)$. The hamiltonian then becomes the following.
+Here, $n_i$ is simply an occupation number (i.e. either 0 or 1). 
+We can therefore trivially map this to spin-$\frac{1}{2}$ with $n_i = \frac{1}{2}\left(\sigma_i^z + \mathbb{1} \right)$. 
+The hamiltonian then becomes the following.
 \begin{subequations}
     \begin{align}
         H = & - \Omega \sum_{i = 1}^N \sigma^x_i - \frac{h}{2} \sum_{i=1}^N \left(\sigma_i^z + \mathbb{1}\right) - \sum_{\expval{i,j}} V_{ij} \left(\sigma_i^z + \mathbb{1}\right) \left(\sigma_j^z + \mathbb{1}\right) \\
         =   & - \Omega \sum_{i = 1}^N \sigma^x_i - \frac{h}{2} \sum_{i=1}^N \left(\sigma_i^z + \mathbb{1}\right) - \sum_{\expval{i,j}} V_{ij} \left(\sigma_i^z \sigma_j^z + \sigma_i^z + \sigma_j^z + \mathbb{1}\right)
     \end{align}
 \end{subequations}
-This is extremely similar to a LTFIM (general $J_{ij}$ for all pairs, assuming $J_{ij} > 0 \quad \forall \quad i,j$ as in the Rydberg case since $V_{ij} = \frac{C}{R_{ij}^6}$).
-\begin{align}
-    H = & -\Omega \sum_{i = 1}^N \sigma^x_i - h \sum_{i=1}^N \sigma_i^z + \sum_{\expval{i,j}} J_{ij} \sigma_i^z \sigma_j^z \qquad \mathrm{LTFIM}
-\end{align}
-Thus, if an efficient SSE formalism exists for such a Hamiltonian, then it is foreseeable that one may exist for the Rydberg Hamiltonian. So, let's work with the LTFIM as a toy model for the Rydberg Hamiltonian.
 
 \section{Longitudinal Field TFIM (LTFIM)}
 
-In the SSE formalism, we must decompose the Hamiltonian into diagonal or off-diagonal site or bond operators. Let's adopt the following Hamiltonian decomposition and disregard general $J_{ij}$ interactions for now.
+The Rydberg Hamiltonian is extremely similar to a LTFIM (general $J_{ij}$ for all pairs, assuming $J_{ij} > 0 \quad \forall \quad i,j$ as in the Rydberg case since $V_{ij} = \frac{C}{R_{ij}^6}$).
+\begin{align}
+    H = & -\Omega \sum_{i = 1}^N \sigma^x_i - h \sum_{i=1}^N \sigma_i^z + \sum_{\expval{i,j}} J_{ij} \sigma_i^z \sigma_j^z \qquad \mathrm{(LTFIM)}
+\end{align}
+Thus, if an efficient SSE formalism exists for such a Hamiltonian, then it is foreseeable that one may exist for the Rydberg Hamiltonian. 
+So, let's work with the LTFIM as a toy model for the Rydberg Hamiltonian.
 
 \subsection{Justification for LTFIM Hamiltonian decomposition} \label{sec:H_decomp}
 
+In the SSE formalism, we must decompose the Hamiltonian into diagonal or off-diagonal site or bond operators. 
+Let's adopt the following Hamiltonian decomposition and disregard general $J_{ij}$ interactions for now.
 Originally, we thought it was a good idea to decompose our Hamiltonian this way for the LTFIM.
 \begin{subequations}
     \begin{align}
         H_{0,0}  = & 1                           \\
-        H_{-1,a} = & h \sigma_i^x                \\
-        H_{0,a}  = & \Omega(\sigma_i^z + 2) + h  \\
+        H_{-1,a} = & \Omega \sigma_i^x                \\
+        H_{0,a}  = & h (\sigma_i^z + 2) + \Omega  \\
         H_{1,a}  = & J(\sigma_i^z\sigma_j^z + 1)
     \end{align}
 \end{subequations}
 This would give us the following matrix elements.
 \begin{subequations}
     \begin{align}
-        \matrixel{\uparrow}{H_{-1,a}}{\downarrow} =              & \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = h                             \\
-        \matrixel{\uparrow}{H_{0,a}}{\uparrow} =                 & 3\Omega + h\qquad \matrixel{\downarrow}{H_{0,a}}{\downarrow} = h + \Omega \\
+        \matrixel{\uparrow}{H_{-1,a}}{\downarrow} =              & \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = \Omega                            \\
+        \matrixel{\uparrow}{H_{0,a}}{\uparrow} =                 & 3h + \Omega\qquad \matrixel{\downarrow}{H_{0,a}}{\downarrow} = h + \Omega \\
         \matrixel{\uparrow\uparrow}{H_{1,a}}{\uparrow\uparrow} = & \matrixel{\downarrow\downarrow}{H_{1,a}}{\downarrow\downarrow} = 2J
     \end{align}
 \end{subequations}
@@ -78,7 +82,7 @@ We hoped that this decomposition would be able to replicate TFIM in the $\Omega 
             \end{align}
         \end{subequations}
 \end{itemize}
-These probabilities are heat-bath probabilities and are related to the two options we can execute on when ecountering $H_{0,a}$ in loop formation (i.e. $\matrixel{\uparrow}{H_{0,a}}{\uparrow} \rightarrow \matrixel{\downarrow}{H_{0,a}}{\downarrow} = h + \Omega$ for passing through, or $\matrixel{\uparrow}{H_{0,a}}{\uparrow} \rightarrow \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = h$ for stopping).
+These probabilities are heat-bath probabilities and are related to the two options we can execute on when ecountering $H_{0,a}$ in loop formation (i.e. $\matrixel{\uparrow}{H_{0,a}}{\uparrow} \rightarrow \matrixel{\downarrow}{H_{0,a}}{\downarrow} = h + \Omega$ for passing through, or $\matrixel{\uparrow}{H_{0,a}}{\uparrow} \rightarrow \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = \Omega$ for stopping).
 
 In TFIM, our loop formation is deterministic, given the configuration of the simulation cell; we halt loops at site operators. Thus, in the LTFIM formalism above, if $\Omega = 0$ we hope that $P_{pass} = 0$ and $P_{stop} = 1$. However, this is clearly not the case as one can see. Here, we get $P_{pass} = P_{stop} = \frac{1}{2}$.
 
@@ -86,34 +90,33 @@ Consider a different Hamiltonian decomposition.
 \begin{subequations}
     \begin{align}
         H_{0,0}  = & 1                           \\
-        H_{-1,a} = & h \sigma_i^x                \\
-        H_{0,a}  = & h                           \\
-        H_{1,a}  = & \Omega(\sigma_i^z + 2)      \\
+        H_{-1,a} = & \Omega \sigma_i^x                \\
+        H_{0,a}  = & \Omega                          \\
+        H_{1,a}  = & h(\sigma_i^z + 2)      \\
         H_{2,a}  = & J(\sigma_i^z\sigma_j^z + 1)
     \end{align}
 \end{subequations}
 This would give us the following matrix elements.
 \begin{subequations}
     \begin{align}
-        \matrixel{\uparrow}{H_{-1,a}}{\downarrow} =              & \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = h                       \\
-        \matrixel{\uparrow}{H_{0,a}}{\uparrow} =                 & \matrixel{\downarrow}{H_{0,a}}{\downarrow} = h                      \\
-        \matrixel{\uparrow}{H_{1,a}}{\uparrow} =                 & 3\Omega \qquad \matrixel{\downarrow}{H_{1,a}}{\downarrow} = \Omega  \\
+        \matrixel{\uparrow}{H_{-1,a}}{\downarrow} =              & \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = \Omega                      \\
+        \matrixel{\uparrow}{H_{0,a}}{\uparrow} =                 & \matrixel{\downarrow}{H_{0,a}}{\downarrow} = \Omega                      \\
+        \matrixel{\uparrow}{H_{1,a}}{\uparrow} =                 & 3h \qquad \matrixel{\downarrow}{H_{1,a}}{\downarrow} = h  \\
         \matrixel{\uparrow\uparrow}{H_{2,a}}{\uparrow\uparrow} = & \matrixel{\downarrow\downarrow}{H_{2,a}}{\downarrow\downarrow} = 2J
     \end{align}
 \end{subequations}
 If we follow the same rules for directed loops as mentioned before when we encounter $H_{1,a}$, we are guaranteed to reproduce TFIM in the $\Omega = 0$ limit. If we encounter $H_{1,a}$ with a spin-up configuration, we {\it pass-through} with probability
 \begin{subequations}
     \begin{align}
-        P_{pass} = \frac{\Omega}{\Omega + h} \\
+        P_{pass} = \frac{h}{\Omega + h} \\
         \intertext{while we {\it stop} with probability
         }    
-        P_{stop} = \frac{h}{\Omega + h}.
+        P_{stop} = \frac{\Omega}{\Omega + h}.
     \end{align}
 \end{subequations}
-These probabilities are once again heat-bath probabilities and are related to the two options we can execute on when ecountering $H_{1,a}$ in loop formation (i.e. $\matrixel{\uparrow}{H_{1,a}}{\uparrow} \rightarrow \matrixel{\downarrow}{H_{1,a}}{\downarrow} = \Omega$ for passing through, or $\matrixel{\uparrow}{H_{1,a}}{\uparrow} \rightarrow \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = h$ for stopping).
+These probabilities are once again heat-bath probabilities and are related to the two options we can execute on when ecountering $H_{1,a}$ in loop formation (i.e. $\matrixel{\uparrow}{H_{1,a}}{\uparrow} \rightarrow \matrixel{\downarrow}{H_{1,a}}{\downarrow} = h$ for passing through, or $\matrixel{\uparrow}{H_{1,a}}{\uparrow} \rightarrow \matrixel{\downarrow}{H_{-1,a}}{\uparrow} = \Omega$ for stopping).
 The advantages with this decomposition are clear.
-
-We've added a constant shift to the LTFIM Hamiltonian of $N\Omega + 2Nh + 2N_bJ$. 
+Also note that we've added a constant shift to the LTFIM Hamiltonian of $N\Omega + 2Nh + 2N_bJ$. 
 
 \subsection{Diagonal Updates (Finite $T$)}
 
@@ -122,20 +125,20 @@ The diagonal update proceeds similarily to that for the regular TFIM. Traverse t
 \begin{enumerate}
     \item If a diagonal operator is encountered ($H_{0,a}, H_{1,a}$, $H_{2,a}$), remove it with probability
           \begin{align}
-              P = & \mathrm{min}\left(\frac{M-n+1}{\beta\left[4N\Omega + Nh + 2N_b J\right]},1\right)
+              P = & \mathrm{min}\left(\frac{M-n+1}{\beta\left[4Nh + N\Omega + 2N_b J\right]},1\right)
           \end{align}
-        (The value of the denominator comes from summing all diagonal matrix elements)
+
     \item If the null operator, $H_{0,0}$, is encountered, insert a diagonal operator with the following procedure.
           \begin{itemize}
               \item Decide whether or not to insert a diagonal operator with the probability
                     \begin{align}
-                        P = \mathrm{min}\left(\frac{\beta\left[4N\Omega + Nh + 2N_b J\right]}{M-n},1\right).
+                        P = \mathrm{min}\left(\frac{\beta\left[4Nh + N\Omega + 2N_b J\right]}{M-n},1\right).
                     \end{align}
               \item If it was decided to insert a diagonal operator, choose the operator to insert with probabilities
                     \begin{align}
-                        P_{H_{0,a}} = & \frac{4N\Omega}{4N\Omega + Nh + 2N_b J}, \\
-                        P_{H_{1,a}} = & \frac{Nh}{4N\Omega + Nh + 2N_bJ}                           \\
-                        P_{H_{2,a}} = & \frac{2N_bJ}{4N\Omega + Nh + 2N_b J}.
+                        P_{H_{0,a}} = & \frac{4N\Omega}{4Nh + N\Omega + 2N_b J}, \\
+                        P_{H_{1,a}} = & \frac{Nh}{4Nh + N\Omega + 2N_b J}                           \\
+                        P_{H_{2,a}} = & \frac{2N_bJ}{4Nh + N\Omega + 2N_b J}.
                     \end{align}
               \item If it was decided to insert $H_{0,a}$, then choose a random site (probability $1 / N$) to put the operator. Note that it can be put at any site regardless of spin! \\
               
