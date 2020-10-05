@@ -14,6 +14,8 @@
 @inline isbondoperator(op::NTuple{2,Int}) = (op[1] > 0)
 
 function sample_diagonal_operator(H::LTFIM)
+    # sample diagonal operators in the diagonal update
+
     prob_vector = [H.P_Ω, H.P_h, H.P_J]
     d = Multinomial(1, prob_vector)
     op = findall(x -> x != 0, rand(d, 1))[1][1] - 3
@@ -21,7 +23,6 @@ function sample_diagonal_operator(H::LTFIM)
     # kinda confusing right now but... deal with it
     return op
 end 
-
 
 function mc_step_beta!(f::Function, qmc_state::BinaryQMCState, H::LTFIM, beta::Real; eq::Bool = false)
     num_ops = diagonal_update_beta!(qmc_state, H, beta; eq = eq)
@@ -37,7 +38,7 @@ end
 
 mc_step_beta!(qmc_state, H, beta; eq = false) = mc_step_beta!((args...) -> nothing, qmc_state, H, beta; eq = eq)
 
-# returns true is operator insertion succeeded
+# returns true if operator insertion succeeded
 function insert_diagonal_operator!(qmc_state::BinaryQMCState, H::LTFIM, spin_prop, n)
 
     operator_choice = sample_diagonal_operator(H)
@@ -362,13 +363,15 @@ function cluster_update_beta!(cluster_data::ClusterData, qmc_state::BinaryQMCSta
         if isbondoperator(op)
             ocount += 4
         elseif !isidentity(op)
-            if LegType[ocount] == LegType[ocount+1]  # diagonal
+            # if it's a diagonal operator and there's no Ω flag:
+            if LegType[ocount] == LegType[ocount+1] && !FlagForΩMatched[ocount] # diagonal
                 #if !FlagForΩ[ocount]
                 # TODO: is this right?
-                if !FlagForΩMatched[ocount]
-                    operator_list[n] = (-1, op[2])
-                end
+                # if it's a diagonal operator and there's no Ω flag:
+                operator_list[n] = (-1, op[2])
+
             else  # off-diagonal
+                # operators -1 and -2 both flip to -3
                 operator_list[n] = (-3, op[2])
             end
             ocount += 2
