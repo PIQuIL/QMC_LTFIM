@@ -11,8 +11,8 @@ global data_full = header
 for N = 2:10
     @show N
     for β = 0.5:0.5:5
-        for B = 0.0:1.0:3.0
-            for Ω = 0.0:1.0:3.0
+        for B = 0.0:0.5:3.0
+            for Ω = 0.0:0.5:3.0
 
                 ltfim = LTFIM_1D_OBC(N, B, Ω, β)
                 energy = ltfim.Energy

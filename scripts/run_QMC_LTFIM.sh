@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for N in 4
+for N in 6 8
 do 
     for X in 1
     do 
