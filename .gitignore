@@ -1,4 +1,6 @@
 /Notes.*
 !/Notes.tex
 
+/scripts/*.out
+
 /data/*
