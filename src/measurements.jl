@@ -37,6 +37,7 @@ magnetization(spin_prop) = mean(x -> 2x - 1, spin_prop)
 num_single_site_diag(operator_list) = mean(x -> issiteoperator(x) && isdiagonal(x), operator_list)
 num_single_site_offdiag(operator_list) = mean(x -> issiteoperator(x) && !isdiagonal(x), operator_list)
 num_single_site(operator_list) = mean(issiteoperator, operator_list)
+num_two_site_diag(operator_list) = mean(isbondoperator, operator_list)
 
 
 function autocorrelation(m::Vector)

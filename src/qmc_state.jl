@@ -24,17 +24,6 @@ function BinaryQMCState(H::Hamiltonian{2,N}, M::Int) where {N}
     BinaryQMCState{N,typeof(H)}(zero(H), zero(H), init_op_list(2*M))
 end
 
-struct PottsQMCState{D,N,H} <: AbstractQMCState{D,N,H}
-    left_config::Array{Int,N}
-    right_config::Array{Int,N}
-    operator_list::Vector{NTuple{2,Int}}
-end
-
-function PottsQMCState(H::Hamiltonian{D,N}, M::Int) where {D,N}
-    PottsQMCState{N,typeof(H)}(zero(H), zero(H), init_op_list(2*M))
-end
-
-
 
 struct ClusterData
     linked_list::Vector{Int}

@@ -50,6 +50,37 @@ function make_prob_vector(bond_spins::Vector{NTuple{2,Int}}, Ns::Int, J::T, h::T
     return ops, p
 end
 
+function make_prob_vector(bond_spins::Vector{NTuple{2,Int}}, Ns::Int, Nb::Int, J::T, hx::T, hz::T) where T
+    ops = Vector{NTuple{2, Int}}(undef, 0)
+    p = Vector{T}(undef, 0)
+
+    if !iszero(hx)
+        for i in 1:Ns
+            push!(ops, (-1, i))
+            push!(p, 2*hx)
+        end
+    end
+
+    p_spins = nothing
+    if !(iszero(J) && iszero(hz))
+        hzb = hz * Nb / (2*Ns)
+        if J >= 0 || (J <= 0 && hzb >= 0)
+            C = max(J, 2*hzb - J)  # FM with any field, or AFM with positive field
+        else
+            C = -(J + 2*hzb)  # AFM with negative field
+        end
+        for op in bond_spins
+            push!(ops, op)
+            push!(p, 4*C)
+        end
+        p_spins = [J + 2*hzb, -J, -J, J - 2*hzb] .+ C
+        p_spins = ProbabilityVector(p_spins)
+    end
+
+    return ops, p, p_spins
+end
+
+
 
 ###################
 

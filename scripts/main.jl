@@ -142,7 +142,7 @@ function mixedstate(parsed_args)
     abs_mag = mean_and_stderr(abs, mags)
     mag_sqr = mean_and_stderr(abs2, mags)
 
-    energy = mean_and_stderr(x -> -x/beta, ns) + H.J*nbonds(H) + H.h*nspins(H)
+    energy = mean_and_stderr(x -> -x/beta, ns) + abs(H.J)*nbonds(H) + H.h*nspins(H)
     energy /= nspins(H)
 
     observables = (mag, abs_mag, mag_sqr, energy)
@@ -191,9 +191,9 @@ function groundstate(parsed_args)
 
     @time energy = jackknife(ns) do n
         if H.h != 0
-            (-H.h * ((1.0 / n) - 1)) + H.J * (nbonds(H) / nspins(H))
+            (-H.h * ((1.0 / n) - 1)) + abs(H.J) * (nbonds(H) / nspins(H))
         else
-            H.J * (nbonds(H) / nspins(H))
+            abs(H.J) * (nbonds(H) / nspins(H))
         end
     end
 
