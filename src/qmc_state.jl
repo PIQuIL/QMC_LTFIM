@@ -29,6 +29,7 @@ struct ClusterData
     linked_list::Vector{Int}
     leg_types::BitVector
     associates::Vector{NTuple{3,Int}}
+    flipping_weights::Vector{Float64}
     first::Vector{Int}
     last::Union{Vector{Int}, Nothing}
 end

@@ -100,6 +100,12 @@ end
 
 nullt = (0, 0, 0)  # a null tuple
 
+bond_weight(s1::Bool, s2::Bool, H::TFIM) = (s1 == s2) ? 2*H.J : 0
+function bond_weight(s1::Bool, s2::Bool, H::LTFIM)
+    s1, s2 = !s1, !s2
+    return H.p_spins[(2*s1 + s2) + 1]
+end
+
 # TODO: re-use ClusterData's contents
 #   make use of `view` so we can still rely on boundschecking when @inbounds is
 #   turned off.
@@ -116,6 +122,7 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
     # initialize linked list data structures
     LinkList = zeros(Int, len)  # needed for cluster update
     LegType = falses(len)
+    flipping_weights = ones(len)
 
     # A diagonal bond operator has non trivial associates for cluster building
     Associates = [nullt for _ in 1:len]
@@ -160,6 +167,13 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
             LegType[idx] = spin_prop[site1]
             current_link = idx
 
+            if H isa LTFIM
+                s1, s2 = spin_prop[site1], spin_prop[site2]
+                w1 = bond_weight(s1, s2, H)
+                w2 = bond_weight(!s1, !s2, H)
+                flipping_weights[idx] = w2/w1
+            end
+
             LinkList[First[site1]] = current_link  # completes backwards link
             First[site1] = current_link + 2
             vertex1 = current_link
@@ -200,14 +214,14 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
     #     @debug "Basis state propagation error: LINKED LIST"
     # end
 
-    return ClusterData(LinkList, LegType, Associates, First, nothing)
+    return ClusterData(LinkList, LegType, Associates, flipping_weights, First, nothing)
 
 end
 
 #############################################################################
 
 
-function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N, <:AbstractTFIM}, H::AbstractTFIM{N}) where N
+function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N, <:AbstractLTFIM}, H::AbstractLTFIM{N}) where N
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
     operator_list = qmc_state.operator_list
@@ -215,6 +229,7 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
     LinkList = cluster_data.linked_list
     LegType = cluster_data.leg_types
     Associates = cluster_data.associates
+    flipping_weights = cluster_data.flipping_weights
 
     lsize = length(LinkList)
 
@@ -249,10 +264,10 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
                         end
                     end
                 end
-
             end
 
-            flip = rand(Bool)
+            acceptance_ratio = prod(flipping_weights[current_cluster])
+            flip = rand() < acceptance_ratio
             if flip
                 @inbounds for i in current_cluster
                     LegType[i] ⊻= 1  # spinflip
@@ -267,7 +282,6 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
         spin_left[i] = LegType[i]  # left basis state
         spin_right[i] = LegType[lsize-Ns+i]  # right basis state
     end
-
 
     ocount = Ns + 1  # next on is leg Ns + 1
     @inbounds for (n, op) in enumerate(operator_list)
@@ -286,7 +300,7 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
 end
 
 
-function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N, <:AbstractLTFIM}, H::AbstractLTFIM{N}) where N
+function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N, <:AbstractTFIM}, H::AbstractTFIM{N}) where N
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
     operator_list = qmc_state.operator_list
@@ -338,8 +352,6 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
             end
         end
     end
-
-    #println(in_cluster)
 
     # map back basis states and operator list
     for i in 1:Ns
