@@ -12,13 +12,6 @@
 @inline issiteoperator(op::NTuple{2,Int}) = (op[1] < 0)
 @inline isbondoperator(op::NTuple{2,Int}) = (op[1] > 0)
 
-function weight(op::NTuple{2,Int}, H::TFIM)
-    return ifelse(issiteoperator(op), H.h,
-                  ifelse(isbondoperator(op), H.J, 1))
-end
-
-weight(qmc_state::BinaryQMCState, H::TFIM) = prod(op -> weight(op, H), qmc_state.operator_list)
-
 function mc_step!(f::Function, qmc_state::BinaryQMCState, H::Hamiltonian)
     diagonal_update!(qmc_state, H)
 
@@ -213,6 +206,7 @@ end
 
 #############################################################################
 
+
 function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N, <:AbstractTFIM}, H::AbstractTFIM{N}) where N
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
@@ -226,6 +220,7 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
 
     in_cluster = zeros(Int, lsize)
     cstack = Stack{Int}()  # This is the stack of vertices in a cluster
+    current_cluster = Vector{Int}()
     ccount = 0  # cluster number counter
 
     @inbounds for i in 1:lsize
@@ -235,19 +230,14 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
             push!(cstack, i)
             in_cluster[i] = ccount
 
-            flip = rand(Bool)  # flip a coin for the SW cluster flip
-            if flip
-                LegType[i] ⊻= 1  # spinflip
-            end
+            push!(current_cluster, i)
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
 
                 if in_cluster[leg] == 0
                     in_cluster[leg] = ccount  # add the new leg and flip it
-                    if flip
-                        LegType[leg] ⊻= 1
-                    end
+                    push!(current_cluster, leg)
 
                     # now check all associates and add to cluster
                     assoc = Associates[leg]  # a 3-tuple
@@ -255,24 +245,29 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
                         for a in assoc
                             push!(cstack, a)
                             in_cluster[a] = ccount
-                            if flip
-                                LegType[a] ⊻= 1
-                            end
+                            push!(current_cluster, a)
                         end
                     end
                 end
 
             end
+
+            flip = rand(Bool)
+            if flip
+                @inbounds for i in current_cluster
+                    LegType[i] ⊻= 1  # spinflip
+                end
+            end
+            empty!(current_cluster)
         end
     end
-
-    #println(in_cluster)
 
     # map back basis states and operator list
     for i in 1:Ns
         spin_left[i] = LegType[i]  # left basis state
         spin_right[i] = LegType[lsize-Ns+i]  # right basis state
     end
+
 
     ocount = Ns + 1  # next on is leg Ns + 1
     @inbounds for (n, op) in enumerate(operator_list)
