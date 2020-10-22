@@ -31,7 +31,8 @@ function simulation_cell(qmc_state::BinaryQMCState)
     return cell
 end
 
-
+# 1 -> spin-up (+1)
+# 0 -> spin-down (-1)
 magnetization(spin_prop) = mean(x -> 2x - 1, spin_prop)
 
 num_single_site_diag(operator_list) = mean(x -> issiteoperator(x) && isdiagonal(x), operator_list)

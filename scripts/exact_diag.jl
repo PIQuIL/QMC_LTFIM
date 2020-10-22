@@ -47,9 +47,9 @@ for Ket = 0:Dim-1  #Loop over Hilbert Space
     Diagonal = 0.
     Spin2 = 0
     for SpinIndex = 0:N-2  #Loop over spin index (base zero, stop one spin before the end of the chain)
-        Spin1 = 2*((Ket>>SpinIndex)&1) - 1
+        Spin1 = 1 - 2*((Ket>>SpinIndex)&1)
         NextIndex = SpinIndex + 1
-        Spin2 = 2*((Ket>>NextIndex)&1) - 1
+        Spin2 = 1 - 2*((Ket>>NextIndex)&1)
         Diagonal = Diagonal - J*Spin1*Spin2 - hz*Spin1 #spins are +1 and -1
     end
     Diagonal = Diagonal - hz*Spin2 #this is the spin at the end of the chain
