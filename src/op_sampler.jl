@@ -12,7 +12,7 @@ function make_prob_vector(J::AbstractMatrix{T}, hx::AbstractVector{T}) where T
     for i in eachindex(hx)
         if hx[i] != 0
             push!(ops, (-1, i))
-            push!(p, h)
+            push!(p, hx[i])
         end
     end
 
@@ -21,7 +21,7 @@ function make_prob_vector(J::AbstractMatrix{T}, hx::AbstractVector{T}) where T
         if i < j
             if J[i, j] != 0
                 push!(ops, op)
-                push!(p, 2*abs(J))
+                push!(p, 2*abs(J[i, j]))
             end
         end
     end
@@ -50,34 +50,58 @@ function make_prob_vector(bond_spins::Vector{NTuple{2,Int}}, Ns::Int, J::T, h::T
     return ops, p
 end
 
-function make_prob_vector(bond_spins::Vector{NTuple{2,Int}}, Ns::Int, Nb::Int, J::T, hx::T, hz::T) where T
-    ops = Vector{NTuple{2, Int}}(undef, 0)
+function make_prob_vector(dims::NTuple{N, Int}, J::T, hx::T, hz::T, pbc=true) where {N, T}
+    bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
+    edge_bonds = Set{NTuple{2, Int}}()
+    if !pbc
+        pbc_s = Set(lattice_bond_spins(dims, true)[1])
+        obc_s = Set(bond_spins)
+        edge_bonds = symdiff(pbc_s, obc_s)
+    end
+
+    ops = Vector{NTuple{3, Int}}(undef, 0)
     p = Vector{T}(undef, 0)
 
     if !iszero(hx)
         for i in 1:Ns
-            push!(ops, (-1, i))
-            push!(p, 2*hx)
+            push!(ops, (-1, i, 0))
+            push!(p, hx)
         end
     end
 
     p_spins = nothing
     if !(iszero(J) && iszero(hz))
-        hzb = hz * Nb / (2*Ns)
-        if J >= 0 || (J <= 0 && hzb >= 0)
-            C = max(J, 2*hzb - J)  # FM with any field, or AFM with positive field
-        else
-            C = -(J + 2*hzb)  # AFM with negative field
+        hzb = hz * Ns / (2*Nb)
+        # order: DD, DU, UD, UU
+        p_spins = [J - 2*hzb, -J, -J, J + 2*hzb]
+        C = abs(min(0, minimum(p_spins)))
+        p_spins .+= C
+        for t in eachindex(p_spins)
+            if !iszero(p_spins[t])
+                for bond in bond_spins
+                    push!(ops, (t, bond...))
+                    push!(p, p_spins[t])
+                end
+            end
         end
-        for op in bond_spins
-            push!(ops, op)
-            push!(p, 4*C)
+
+        if !pbc
+            p_spins_edge = [-2*hzb, 0, 0, 2*hzb]
+            C_edge = abs(min(0, minimum(p_spins_edge)))
+            p_spins_edge .+= C_edge
+
+            for t in eachindex(p_spins_edge)
+                if !iszero(p_spins_edge[t])
+                    for bond in edge_bonds
+                        push!(ops, (t, bond...))
+                        push!(p, p_spins_edge[t])
+                    end
+                end
+            end
         end
-        p_spins = [J + 2*hzb, -J, -J, J - 2*hzb] .+ C
-        p_spins = ProbabilityVector(p_spins)
     end
 
-    return ops, p, p_spins
+    return ops, p, Ns, Nb
 end
 
 
@@ -85,79 +109,91 @@ end
 ###################
 
 
-abstract type AbstractOperatorSampler{N, T, P <: AbstractProbabilityVector{T}} end
+abstract type AbstractOperatorSampler{K, T, P <: AbstractProbabilityVector{T}} end
 firstindex(::AbstractOperatorSampler) = 1
 lastindex(os::AbstractOperatorSampler) = length(os)
 
+getweight(os::AbstractOperatorSampler{K}, op::NTuple{K, Int}) where K = haskey(os.op_indices, op) ? getweight(os.pvec, os.op_indices[op]) : 0
 
-struct OperatorSampler{N, T, P} <: AbstractOperatorSampler{N, T, P}
-    operators::Vector{NTuple{N, Int}}
+
+struct OperatorSampler{K, T, P} <: AbstractOperatorSampler{K, T, P}
+    operators::Vector{NTuple{K, Int}}
     pvec::P
+    op_indices::Dict{NTuple{K, Int}, Int}
 end
 
 
 # samples operators using a heap
 # based on a blog post by Tim Vieira
 # https://timvieira.github.io/blog/post/2016/11/21/heaps-for-incremental-computation/
-function OperatorSampler(operators::Vector{NTuple{N, Int}}, p::Vector{T}) where {N, T <: Real}
+function OperatorSampler(operators::Vector{NTuple{K, Int}}, p::Vector{T}) where {K, T <: Real}
     @assert length(operators) == length(p) "Given vectors must have the same length!"
     pvec = probability_vector(p)
-    return OperatorSampler{N, T, typeof(pvec)}(operators, pvec)
+    op_indices = Dict{NTuple{K, Int}, Int}(op => i for (i, op) in enumerate(operators))
+    return OperatorSampler{K, T, typeof(pvec)}(operators, pvec, op_indices)
 end
-rand(os::OperatorSampler{N}) where N = @inbounds os.operators[rand(os.pvec)]
+rand(os::OperatorSampler{K}) where K = @inbounds os.operators[rand(os.pvec)]
 @inline length(os::OperatorSampler) = length(os.operators)
 
 
 
 
-function cluster_probs_vec(operators::Vector{NTuple{N, Int}}, p::AbstractVector{T}) where {N, T <: Real}
+function cluster_probs_vec(operators::Vector{NTuple{K, Int}}, p::AbstractVector{T}) where {K, T <: Real}
     perm = sortperm(p)
     p = p[perm]
     operators = operators[perm]
 
     uniq_p = T[]
-    uniq_ops = Vector{Vector{NTuple{N, Int}}}(undef, 0)
+    uniq_ops = Vector{Vector{NTuple{K, Int}}}(undef, 0)
+    op_bins = Dict{NTuple{K, Int}, Int}()
 
     for i in axes(p, 1)
         if length(uniq_p) == 0
             push!(uniq_p, p[i])
             push!(uniq_ops, [operators[i]])
-            continue
-        end
-
-        if !(last(uniq_p) ≈ p[i])
+        elseif !(last(uniq_p) ≈ p[i])
             push!(uniq_p, p[i])
             push!(uniq_ops, [operators[i]])
         else
             push!(uniq_ops[end], operators[i])
         end
+        push!(op_bins, operators[i] => length(uniq_p))
     end
 
     # rescale uniq_p
     for i in eachindex(uniq_p, uniq_ops)
         uniq_p[i] *= length(uniq_ops[i])
     end
-    return uniq_ops, uniq_p
+    return uniq_ops, uniq_p, op_bins
 end
 
 
 
-struct HierarchicalOperatorSampler{N, T, P} <: AbstractOperatorSampler{N, T, P}
-    operator_bins::Vector{Vector{NTuple{N, Int}}}
+struct HierarchicalOperatorSampler{K, T, P} <: AbstractOperatorSampler{K, T, P}
+    operator_bins::Vector{Vector{NTuple{K, Int}}}
     pvec::P
+    op_indices::Dict{NTuple{K, Int}, Int}
 end
 
-function HierarchicalOperatorSampler(operators::Vector{NTuple{N, Int}}, p::AbstractVector{T}) where {N, T <: Real}
+function HierarchicalOperatorSampler(operators::Vector{NTuple{K, Int}}, p::AbstractVector{T}) where {K, T <: Real}
     @assert length(operators) == length(p) "Given vectors must have the same length!"
-    operator_bins, p = cluster_probs_vec(operators, p)
+    operator_bins, p, op_indices = cluster_probs_vec(operators, p)
     pvec = probability_vector(p)
-    return HierarchicalOperatorSampler{N, T, typeof(pvec)}(operator_bins, pvec)
+    return HierarchicalOperatorSampler{K, T, typeof(pvec)}(operator_bins, pvec, op_indices)
 end
 length(os::HierarchicalOperatorSampler) = sum(length, os.operator_bins)
 
-function rand(os::HierarchicalOperatorSampler{N})::NTuple{N, Int} where N
+function rand(os::HierarchicalOperatorSampler{K})::NTuple{K, Int} where K
     @inbounds ops_list = os.operator_bins[rand(os.pvec)]
     l = rand(1:length(ops_list))
 
     return @inbounds ops_list[l]
+end
+
+function getweight(os::HierarchicalOperatorSampler{K}, op::NTuple{K, Int}) where K
+    if !haskey(os.op_indices, op)
+        return 0
+    end
+    idx = os.op_indices[op]
+    return getweight(os.pvec, idx) / length(os.operator_bins[idx])
 end

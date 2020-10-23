@@ -2,28 +2,28 @@
 #
 # Defines estimators and provides measurements
 
-function sample(qmc_state::BinaryQMCState)
+function sample(H::AbstractIsing, qmc_state::BinaryQMCState)
     operator_list = qmc_state.operator_list
 
     M = length(operator_list) ÷ 2
     spin_prop = copy(qmc_state.left_config)
 
     @inbounds for op in operator_list[1:M] #propagate half the list only (to the middle)
-        if issiteoperator(op) && !isdiagonal(op)
+        if issiteoperator(H, op) && !isdiagonal(H, op)
             spin_prop[op[2]] ⊻= 1 #spinflip
         end
     end
     return spin_prop
 end
 
-function simulation_cell(qmc_state::BinaryQMCState)
+function simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState)
     operator_list = qmc_state.operator_list
 
     cell = falses(length(qmc_state.left_config), length(operator_list))
     spin_prop = copy(qmc_state.left_config)
 
     @inbounds for (n, op) in enumerate(operator_list)
-        if issiteoperator(op) && !isdiagonal(op)
+        if issiteoperator(H, op) && !isdiagonal(H, op)
             spin_prop[op[2]] ⊻= 1 #spinflip
         end
         copy!(cell[:, n], spin_prop)
@@ -35,10 +35,10 @@ end
 # 0 -> spin-down (-1)
 magnetization(spin_prop) = mean(x -> 2x - 1, spin_prop)
 
-num_single_site_diag(operator_list) = mean(x -> issiteoperator(x) && isdiagonal(x), operator_list)
-num_single_site_offdiag(operator_list) = mean(x -> issiteoperator(x) && !isdiagonal(x), operator_list)
-num_single_site(operator_list) = mean(issiteoperator, operator_list)
-num_two_site_diag(operator_list) = mean(isbondoperator, operator_list)
+num_single_site_diag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && isdiagonal(H, x), operator_list)
+num_single_site_offdiag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && !isdiagonal(H, x), operator_list)
+num_single_site(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x), operator_list)
+num_two_site_diag(H::AbstractIsing, operator_list) = mean(x -> isbondoperator(H, x), operator_list)
 
 
 function autocorrelation(m::Vector)

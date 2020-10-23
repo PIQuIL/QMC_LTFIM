@@ -51,18 +51,15 @@ struct LTFIM{N,O} <: AbstractLTFIM{N,O}
     J::Float64
     hx::Float64
     hz::Float64
-    hzb::Float64
     P_normalization::Float64
-    p_spins::Union{ProbabilityVector{Float64}, Nothing}
     Ns::Int
     Nb::Int
 end
 
-function LTFIM(bond_spin, Dim::Int, Ns::Int, Nb::Int, J::Float64, hx::Float64, hz::Float64)
-    ops, p, p_spins = make_prob_vector(bond_spin, Ns, Nb, J, hx, hz)
+function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
+    ops, p, Ns, Nb = make_prob_vector(dims, J, hx, hz, pbc)
     op_sampler = HierarchicalOperatorSampler(ops, p)
-    hzb = hz * Nb / (2*Ns)
-    return LTFIM{Dim, typeof(op_sampler)}(op_sampler, J, hx, hz, hzb, sum(p), p_spins, Ns, Nb)
+    return LTFIM{N, typeof(op_sampler)}(op_sampler, J, hx, hz, sum(p), Ns, Nb)
 end
 
 ###############################################################################

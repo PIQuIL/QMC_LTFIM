@@ -173,10 +173,10 @@ function groundstate(parsed_args)
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
         mc_step!(qmc_state, H) do cluster_data, qmc_state, H
-            spin_prop = sample(qmc_state)
+            spin_prop = sample(H, qmc_state)
             measurements[i, :] = spin_prop
 
-            ns[i] = num_single_site_diag(qmc_state.operator_list)
+            ns[i] = num_single_site_diag(H, qmc_state.operator_list)
             mags[i] = magnetization(spin_prop)
         end
 

@@ -25,7 +25,16 @@ s = ArgParseSettings()
         help = "Strength of the interaction"
         arg_type = Float64
         default = 1.0
+
+    "--periodic", "-p"
+        help = "Periodic BCs"
+        action = :store_true
+
+    "--thermal"
+        help = "Include Thermal State calculations for various beta values"
+        action = :store_true
 end
+
 
 parsed_args = parse_args(ARGS, s)
 
@@ -37,6 +46,7 @@ N = parsed_args["N"]
 J = parsed_args["interaction"] #exchange interaction
 hx = parsed_args["hx"] #transverse field
 hz = parsed_args["hz"] #longitudinal field
+PBC = parsed_args["periodic"]
 
 
 Dim = 2^N
@@ -47,12 +57,17 @@ for Ket = 0:Dim-1  #Loop over Hilbert Space
     Diagonal = 0.
     Spin2 = 0
     for SpinIndex = 0:N-2  #Loop over spin index (base zero, stop one spin before the end of the chain)
-        Spin1 = 1 - 2*((Ket>>SpinIndex)&1)
+        Spin1 = 2*((Ket>>SpinIndex)&1) - 1
         NextIndex = SpinIndex + 1
-        Spin2 = 1 - 2*((Ket>>NextIndex)&1)
+        Spin2 = 2*((Ket>>NextIndex)&1) - 1
         Diagonal = Diagonal - J*Spin1*Spin2 - hz*Spin1 #spins are +1 and -1
     end
-    Diagonal = Diagonal - hz*Spin2 #this is the spin at the end of the chain
+    if PBC
+        Spin1 = 2*((Ket>>0)&1) - 1
+        Diagonal = Diagonal - J*Spin1*Spin2 - hz*Spin2
+    else
+        Diagonal = Diagonal - hz*Spin2 #this is the spin at the end of the chain
+    end
 
     Hamiltonian[Ket+1,Ket+1] = Diagonal
 
@@ -89,27 +104,29 @@ println("Ground State Properties: \n")
 println()
 println("-"^70)
 
-beta_vals = [20,15,10,5,3,2,1,0.8,0.5,0.2]
+if parsed_args["thermal"]
+    beta_vals = [20,15,10,5,3,2,1,0.8,0.5,0.2]
 
-println("Thermal State Properties: \n")
-for β in beta_vals
-    weights = exp.(-β * Diag.values)
-    Z = sum(weights)
-    E = dot(Diag.values, weights) / (N*Z)
-    C = (β^2 * ((dot(Diag.values .^2, weights) / Z) - (N*E)^2))
+    println("Thermal State Properties: \n")
+    for β in beta_vals
+        weights = exp.(-β * Diag.values)
+        Z = sum(weights)
+        E = dot(Diag.values, weights) / (N*Z)
+        C = (β^2 * ((dot(Diag.values .^2, weights) / Z) - (N*E)^2))
 
-    # magnetization of thermal state
-    M = dot(weights, magnetization) / (N*Z)
-    M_abs = dot(weights, abs_mag) / (N*Z)
-    M2 = dot(weights, mag_squared) / (N*N*Z)
+        # magnetization of thermal state
+        M = dot(weights, magnetization) / (N*Z)
+        M_abs = dot(weights, abs_mag) / (N*Z)
+        M2 = dot(weights, mag_squared) / (N*N*Z)
 
-    @printf("β      = % .16f\n", β)
+        @printf("β      = % .16f\n", β)
 
-    @printf("⟨M⟩    = % .16f\n", M)
-    @printf("⟨|M|⟩  = % .16f\n", M_abs)
-    @printf("⟨M^2⟩  = % .16f\n", M2)
-    @printf("⟨H⟩    = % .16f\n", E)
-    @printf("C      = % .16f\n", C)
-    println()
+        @printf("⟨M⟩    = % .16f\n", M)
+        @printf("⟨|M|⟩  = % .16f\n", M_abs)
+        @printf("⟨M^2⟩  = % .16f\n", M2)
+        @printf("⟨H⟩    = % .16f\n", E)
+        @printf("C      = % .16f\n", C)
+        println()
+    end
+    println("-"^70)
 end
-println("-"^70)

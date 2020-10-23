@@ -3,14 +3,40 @@
 # Defines the functions that perform the diagonal update, and also
 # that build the linked list and operator cluster update
 
+# TFIM ops:
 #  (-2,i) is an off-diagonal site operator h(sigma^+_i + sigma^-_i)
 #  (-1,i) is a diagonal site operator h
 #  (0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
 #  (i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
-@inline isdiagonal(op::NTuple{2,Int}) = (op[1] != -2)
-@inline isidentity(op::NTuple{2,Int}) = (op[1] == 0)
-@inline issiteoperator(op::NTuple{2,Int}) = (op[1] < 0)
-@inline isbondoperator(op::NTuple{2,Int}) = (op[1] > 0)
+@inline isdiagonal(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] != -2)
+@inline isidentity(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] == 0)
+@inline issiteoperator(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] < 0)
+@inline isbondoperator(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] > 0)
+@inline getbondsites(H::TFIM, op::NTuple{2, Int}) = op
+
+# LTFIM ops:
+#  (-2,i,0) is an off-diagonal site operator h(sigma^+_i + sigma^-_i)
+#  (-1,i,0) is a diagonal site operator h
+#  (0,0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
+#  (t,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j) + hzb(sigma^z_i + sigma^z_j)
+#    t denotes the spin config at sites i,j, subtract 1 then convert to binary
+#    t = 1 -> 00 -> down-down
+#    t = 2 -> 01 -> down-up
+#    t = 3 -> 10 -> up-down
+#    t = 4 -> 11 -> up-up
+#    spin_config(t) = divrem(t - 1, 2)
+#
+@inline isdiagonal(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
+@inline isidentity(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
+@inline issiteoperator(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
+@inline isbondoperator(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
+@inline getbondsites(H::LTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
+@inline getbondtype(H::LTFIM, s1::Bool, s2::Bool) = 2*s1 + s2 + 1
+
+# could try converting to bool as well so we can use ===
+@inline spin_config(H::LTFIM, t::Int)::NTuple{2,Int} = divrem(t - 1, 2)
+@inline spin_config(H::LTFIM, op::NTuple{3, Int}) = @inbounds spin_config(H, op[1])
+
 
 function mc_step!(f::Function, qmc_state::BinaryQMCState, H::Hamiltonian)
     diagonal_update!(qmc_state, H)
@@ -41,20 +67,23 @@ end
 mc_step_beta!(qmc_state, H, beta; eq = false) = mc_step_beta!((args...) -> nothing, qmc_state, H, beta; eq = eq)
 
 
-@inline alignment_check(::TFIM{N,true}, s1::Bool, s2::Bool) where N = !xor(s1, s2)
-@inline alignment_check(::TFIM{N,false}, s1::Bool, s2::Bool) where N = xor(s1, s2)
+@inline alignment_check(::TFIM{N,true}, op::NTuple{2, Int}, s1::Bool, s2::Bool) where N = !xor(s1, s2)
+@inline alignment_check(::TFIM{N,false}, op::NTuple{2, Int}, s1::Bool, s2::Bool) where N = xor(s1, s2)
 
 
-function alignment_check(H::LTFIM, s1::Bool, s2::Bool)
-    l = ((true, true), (true, false), (false, true), (false, false))[rand(H.p_spins)]
-    return l === (s1, s2)
+@inline function alignment_check(H::LTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool)
+    # l = ((true, true), (true, false), (false, true), (false, false))[rand(H.p_spins)]
+    # return l === (s1, s2) || l === (!s1, !s2)
+    # return !iszero(bond_weight(s1, s2, H))
+    return spin_config(H, op) == (s1, s2)
 end
 
 
 # insert_diagonal_operator! returns true if operator insertion succeeded
 function insert_diagonal_operator!(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::AbstractIsing{N}, spin_prop::BitArray{N}, n::Int) where N
-    site1, site2 = op = rand(H.op_sampler)
-    @inbounds if issiteoperator(op) || alignment_check(H, spin_prop[site1], spin_prop[site2])
+    op = rand(H.op_sampler)
+    site1, site2 = getbondsites(H, op)
+    @inbounds if issiteoperator(H, op) || alignment_check(H, op, spin_prop[site1], spin_prop[site2])
         qmc_state.operator_list[n] = op
         return true
     else
@@ -63,9 +92,10 @@ function insert_diagonal_operator!(qmc_state::BinaryQMCState{N, <:AbstractIsing}
 end
 
 function insert_diagonal_operator!(qmc_state::BinaryQMCState{N, <:ArbitraryInteractionTFIM}, H::ArbitraryInteractionTFIM{N}, spin_prop::BitArray{N}, n::Int) where N
-    site1, site2 = op = rand(H.op_sampler)
+    op = rand(H.op_sampler)
+    site1, site2 = getbondsites(H, op)
     @inbounds F = !signbit(H.J[site1, site2])
-    @inbounds if issiteoperator(op) || xor(F, spin_prop[site1], spin_prop[site2])
+    @inbounds if issiteoperator(H, op) || xor(F, spin_prop[site1], spin_prop[site2])
         qmc_state.operator_list[n] = op
         return true
     else
@@ -79,7 +109,7 @@ function diagonal_update!(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Abst
     spin_prop = copy(qmc_state.left_config)  # the propagated spin state
 
     for (n, op) in enumerate(qmc_state.operator_list)
-        if !isdiagonal(op)
+        if !isdiagonal(H, op)
             @inbounds spin_prop[op[2]] ⊻= 1  # spinflip
         else
             success = false
@@ -100,12 +130,6 @@ end
 
 nullt = (0, 0, 0)  # a null tuple
 
-bond_weight(s1::Bool, s2::Bool, H::TFIM) = (s1 == s2) ? 2*H.J : 0
-function bond_weight(s1::Bool, s2::Bool, H::LTFIM)
-    s1, s2 = !s1, !s2
-    return H.p_spins[(2*s1 + s2) + 1]
-end
-
 # TODO: re-use ClusterData's contents
 #   make use of `view` so we can still rely on boundschecking when @inbounds is
 #   turned off.
@@ -116,7 +140,7 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
 
     len = 2 * Ns
     @simd for op in qmc_state.operator_list
-        len += ifelse(issiteoperator(op), 2, 4)
+        len += ifelse(issiteoperator(H, op), 2, 4)
     end
 
     # initialize linked list data structures
@@ -140,7 +164,7 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for op in qmc_state.operator_list
-        if issiteoperator(op)
+        if issiteoperator(H, op)
             site = op[2]
             # lower or left leg
             idx += 1
@@ -148,7 +172,7 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
             LegType[idx] = spin_prop[site]
             current_link = idx
 
-            if !isdiagonal(op)  # off-diagonal site operator
+            if !isdiagonal(H, op)  # off-diagonal site operator
                 spin_prop[site] ⊻= 1  # spinflip
             end
 
@@ -159,7 +183,7 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
             idx += 1
             LegType[idx] = spin_prop[site]
         else  # diagonal bond operator
-            site1, site2 = op
+            site1, site2 = getbondsites(H, op)
 
             # lower left
             idx += 1
@@ -169,9 +193,10 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
 
             if H isa LTFIM
                 s1, s2 = spin_prop[site1], spin_prop[site2]
-                w1 = bond_weight(s1, s2, H)
-                w2 = bond_weight(!s1, !s2, H)
-                flipping_weights[idx] = w2/w1
+                w1 = getweight(H.op_sampler, op)
+                new_t = getbondtype(H, !s1, !s2)
+                w2 = getweight(H.op_sampler, (new_t, site1, site2))
+                flipping_weights[idx] = w1/w2
             end
 
             LinkList[First[site1]] = current_link  # completes backwards link
@@ -266,8 +291,8 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
                 end
             end
 
-            acceptance_ratio = prod(flipping_weights[current_cluster])
-            flip = rand() < acceptance_ratio
+            invA = prod(flipping_weights[current_cluster])
+            flip = rand() < inv(1 + invA)
             if flip
                 @inbounds for i in current_cluster
                     LegType[i] ⊻= 1  # spinflip
@@ -285,13 +310,17 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
 
     ocount = Ns + 1  # next on is leg Ns + 1
     @inbounds for (n, op) in enumerate(operator_list)
-        if isbondoperator(op)
+        if isbondoperator(H, op)
+            s1, s2 = LegType[ocount], LegType[ocount+1]
+            t = getbondtype(H, s1, s2)
+            site1, site2 = getbondsites(H, op)
+            operator_list[n] = (t, site1, site2)
             ocount += 4
         else
             if LegType[ocount] == LegType[ocount+1]  # diagonal
-                operator_list[n] = (-1, op[2])
+                operator_list[n] = (-1, op[2], 0)
             else  # off-diagonal
-                operator_list[n] = (-2, op[2])
+                operator_list[n] = (-2, op[2], 0)
             end
             ocount += 2
         end
@@ -361,7 +390,7 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
 
     ocount = Ns + 1  # next on is leg Ns + 1
     @inbounds for (n, op) in enumerate(operator_list)
-        if isbondoperator(op)
+        if isbondoperator(H, op)
             ocount += 4
         else
             if LegType[ocount] == LegType[ocount+1]  # diagonal
