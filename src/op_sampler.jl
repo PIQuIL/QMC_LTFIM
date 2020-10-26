@@ -87,20 +87,20 @@ function make_prob_vector(dims::NTuple{N, Int}, J::T, hx::T, hz::T, pbc=true) wh
         p_spins_l .+= C_l
         p_spins_r .+= C_r
 
-        for t in eachindex(p_spins), bond in bond_spins
-            if !(bond[1] in edge_sites || bond[2] in edge_sites)
+        for t in eachindex(p_spins), (site1, site2) in bond_spins
+            if !(site1 in edge_sites || site2 in edge_sites)
                 p_t = p_spins[t]
                 energy_shift += C/4
-            elseif bond[1] in edge_sites
+            elseif site1 in edge_sites
                 p_t = p_spins_l[t]
                 energy_shift += C_l/4
-            else  # bond[2] in edge_sites
+            else  # site2 in edge_sites
                 p_t = p_spins_r[t]
                 energy_shift += C_r/4
             end
 
             if !iszero(p_t)
-                push!(ops, (t, bond...))
+                push!(ops, (t, site1, site2))
                 push!(p, p_t)
             end
         end
