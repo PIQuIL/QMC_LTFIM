@@ -4,6 +4,8 @@
 # (0, 0) = id
 # (i, j) = diag bond op
 
+using Base.Iterators
+
 function make_prob_vector(J::AbstractMatrix{T}, hx::AbstractVector{T}) where T
     ops = Vector{NTuple{2, Int}}(undef, 0)
     p = Vector{T}(undef, 0)
@@ -52,15 +54,18 @@ end
 
 function make_prob_vector(dims::NTuple{N, Int}, J::T, hx::T, hz::T, pbc=true) where {N, T}
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
-    edge_bonds = Set{NTuple{2, Int}}()
+    bond_spins = Set(bond_spins)
+    edge_sites = Set{Int}()
+
     if !pbc
         pbc_s = Set(lattice_bond_spins(dims, true)[1])
-        obc_s = Set(bond_spins)
-        edge_bonds = symdiff(pbc_s, obc_s)
+        edge_bonds = setdiff(pbc_s, bond_spins)
+        edge_sites = Set(unique(flatten(edge_bonds)))
     end
 
     ops = Vector{NTuple{3, Int}}(undef, 0)
     p = Vector{T}(undef, 0)
+    energy_shift = Ns*float(hx)
 
     if !iszero(hx)
         for i in 1:Ns
@@ -69,39 +74,40 @@ function make_prob_vector(dims::NTuple{N, Int}, J::T, hx::T, hz::T, pbc=true) wh
         end
     end
 
-    p_spins = nothing
     if !(iszero(J) && iszero(hz))
         hzb = hz * Ns / (2*Nb)
-        # order: DD, DU, UD, UU
-        p_spins = [J - 2*hzb, -J, -J, J + 2*hzb]
-        C = abs(min(0, minimum(p_spins)))
+        #   order:   DD,        DU,       UD,       UU
+        p_spins   = [J - 2*hzb, -J,       -J,       J + 2*hzb]
+        p_spins_l = [J - 3*hzb, -J - hzb, -J + hzb, J + 3*hzb]
+        p_spins_r = [J - 3*hzb, -J + hzb, -J - hzb, J + 3*hzb]
+        C   = abs(min(0, minimum(p_spins)))
+        C_l = abs(min(0, minimum(p_spins_l)))
+        C_r = abs(min(0, minimum(p_spins_r)))
         p_spins .+= C
-        for t in eachindex(p_spins)
-            if !iszero(p_spins[t])
-                for bond in bond_spins
-                    push!(ops, (t, bond...))
-                    push!(p, p_spins[t])
-                end
+        p_spins_l .+= C_l
+        p_spins_r .+= C_r
+
+        for t in eachindex(p_spins), bond in bond_spins
+            if !(bond[1] in edge_sites || bond[2] in edge_sites)
+                p_t = p_spins[t]
+                energy_shift += C/4
+            elseif bond[1] in edge_sites
+                p_t = p_spins_l[t]
+                energy_shift += C_l/4
+            else  # bond[2] in edge_sites
+                p_t = p_spins_r[t]
+                energy_shift += C_r/4
+            end
+
+            if !iszero(p_t)
+                push!(ops, (t, bond...))
+                push!(p, p_t)
             end
         end
 
-        if !pbc
-            p_spins_edge = [-2*hzb, 0, 0, 2*hzb]
-            C_edge = abs(min(0, minimum(p_spins_edge)))
-            p_spins_edge .+= C_edge
-
-            for t in eachindex(p_spins_edge)
-                if !iszero(p_spins_edge[t])
-                    for bond in edge_bonds
-                        push!(ops, (t, bond...))
-                        push!(p, p_spins_edge[t])
-                    end
-                end
-            end
-        end
     end
 
-    return ops, p, Ns, Nb
+    return ops, p, Ns, Nb, energy_shift
 end
 
 

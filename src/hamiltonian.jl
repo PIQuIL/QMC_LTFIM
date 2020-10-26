@@ -54,12 +54,13 @@ struct LTFIM{N,O} <: AbstractLTFIM{N,O}
     P_normalization::Float64
     Ns::Int
     Nb::Int
+    energy_shift::Float64
 end
 
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
-    ops, p, Ns, Nb = make_prob_vector(dims, J, hx, hz, pbc)
+    ops, p, Ns, Nb, energy_shift = make_prob_vector(dims, J, hx, hz, pbc)
     op_sampler = HierarchicalOperatorSampler(ops, p)
-    return LTFIM{N, typeof(op_sampler)}(op_sampler, J, hx, hz, sum(p), Ns, Nb)
+    return LTFIM{N, typeof(op_sampler)}(op_sampler, J, hx, hz, sum(p), Ns, Nb, energy_shift)
 end
 
 ###############################################################################
