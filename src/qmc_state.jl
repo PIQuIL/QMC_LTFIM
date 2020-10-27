@@ -1,46 +1,50 @@
-function init_op_list(length)
-    operator_list::Vector{NTuple{2,Int}} = [(0, 0) for _ in 1:length]
+function init_op_list(length, K=2)
+    operator_list::Vector{NTuple{K,Int}} = [ntuple(_->0, K) for _ in 1:length]
     return operator_list
 end
 
-abstract type AbstractQMCState{D,N} end
+abstract type AbstractQMCState{D,N,K} end
 
-abstract type AbstractGroundState{D,N} <: AbstractQMCState{D,N} end
-abstract type AbstractThermalState{D,N} <: AbstractQMCState{D,N} end
+abstract type AbstractGroundState{D,N,K} <: AbstractQMCState{D,N,K} end
+abstract type AbstractThermalState{D,N,K} <: AbstractQMCState{D,N,K} end
 
-struct BinaryGroundState{N} <: AbstractGroundState{2,N}
+
+
+struct BinaryGroundState{N,K} <: AbstractGroundState{2,N,K}
     left_config::BitArray{N}
     right_config::BitArray{N}
     propagated_config::BitArray{N}
 
-    operator_list::Vector{NTuple{2,Int}}
+    operator_list::Vector{NTuple{K,Int}}
 
     linked_list::Vector{Int}
     leg_types::BitVector
     associates::Vector{NTuple{3,Int}}
+    flipping_weights::Vector{Float64}
 
     first::Vector{Int}
 end
 
 
-function BinaryGroundState(H::Hamiltonian{2,N}, M::Int) where N
-    operator_list = init_op_list(2*M)
+function BinaryGroundState(H::Hamiltonian{2,N,O}, M::Int) where {N, K, O <: AbstractOperatorSampler{K}}
+    operator_list = init_op_list(2*M, K)
 
     len = 2*nspins(H) + 4*length(operator_list)
     linked_list = zeros(Int, len)
     leg_types = falses(len)
     associates = [(0, 0, 0) for _ in 1:len]
+    flipping_weights = ones(len)
 
     first = zeros(Int, nspins(H))
 
-    BinaryGroundState{N}(zero(H), zero(H), zero(H),
-                         operator_list,
-                         linked_list, leg_types, associates,
-                         first)
+    BinaryGroundState{N,K}(zero(H), zero(H), zero(H),
+                           operator_list,
+                           linked_list, leg_types, associates, flipping_weights,
+                           first)
 end
 
 
-function BinaryGroundState(left_config::BitArray{N}, right_config::BitArray{N}, operator_list::Vector{NTuple{2,Int}}) where N
+function BinaryGroundState(left_config::BitArray{N}, right_config::BitArray{N}, operator_list::Vector{NTuple{K,Int}}) where {N, K}
     @assert left_config !== right_config "left_config and right_config can't be the same array!"
 
     len = 2*length(left_config) + 4*length(operator_list)
@@ -50,48 +54,50 @@ function BinaryGroundState(left_config::BitArray{N}, right_config::BitArray{N}, 
 
     first = zeros(Int, length(left_config))
 
-    BinaryGroundState{N}(left_config, right_config, copy(left_config),
-                         operator_list,
-                         linked_list, leg_types, associates,
-                         first)
+    BinaryGroundState{N,K}(left_config, right_config, copy(left_config),
+                           operator_list,
+                           linked_list, leg_types, associates,
+                           first)
 end
 
 
-struct BinaryThermalState{N} <: AbstractThermalState{2,N}
+struct BinaryThermalState{N,K} <: AbstractThermalState{2,N,K}
     left_config::BitArray{N}
     right_config::BitArray{N}
     propagated_config::BitArray{N}
 
-    operator_list::Vector{NTuple{2,Int}}
+    operator_list::Vector{NTuple{K,Int}}
 
     linked_list::Vector{Int}
     leg_types::BitVector
     associates::Vector{NTuple{3,Int}}
+    flipping_weights::Vector{Float64}
 
     first::Vector{Int}
     last::Vector{Int}
 end
 
 
-function BinaryThermalState(H::Hamiltonian{2,N}, cutoff::Int) where N
-    operator_list = init_op_list(cutoff)
+function BinaryThermalState(H::Hamiltonian{2,N,O}, cutoff::Int) where {N, K, O <: AbstractOperatorSampler{K}}
+    operator_list = init_op_list(cutoff, K)
 
     len = 4*length(operator_list)
     linked_list = zeros(Int, len)
     leg_types = falses(len)
     associates = [(0, 0, 0) for _ in 1:len]
+    flipping_weights = ones(len)
 
     first = zeros(Int, nspins(H))
     last = zeros(Int, nspins(H))
 
-    BinaryThermalState{N}(zero(H), zero(H), zero(H),
-                          operator_list,
-                          linked_list, leg_types, associates,
-                          first, last)
+    BinaryThermalState{N,K}(zero(H), zero(H), zero(H),
+                            operator_list,
+                            linked_list, leg_types, associates, flipping_weights,
+                            first, last)
 end
 
 
-function BinaryThermalState(left_config::BitArray{N}, right_config::BitArray{N}, operator_list::Vector{NTuple{2,Int}}) where N
+function BinaryThermalState(left_config::BitArray{N}, right_config::BitArray{N}, operator_list::Vector{NTuple{K,Int}}) where {N, K}
     @assert left_config !== right_config "left_config and right_config can't be the same array!"
 
     len = 4*length(operator_list)
@@ -102,11 +108,11 @@ function BinaryThermalState(left_config::BitArray{N}, right_config::BitArray{N},
     first = zeros(Int, length(left_config))
     last = copy(first)
 
-    BinaryThermalState{N}(left_config, right_config, copy(left_config),
-                          operator_list,
-                          linked_list, leg_types, associates,
-                          first, last)
+    BinaryThermalState{N,K}(left_config, right_config, copy(left_config),
+                            operator_list,
+                            linked_list, leg_types, associates,
+                            first, last)
 end
 
 
-const BinaryQMCState{N} = Union{BinaryGroundState{N}, BinaryThermalState{N}}
+const BinaryQMCState{N,K} = Union{BinaryGroundState{N,K}, BinaryThermalState{N,K}}

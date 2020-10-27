@@ -3,6 +3,7 @@
 # Defines the spatial lattice; supports 1D and 2D square, open and periodic boundaries
 # The main data structure is the bond-spin index array, bond_spin[nBond,2]
 
+lattice_bond_spins((nX,)::Tuple{Int}, pbc::Bool=true) = lattice_bond_spins(nX, pbc)
 
 function lattice_bond_spins(nX::Int, pbc::Bool=true)
     Nb = pbc ? nX : nX-1

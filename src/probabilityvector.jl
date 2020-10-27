@@ -32,7 +32,7 @@ normalization(pvec::ProbabilityVector) = @inbounds pvec.cdf[end]
 
 function show(io::IO, pvec::ProbabilityVector{T}) where T
     r = repr(pvec.p; context=IOContext(io, :limit=>true))
-    println(io, "ProbabilityVector{$T}($r)")
+    print(io, "ProbabilityVector{$T}($r)")
 end
 
 
@@ -137,7 +137,7 @@ function show(io::IO, p::ProbabilityHeap{T}) where T
     pvec = heap[d : d + L - 1]
     r = repr(pvec; context=IOContext(io, :limit=>true))
 
-    println(io, "ProbabilityHeap{$T}($r)")
+    print(io, "ProbabilityHeap{$T}($r)")
 end
 
 

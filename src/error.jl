@@ -12,6 +12,7 @@ end
 mean_and_stderr(x::Vector) = mean_and_stderr(identity, x)
 
 
+# jackknife estimates the error of a function of a mean (or several means), f(<x>)
 function jackknife(f::Function, x::Vector...)
     sum_x = [sum(x[i]) for i in 1:length(x)]
     N = length(x[1])
