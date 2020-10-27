@@ -32,7 +32,8 @@ include("op_sampler.jl")
 include("hamiltonian.jl")
 include("qmc_state.jl")
 include("measurements.jl")
-include("updates.jl")
+include("groundstate.jl")
+include("mixedstate.jl")
 include("error.jl")
 
 
