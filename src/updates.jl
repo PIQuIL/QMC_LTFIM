@@ -402,12 +402,12 @@ end
 
 
 
-function resize_op_list!(qmc_state::BinaryThermalState, new_size::Int)
-    operator_list = filter!(!isidentity, qmc_state.operator_list)
+function resize_op_list!(qmc_state::BinaryThermalState{N, K}, H::AbstractIsing, new_size::Int) where {N, K}
+    operator_list = filter!(op -> !isidentity(H, op), qmc_state.operator_list)
     len = length(operator_list)
 
     if len < new_size
-        tail = init_op_list(new_size - len)
+        tail = init_op_list(new_size - len, K)
         append!(operator_list, tail)
     end
 
@@ -423,16 +423,16 @@ end
 function diagonal_update_beta!(qmc_state::BinaryThermalState, H::TFIM, beta::Real; eq::Bool = false)
     P_norm = beta * H.P_normalization
 
-    num_ids = count(isidentity, qmc_state.operator_list)
+    num_ids = count(op -> isidentity(H, op), qmc_state.operator_list)
     P_remove = (num_ids + 1) / P_norm
     P_accept = P_norm / num_ids
 
     spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
     @inbounds for (n, op) in enumerate(qmc_state.operator_list)
-        if !isdiagonal(op)
+        if !isdiagonal(H, op)
             spin_prop[op[2]] ⊻= 1  # spinflip
-        elseif !isidentity(op)
+        elseif !isidentity(H, op)
             if rand() < P_remove
                 qmc_state.operator_list[n] = (0, 0)
                 num_ids += 1
@@ -462,7 +462,7 @@ function diagonal_update_beta!(qmc_state::BinaryThermalState, H::TFIM, beta::Rea
     num_ops = total_list_size - num_ids
 
     if eq && 1.2*num_ops > total_list_size
-        resize_op_list!(qmc_state, round(Int, 1.5*num_ops, RoundUp))
+        resize_op_list!(qmc_state, H, round(Int, 1.5*num_ops, RoundUp))
     end
 
     return num_ops
@@ -476,9 +476,9 @@ function linked_list_update_beta(qmc_state::BinaryThermalState, H::TFIM)
 
     len = 0
     @simd for op in qmc_state.operator_list
-        if issiteoperator(op)
+        if issiteoperator(H, op)
             len += 2
-        elseif isbondoperator(op)
+        elseif isbondoperator(H, op)
             len += 4
         end
     end
@@ -498,7 +498,7 @@ function linked_list_update_beta(qmc_state::BinaryThermalState, H::TFIM)
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for op in qmc_state.operator_list
-        if issiteoperator(op)
+        if issiteoperator(H, op)
             site = op[2]
             # lower or left leg
             idx += 1
@@ -506,7 +506,7 @@ function linked_list_update_beta(qmc_state::BinaryThermalState, H::TFIM)
             LegType[idx] = spin_prop[site]
             current_link = idx
 
-            if !isdiagonal(op)  # off-diagonal site operator
+            if !isdiagonal(H, op)  # off-diagonal site operator
                 spin_prop[site] ⊻= 1  # spinflip
             end
 
@@ -522,8 +522,8 @@ function linked_list_update_beta(qmc_state::BinaryThermalState, H::TFIM)
             idx += 1
             LegType[idx] = spin_prop[site]
             Associates[idx] = (0, 0, 0)
-        elseif isbondoperator(op)  # diagonal bond operator
-            site1, site2 = op
+        elseif isbondoperator(H, op)  # diagonal bond operator
+            site1, site2 = getbondsites(H, op)
 
             # lower left
             idx += 1
@@ -655,9 +655,9 @@ function cluster_update_beta!(lsize::Int, qmc_state::BinaryThermalState, H::TFIM
 
     ocount = 1  # first leg
     @inbounds for (n, op) in enumerate(operator_list)
-        if isbondoperator(op)
+        if isbondoperator(H, op)
             ocount += 4
-        elseif !isidentity(op)
+        elseif !isidentity(H, op)
             if LegType[ocount] == LegType[ocount+1]  # diagonal
                 operator_list[n] = (-1, op[2])
             else  # off-diagonal

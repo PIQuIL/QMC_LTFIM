@@ -128,7 +128,7 @@ function mixedstate(parsed_args)
 
     max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
 
-    resize_op_list!(qmc_state, round(Int, (3//2)*max_ns, RoundUp))
+    resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
         ns[i] = mc_step_beta!(qmc_state, H, beta) do cluster_data, qmc_state, H
