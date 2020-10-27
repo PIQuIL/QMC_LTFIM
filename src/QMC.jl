@@ -18,7 +18,9 @@ import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex, r
 
 
 
-export BinaryQMCState, Hamiltonian, TFIM, nspins, nbonds, ClusterData, mc_step!, mc_step_beta!,
+export BinaryQMCState, BinaryGroundState, BinaryThermalState,
+        Hamiltonian, TFIM, nspins, nbonds, ClusterData, mc_step!, mc_step_beta!,
+        resize_op_list!,
         sample, simulation_cell, magnetization, num_single_site_diag, num_single_site_offdiag,
         num_single_site, num_two_site_diag, autocorrelation, correlation_time, jackknife, mean_and_stderr,
         lattice_bond_spins, ProbabilityHeap, ProbabilityVector, probability_vector

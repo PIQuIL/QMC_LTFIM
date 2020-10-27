@@ -38,7 +38,7 @@
 @inline spin_config(H::LTFIM, op::NTuple{3, Int}) = @inbounds spin_config(H, op[1])
 
 
-function mc_step!(f::Function, qmc_state::BinaryQMCState, H::Hamiltonian)
+function mc_step!(f::Function, qmc_state::BinaryGroundState, H::TFIM)
     diagonal_update!(qmc_state, H)
 
     cluster_data = linked_list_update(qmc_state, H)
@@ -52,7 +52,7 @@ mc_step!(qmc_state, H) = mc_step!((args...) -> nothing, qmc_state, H)
 
 ########################## finite-beta #######################################
 
-function mc_step_beta!(f::Function, qmc_state::BinaryQMCState, H::TFIM, beta::Real; eq::Bool = false)
+function mc_step_beta!(f::Function, qmc_state::BinaryThermalState, H::TFIM, beta::Real; eq::Bool = false)
     num_ops = diagonal_update_beta!(qmc_state, H, beta; eq = eq)
 
     cluster_data = linked_list_update_beta(qmc_state, H)
@@ -80,7 +80,8 @@ end
 
 
 # insert_diagonal_operator! returns true if operator insertion succeeded
-function insert_diagonal_operator!(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::AbstractIsing{N}, spin_prop::BitArray{N}, n::Int) where N
+# returns true if operator insertion succeeded
+function insert_diagonal_operator!(qmc_state::BinaryQMCState{N}, H::TFIM{N}, spin_prop::BitArray{N}, n::Int) where N
     op = rand(H.op_sampler)
     site1, site2 = getbondsites(H, op)
     @inbounds if issiteoperator(H, op) || alignment_check(H, op, spin_prop[site1], spin_prop[site2])
@@ -91,7 +92,7 @@ function insert_diagonal_operator!(qmc_state::BinaryQMCState{N, <:AbstractIsing}
     end
 end
 
-function insert_diagonal_operator!(qmc_state::BinaryQMCState{N, <:ArbitraryInteractionTFIM}, H::ArbitraryInteractionTFIM{N}, spin_prop::BitArray{N}, n::Int) where N
+function insert_diagonal_operator!(qmc_state::BinaryQMCState{N}, H::ArbitraryInteractionTFIM{N}, spin_prop::BitArray{N}, n::Int) where N
     op = rand(H.op_sampler)
     site1, site2 = getbondsites(H, op)
     @inbounds F = !signbit(H.J[site1, site2])
@@ -105,8 +106,8 @@ end
 
 #############################################################################
 
-function diagonal_update!(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::AbstractIsing{N}) where N
-    spin_prop = copy(qmc_state.left_config)  # the propagated spin state
+function diagonal_update!(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N}) where N
+    spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
     for (n, op) in enumerate(qmc_state.operator_list)
         if !isdiagonal(H, op)
@@ -128,39 +129,33 @@ end
 
 #############################################################################
 
-nullt = (0, 0, 0)  # a null tuple
-
-# TODO: re-use ClusterData's contents
-#   make use of `view` so we can still rely on boundschecking when @inbounds is
-#   turned off.
-#   also, if things aren't working, try clearing out the elements past the "effective" length
-function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::AbstractIsing{N}) where N
+function linked_list_update(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N}) where N
     Ns = nspins(H)
-    spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
+    spin_left = qmc_state.left_config
 
     len = 2 * Ns
     @simd for op in qmc_state.operator_list
         len += ifelse(issiteoperator(H, op), 2, 4)
     end
 
-    # initialize linked list data structures
-    LinkList = zeros(Int, len)  # needed for cluster update
-    LegType = falses(len)
-    flipping_weights = ones(len)
+    # retrieve linked list data structures
+    LinkList = qmc_state.linked_list  # needed for cluster update
+    LegType = qmc_state.leg_types
 
     # A diagonal bond operator has non trivial associates for cluster building
-    Associates = [nullt for _ in 1:len]
+    Associates = qmc_state.associates
 
-    First = collect(1:Ns)
-    idx = 0
+    First = qmc_state.first
 
     # The first N elements of the linked list are the spins of the LHS basis state
-    for i in 1:Ns
-        idx += 1
-        LegType[idx] = spin_left[i]
+    @inbounds @simd for i in 1:Ns
+        LegType[i] = spin_left[i]
+        First[i] = i
+        Associates[i] = (0, 0, 0)
     end
 
-    spin_prop = copy(spin_left)  # the propagated spin state
+    spin_prop = copyto!(qmc_state.propagated_config, spin_left)  # the propagated spin state
+    idx = Ns
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for op in qmc_state.operator_list
@@ -178,10 +173,12 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
 
             LinkList[First[site]] = current_link  # completes backwards link
             First[site] = current_link + 1
+            Associates[idx] = (0, 0, 0)
 
             # upper or right leg
             idx += 1
             LegType[idx] = spin_prop[site]
+            Associates[idx] = (0, 0, 0)
         else  # diagonal bond operator
             site1, site2 = getbondsites(H, op)
 
@@ -227,11 +224,12 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
     end
 
     # The last N elements of the linked list are the final spin state
-    for i in 1:Ns
+    @inbounds for i in 1:Ns
         idx += 1
         LinkList[idx] = First[i]
         LegType[idx] = spin_prop[i]
         LinkList[First[i]] = idx
+        Associates[idx] = (0, 0, 0)
     end
 
     # DEBUG
@@ -239,24 +237,20 @@ function linked_list_update(qmc_state::BinaryQMCState{N, <:AbstractIsing}, H::Ab
     #     @debug "Basis state propagation error: LINKED LIST"
     # end
 
-    return ClusterData(LinkList, LegType, Associates, flipping_weights, First, nothing)
-
+    return len
 end
 
 #############################################################################
 
-
-function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N, <:AbstractLTFIM}, H::AbstractLTFIM{N}) where N
+function cluster_update!(lsize::Int, qmc_state::BinaryGroundState{N}, H::LTFIM{N}) where N
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
     operator_list = qmc_state.operator_list
 
-    LinkList = cluster_data.linked_list
-    LegType = cluster_data.leg_types
-    Associates = cluster_data.associates
-    flipping_weights = cluster_data.flipping_weights
-
-    lsize = length(LinkList)
+    LinkList = qmc_state.linked_list
+    LegType = qmc_state.leg_types
+    Associates = qmc_state.associates
+    flipping_weights = qmc_state.flipping_weights
 
     in_cluster = zeros(Int, lsize)
     cstack = Stack{Int}()  # This is the stack of vertices in a cluster
@@ -329,16 +323,14 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
 end
 
 
-function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N, <:AbstractTFIM}, H::AbstractTFIM{N}) where N
+function cluster_update!(lsize::Int, qmc_state::BinaryGroundState{N}, H::TFIM{N}) where N
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
     operator_list = qmc_state.operator_list
 
-    LinkList = cluster_data.linked_list
-    LegType = cluster_data.leg_types
-    Associates = cluster_data.associates
-
-    lsize = length(LinkList)
+    LinkList = qmc_state.linked_list
+    LegType = qmc_state.leg_types
+    Associates = qmc_state.associates
 
     in_cluster = zeros(Int, lsize)
     cstack = Stack{Int}()  # This is the stack of vertices in a cluster
@@ -346,7 +338,7 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
-        if (in_cluster[i] == 0 && Associates[i] === nullt)
+        if (in_cluster[i] == 0 && Associates[i] === (0, 0, 0))
             ccount += 1
             push!(cstack, i)
             in_cluster[i] = ccount
@@ -367,7 +359,7 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
 
                     # now check all associates and add to cluster
                     assoc = Associates[leg]  # a 3-tuple
-                    if assoc !== nullt
+                    if assoc !== (0, 0, 0)
                         for a in assoc
                             push!(cstack, a)
                             in_cluster[a] = ccount
@@ -383,7 +375,7 @@ function cluster_update!(cluster_data::ClusterData, qmc_state::BinaryQMCState{N,
     end
 
     # map back basis states and operator list
-    for i in 1:Ns
+    @inbounds for i in 1:Ns
         spin_left[i] = LegType[i]  # left basis state
         spin_right[i] = LegType[lsize-Ns+i]  # right basis state
     end
@@ -408,16 +400,36 @@ end
 #############  FINITE BETA FUNCTIONS BELOW ##################################
 #############################################################################
 
-function diagonal_update_beta!(qmc_state::BinaryQMCState, H::AbstractTFIM, beta::Real; eq::Bool = false)
+
+
+function resize_op_list!(qmc_state::BinaryThermalState, new_size::Int)
+    operator_list = filter!(!isidentity, qmc_state.operator_list)
+    len = length(operator_list)
+
+    if len < new_size
+        tail = init_op_list(new_size - len)
+        append!(operator_list, tail)
+    end
+
+    len = 4*length(operator_list)
+    # these are going to be overwritten by linked_list_update_beta
+    # which will be called right after the diagonal update that called this function
+    resize!(qmc_state.linked_list, len)
+    resize!(qmc_state.leg_types, len)
+    resize!(qmc_state.associates, len)
+end
+
+
+function diagonal_update_beta!(qmc_state::BinaryThermalState, H::TFIM, beta::Real; eq::Bool = false)
     P_norm = beta * H.P_normalization
 
     num_ids = count(isidentity, qmc_state.operator_list)
     P_remove = (num_ids + 1) / P_norm
     P_accept = P_norm / num_ids
 
-    spin_prop = copy(qmc_state.left_config)  # the propagated spin state
+    spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
-    for (n, op) in enumerate(qmc_state.operator_list)
+    @inbounds for (n, op) in enumerate(qmc_state.operator_list)
         if !isdiagonal(op)
             spin_prop[op[2]] ⊻= 1  # spinflip
         elseif !isidentity(op)
@@ -449,15 +461,16 @@ function diagonal_update_beta!(qmc_state::BinaryQMCState, H::AbstractTFIM, beta:
     total_list_size = length(qmc_state.operator_list)
     num_ops = total_list_size - num_ids
 
-    if eq && 1.2*num_ops > length(qmc_state.operator_list)
-        resize_op_list!(qmc_state.operator_list, round(Int, 1.5*num_ops))
+    if eq && 1.2*num_ops > total_list_size
+        resize_op_list!(qmc_state, round(Int, 1.5*num_ops, RoundUp))
     end
+
     return num_ops
 end
 
 #############################################################################
 
-function linked_list_update_beta(qmc_state::BinaryQMCState, H::AbstractTFIM)
+function linked_list_update_beta(qmc_state::BinaryThermalState, H::TFIM)
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
 
@@ -471,17 +484,17 @@ function linked_list_update_beta(qmc_state::BinaryQMCState, H::AbstractTFIM)
     end
 
     # initialize linked list data structures
-    LinkList = zeros(Int, len)  # needed for cluster update
-    LegType = falses(len)
+    LinkList = qmc_state.linked_list  # needed for cluster update
+    LegType = qmc_state.leg_types
 
     # A diagonal bond operator has non trivial associates for cluster building
-    Associates = [nullt for _ in 1:len]
+    Associates = qmc_state.associates
 
-    First = zeros(Int,Ns)  #initialize the First list
-    Last = zeros(Int,Ns)   #initialize the Last list
+    First = fill!(qmc_state.first, 0)  #initialize the First list
+    Last = fill!(qmc_state.last, 0)   #initialize the Last list
     idx = 0
 
-    spin_prop = copy(spin_left)  # the propagated spin state
+    spin_prop = copyto!(qmc_state.propagated_config, spin_left)  # the propagated spin state
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for op in qmc_state.operator_list
@@ -503,10 +516,12 @@ function linked_list_update_beta(qmc_state::BinaryQMCState, H::AbstractTFIM)
                 Last[site] = current_link
             end
             First[site] = current_link + 1
+            Associates[idx] = (0, 0, 0)
 
             # upper or right leg
             idx += 1
             LegType[idx] = spin_prop[site]
+            Associates[idx] = (0, 0, 0)
         elseif isbondoperator(op)  # diagonal bond operator
             site1, site2 = op
 
@@ -516,7 +531,7 @@ function linked_list_update_beta(qmc_state::BinaryQMCState, H::AbstractTFIM)
             LegType[idx] = spin_prop[site1]
             current_link = idx
 
-			if First[site1] != 0
+            if First[site1] != 0
                 LinkList[First[site1]] = current_link  # completes backwards link
             else
                 Last[site1] = current_link
@@ -532,7 +547,7 @@ function linked_list_update_beta(qmc_state::BinaryQMCState, H::AbstractTFIM)
             LegType[idx] = spin_prop[site2]
             current_link = idx
 
-			if First[site2] != 0
+            if First[site2] != 0
                 LinkList[First[site2]] = current_link  # completes backwards link
             else
                 Last[site2] = current_link
@@ -554,34 +569,31 @@ function linked_list_update_beta(qmc_state::BinaryQMCState, H::AbstractTFIM)
     end
 
     #Periodic boundary conditions for finite-beta
-    for i in 1:Ns
-		if First[i] != 0  #This might be encountered at high temperatures
+    @inbounds for i in 1:Ns
+        if First[i] != 0  #This might be encountered at high temperatures
             LinkList[First[i]] = Last[i]
             LinkList[Last[i]] = First[i]
         end
     end
 
     # DEBUG
-     if spin_prop != spin_right
-         @debug "Basis state propagation error: LINKED LIST"
-     end
+    # if spin_prop != spin_right
+    #     @debug "Basis state propagation error: LINKED LIST"
+    # end
 
-    return ClusterData(LinkList, LegType, Associates, First, Last)
-
+    return len
 end
 
 #############################################################################
 
-function cluster_update_beta!(cluster_data::ClusterData, qmc_state::BinaryQMCState, H::AbstractTFIM)
+function cluster_update_beta!(lsize::Int, qmc_state::BinaryThermalState, H::TFIM)
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
     operator_list = qmc_state.operator_list
 
-    LinkList = cluster_data.linked_list
-    LegType = cluster_data.leg_types
-    Associates = cluster_data.associates
-
-    lsize = length(LinkList)
+    LinkList = qmc_state.linked_list
+    LegType = qmc_state.leg_types
+    Associates = qmc_state.associates
 
     in_cluster = zeros(Int, lsize)
     cstack = Stack{Int}()  # This is the stack of vertices in a cluster
@@ -589,7 +601,7 @@ function cluster_update_beta!(cluster_data::ClusterData, qmc_state::BinaryQMCSta
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
-        if (in_cluster[i] == 0 && Associates[i] === nullt)
+        if (in_cluster[i] == 0 && Associates[i] === (0, 0, 0))
             ccount += 1
             push!(cstack, i)
             in_cluster[i] = ccount
@@ -610,7 +622,7 @@ function cluster_update_beta!(cluster_data::ClusterData, qmc_state::BinaryQMCSta
 
                     # now check all associates and add to cluster
                     assoc = Associates[leg]  # a 3-tuple
-                    if assoc !== nullt
+                    if assoc !== (0, 0, 0)
                         for a in assoc
                             push!(cstack, a)
                             in_cluster[a] = ccount
@@ -628,16 +640,16 @@ function cluster_update_beta!(cluster_data::ClusterData, qmc_state::BinaryQMCSta
     #println(in_cluster)
 
     # map back basis states and operator list
-    First = cluster_data.first
-    Last = cluster_data.last
-    for i in 1:Ns
+    First = qmc_state.first
+    Last = qmc_state.last
+    @inbounds for i in 1:Ns
         if First[i] != 0
             spin_left[i] = LegType[Last[i]]  # left basis state
             spin_right[i] = LegType[First[i]]  # right basis state
         else
-			spin_left[i] = rand(Bool)
-			spin_right[i] = spin_left[i]   #randomly flip spins not connected to operators
-		end
+            #randomly flip spins not connected to operators
+            spin_left[i] = spin_right[i] = rand(Bool)
+        end
 
     end
 
@@ -654,7 +666,5 @@ function cluster_update_beta!(cluster_data::ClusterData, qmc_state::BinaryQMCSta
             ocount += 2
         end
     end
-
-	#println(operator_list)
 
 end

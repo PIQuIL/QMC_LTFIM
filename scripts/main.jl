@@ -59,7 +59,11 @@ function init_mc_cli(parsed_args)
 
     # Ns, Nb = length(lattice), length(bond_spin)
     H = TFIM(bond_spin, Dim, Ns, Nb, h, J)
-    qmc_state = BinaryQMCState(H, M)
+    if haskey(parsed_args, "beta")
+        qmc_state = BinaryThermalState(H, 2M)
+    else
+        qmc_state = BinaryGroundState(H, M)
+    end
 
     return H, qmc_state, savename(d; digits = 4), mc_opts
 end
@@ -122,9 +126,9 @@ function mixedstate(parsed_args)
     mags = zeros(MCS)
     ns = zeros(MCS)
 
-    @showprogress "Warm up..." for i in 1:EQ_MCS
-        mc_step_beta!(qmc_state, H, beta; eq = true)
-    end
+    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
+
+    resize_op_list!(qmc_state, round(Int, (3//2)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
         ns[i] = mc_step_beta!(qmc_state, H, beta) do cluster_data, qmc_state, H
