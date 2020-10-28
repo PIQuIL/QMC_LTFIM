@@ -29,7 +29,8 @@ using ArgParse
 
 function init_mc_cli(parsed_args)
     PBC = parsed_args["periodic"]
-    h = parsed_args["field"]
+    hx = parsed_args["hx"]
+    hz = parsed_args["hz"]
     J = parsed_args["interaction"]
 
     Dim = length(parsed_args["dims"])
@@ -37,28 +38,33 @@ function init_mc_cli(parsed_args)
 
     BC_name = PBC ? "PBC" : "OBC"
 
-    if Dim == 1
-        nX = nX[1]
-        bond_spin, Ns, Nb = lattice_bond_spins(nX, PBC)
-    elseif Dim == 2
-        bond_spin, Ns, Nb = lattice_bond_spins(nX, PBC)
-        nX = nX[1]
-    else
-        error("Unsupported number of dimensions")
-    end
-
     # MC parameters
     M = parsed_args["M"] # length of the operator_list is 2M
     MCS = parsed_args["measurements"] # the number of samples to record
     EQ_MCS = div(MCS, 10)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
+    if iszero(hz)
+        if Dim == 1
+            nX = nX[1]
+            bond_spin, Ns, Nb = lattice_bond_spins(nX, PBC)
+        elseif Dim == 2
+            bond_spin, Ns, Nb = lattice_bond_spins(nX, PBC)
+            nX = nX[1]
+        else
+            error("Unsupported number of dimensions")
+        end
+        H = TFIM(bond_spin, Dim, Ns, Nb, hx, J)
+        d = @ntuple Dim nX BC_name J hx hz skip M
+    else
+        H = LTFIM(Tuple(nX), J, hx, hz, PBC)
+        d = @ntuple Dim nX BC_name J hx hz skip M
+    end
+
     # path = "$(Dim)D/$(nX)/$(BC_name)/J$(J)/h$(h)/skip$(skip)/"
-    d = @ntuple Dim nX BC_name J h skip M
+
     mc_opts = @ntuple M MCS EQ_MCS skip
 
-    # Ns, Nb = length(lattice), length(bond_spin)
-    H = TFIM(bond_spin, Dim, Ns, Nb, h, J)
     if haskey(parsed_args, "beta")
         qmc_state = BinaryThermalState(H, 2M)
     else
@@ -131,7 +137,7 @@ function mixedstate(parsed_args)
     resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
-        ns[i] = mc_step_beta!(qmc_state, H, beta) do cluster_data, qmc_state, H
+        ns[i] = mc_step_beta!(qmc_state, H, beta) do lsize, qmc_state, H
             spin_prop = qmc_state.left_config
             measurements[i, :] = spin_prop
             mags[i] = magnetization(spin_prop)
@@ -176,7 +182,7 @@ function groundstate(parsed_args)
     end
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
-        mc_step!(qmc_state, H) do cluster_data, qmc_state, H
+        mc_step!(qmc_state, H) do lsize, qmc_state, H
             spin_prop = sample(H, qmc_state)
             measurements[i, :] = spin_prop
 
@@ -193,11 +199,21 @@ function groundstate(parsed_args)
     abs_mag = mean_and_stderr(abs, mags)
     mag_sqr = mean_and_stderr(abs2, mags)
 
-    @time energy = jackknife(ns) do n
-        if H.h != 0
-            (-H.h * ((1.0 / n) - 1)) + abs(H.J) * (nbonds(H) / nspins(H))
-        else
-            abs(H.J) * (nbonds(H) / nspins(H))
+    if H isa TFIM
+        @time energy = jackknife(ns) do n
+            if H.h != 0
+                (-H.h * ((1.0 / n) - 1)) + abs(H.J) * (nbonds(H) / nspins(H))
+            else
+                abs(H.J) * (nbonds(H) / nspins(H))
+            end
+        end
+    elseif H isa LTFIM
+        @time energy = jackknife(ns) do n
+            if H.hx != 0
+                (-H.hx * ((1.0 / n) - 1)) + H.energy_shift / nspins(H) - nbonds(H) / nspins(H)
+            else
+                H.energy_shift / nspins(H) - nbonds(H) / nspins(H)
+            end
         end
     end
 
@@ -235,10 +251,14 @@ end
     "--periodic", "-p"
         help = "Periodic BCs"
         action = :store_true
-    "--field"
+    "--hx"
         help = "Strength of the transverse field"
         arg_type = Float64
         default = 1.0
+    "--hz"
+        help = "Strength of the longitudinal field"
+        arg_type = Float64
+        default = 0.0
     "--interaction", "-J"
         help = "Strength of the interaction"
         arg_type = Float64
