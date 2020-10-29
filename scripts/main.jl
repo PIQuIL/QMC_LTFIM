@@ -154,8 +154,13 @@ function mixedstate(parsed_args)
     abs_mag = mean_and_stderr(abs, mags)
     mag_sqr = mean_and_stderr(abs2, mags)
 
-    energy = mean_and_stderr(x -> -x/beta, ns) + abs(H.J)*nbonds(H) + H.h*nspins(H)
-    energy /= nspins(H)
+    if H isa TFIM
+        energy = mean_and_stderr(x -> -x/beta, ns) + abs(H.J)*nbonds(H) + H.h*nspins(H)
+        energy /= nspins(H)
+    elseif H isa LTFIM
+        energy = mean_and_stderr(x -> -x/beta, ns) + H.energy_shift
+        energy /= nspins(H)
+    end
 
     observables = (mag, abs_mag, mag_sqr, energy)
 
@@ -212,9 +217,9 @@ function groundstate(parsed_args)
     elseif H isa LTFIM
         @time energy = jackknife(ns) do n
             if H.hx != 0
-                (-H.hx * ((1.0 / n) - 1)) + H.energy_shift / nspins(H) - nbonds(H) / nspins(H)
+                (-H.hx * (1.0 / n)) + H.energy_shift / nspins(H)
             else
-                H.energy_shift / nspins(H) - nbonds(H) / nspins(H)
+                H.energy_shift / nspins(H)
             end
         end
     end
