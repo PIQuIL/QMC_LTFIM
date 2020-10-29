@@ -212,7 +212,7 @@ function cluster_update_beta!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThe
 
     in_cluster = falses(lsize)
     cstack = Stack{Int}()  # This is the stack of vertices in a cluster
-    ccount = 0  # cluster number counter
+    # ccount = 0  # cluster number counter
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
@@ -263,7 +263,6 @@ function cluster_update_beta!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThe
             #randomly flip spins not connected to operators
             spin_left[i] = spin_right[i] = rand(rng, Bool)
         end
-
     end
 
     ocount = 1  # first leg

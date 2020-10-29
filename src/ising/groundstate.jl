@@ -1,43 +1,3 @@
-# updates.jl
-#
-# Defines the functions that perform the diagonal update, and also
-# that build the linked list and operator cluster update
-
-# TFIM ops:
-#  (-2,i) is an off-diagonal site operator h(sigma^+_i + sigma^-_i)
-#  (-1,i) is a diagonal site operator h
-#  (0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
-#  (i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
-@inline isdiagonal(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] > 0)
-@inline getbondsites(H::TFIM, op::NTuple{2, Int}) = op
-
-# LTFIM ops:
-#  (-2,i,0) is an off-diagonal site operator h(sigma^+_i + sigma^-_i)
-#  (-1,i,0) is a diagonal site operator h
-#  (0,0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
-#  (t,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j) + hzb(sigma^z_i + sigma^z_j)
-#    t denotes the spin config at sites i,j, subtract 1 then convert to binary
-#    t = 1 -> 00 -> down-down
-#    t = 2 -> 01 -> down-up
-#    t = 3 -> 10 -> up-down
-#    t = 4 -> 11 -> up-up
-#    spin_config(t) = divrem(t - 1, 2)
-#
-@inline isdiagonal(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
-@inline getbondsites(H::LTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
-@inline getbondtype(H::LTFIM, s1::Bool, s2::Bool) = 2*s1 + s2 + 1
-
-# could try converting to bool as well so we can use ===
-@inline spin_config(H::LTFIM, t::Int)::NTuple{2,Int} = divrem(t - 1, 2)
-@inline spin_config(H::LTFIM, op::NTuple{3, Int}) = @inbounds spin_config(H, op[1])
-
-
 function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian)
     diagonal_update!(rng, qmc_state, H)
 
@@ -258,21 +218,20 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundSt
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
         if (!in_cluster[i] && Associates[i] === (0, 0, 0))
-            empty!(current_cluster)
-            A = 1.0
-
             # ccount += 1
             push!(cstack, i)
             in_cluster[i] = true
 
+            empty!(current_cluster)
             push!(current_cluster, i)
-            A *= flipping_weights[i]
+            A = flipping_weights[i]
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
 
                 if !in_cluster[leg]
                     in_cluster[leg] = true  # add the new leg and flip it
+
                     push!(current_cluster, leg)
                     A *= flipping_weights[leg]
 
@@ -301,7 +260,6 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundSt
                     LegType[i] ⊻= 1  # spinflip
                 end
             end
-
             # @assert A ≈ (w2/w1)
         end
     end
@@ -379,6 +337,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundSt
                     end
                 end
             end
+
         end
     end
 

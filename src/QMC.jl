@@ -33,9 +33,8 @@ include("probabilityvector.jl")
 include("op_sampler.jl")
 include("hamiltonian.jl")
 include("qmc_state.jl")
+include("ising/Ising.jl")
 include("measurements.jl")
-include("groundstate.jl")
-include("mixedstate.jl")
 include("error.jl")
 
 
