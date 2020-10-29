@@ -8,7 +8,7 @@ using QMC
 # A projector QMC program for the TFIM
 
 using Random
-Random.seed!(1234)
+using RandomNumbers
 
 using ProgressMeter
 
@@ -71,7 +71,9 @@ function init_mc_cli(parsed_args)
         qmc_state = BinaryGroundState(H, M)
     end
 
-    return H, qmc_state, savename(d; digits = 4), mc_opts
+    rng = Xorshifts.Xoroshiro128Plus(parsed_args["seed"])
+
+    return H, qmc_state, savename(d; digits = 4), mc_opts, rng
 end
 
 
@@ -120,7 +122,7 @@ end
 
 
 function mixedstate(parsed_args)
-    H, qmc_state, sname, mc_opts = init_mc_cli(parsed_args)
+    H, qmc_state, sname, mc_opts, rng = init_mc_cli(parsed_args)
     beta = parsed_args["beta"]
 
     M, MCS, EQ_MCS, skip = mc_opts
@@ -132,19 +134,19 @@ function mixedstate(parsed_args)
     mags = zeros(MCS)
     ns = zeros(MCS)
 
-    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
+    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
 
     resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
-        ns[i] = mc_step_beta!(qmc_state, H, beta) do lsize, qmc_state, H
+        ns[i] = mc_step_beta!(rng, qmc_state, H, beta) do lsize, qmc_state, H
             spin_prop = qmc_state.left_config
             measurements[i, :] = spin_prop
             mags[i] = magnetization(spin_prop)
         end
 
         for _ in 1:skip
-            mc_step_beta!(qmc_state, H, beta)
+            mc_step_beta!(rng, qmc_state, H, beta)
         end
     end
 
@@ -166,7 +168,7 @@ end
 
 
 function groundstate(parsed_args)
-    H, qmc_state, sname, mc_opts = init_mc_cli(parsed_args)
+    H, qmc_state, sname, mc_opts, rng = init_mc_cli(parsed_args)
 
     M, MCS, EQ_MCS, skip = mc_opts
 
@@ -178,11 +180,11 @@ function groundstate(parsed_args)
     ns = zeros(MCS)
 
     @showprogress "Warm up..." for i in 1:EQ_MCS
-        mc_step!(qmc_state, H)
+        mc_step!(rng, qmc_state, H)
     end
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
-        mc_step!(qmc_state, H) do lsize, qmc_state, H
+        mc_step!(rng, qmc_state, H) do lsize, qmc_state, H
             spin_prop = sample(H, qmc_state)
             measurements[i, :] = spin_prop
 
@@ -191,7 +193,7 @@ function groundstate(parsed_args)
         end
 
         for _ in 1:skip
-            mc_step!(qmc_state, H)
+            mc_step!(rng, qmc_state, H)
         end
     end
 
@@ -277,6 +279,11 @@ end
         help = "Number of MC steps to perform between each measurement"
         arg_type = Int
         default = 0
+
+    "--seed"
+        help = "Random seed"
+        arg_type = Int
+        default = 1234
 end
 
 import_settings!(s["mixedstate"], s["groundstate"])

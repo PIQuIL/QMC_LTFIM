@@ -36,9 +36,9 @@ function show(io::IO, pvec::ProbabilityVector{T}) where T
 end
 
 
-function rand(pvec::ProbabilityVector{T})::Int where T
+function rand(rng::AbstractRNG, pvec::ProbabilityVector{T})::Int where T
     cdf = pvec.cdf
-    r = rand() * cdf[end]
+    r = rand(rng) * cdf[end]
 
     for i in eachindex(cdf)
         @inbounds if r < cdf[i]
@@ -98,6 +98,9 @@ end
 
 
 ###############################################################################
+# draw samples using a heap
+# based on a blog post by Tim Vieira
+# https://timvieira.github.io/blog/post/2016/11/21/heaps-for-incremental-computation/
 
 # more efficient for larger probability vectors
 struct ProbabilityHeap{T} <: AbstractProbabilityVector{T}
@@ -141,10 +144,10 @@ function show(io::IO, p::ProbabilityHeap{T}) where T
 end
 
 
-function rand(pvec::ProbabilityHeap{T})::Int where T
+function rand(rng::AbstractRNG, pvec::ProbabilityHeap{T})::Int where T
     heap = pvec.prob_heap
     l = length(heap) ÷ 2
-    @inbounds r = rand() * heap[1]
+    @inbounds r = rand(rng) * heap[1]
 
     i = 1
     while i < l

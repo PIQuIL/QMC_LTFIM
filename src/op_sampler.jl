@@ -129,16 +129,13 @@ struct OperatorSampler{K, T, P} <: AbstractOperatorSampler{K, T, P}
 end
 
 
-# samples operators using a heap
-# based on a blog post by Tim Vieira
-# https://timvieira.github.io/blog/post/2016/11/21/heaps-for-incremental-computation/
 function OperatorSampler(operators::Vector{NTuple{K, Int}}, p::Vector{T}) where {K, T <: Real}
     @assert length(operators) == length(p) "Given vectors must have the same length!"
     pvec = probability_vector(p)
     op_indices = Dict{NTuple{K, Int}, Int}(op => i for (i, op) in enumerate(operators))
     return OperatorSampler{K, T, typeof(pvec)}(operators, pvec, op_indices)
 end
-rand(os::OperatorSampler{K}) where K = @inbounds os.operators[rand(os.pvec)]
+rand(rng::AbstractRNG, os::OperatorSampler{K}) where K = @inbounds os.operators[rand(rng, os.pvec)]
 @inline length(os::OperatorSampler) = length(os.operators)
 
 
@@ -189,9 +186,9 @@ function HierarchicalOperatorSampler(operators::Vector{NTuple{K, Int}}, p::Abstr
 end
 length(os::HierarchicalOperatorSampler) = sum(length, os.operator_bins)
 
-function rand(os::HierarchicalOperatorSampler{K})::NTuple{K, Int} where K
-    @inbounds ops_list = os.operator_bins[rand(os.pvec)]
-    l = rand(1:length(ops_list))
+function rand(rng::AbstractRNG, os::HierarchicalOperatorSampler{K})::NTuple{K, Int} where K
+    @inbounds ops_list = os.operator_bins[rand(rng, os.pvec)]
+    l = rand(rng, 1:length(ops_list))
 
     return @inbounds ops_list[l]
 end

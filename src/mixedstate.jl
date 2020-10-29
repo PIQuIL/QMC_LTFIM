@@ -1,4 +1,21 @@
 
+########################## finite-beta #######################################
+
+function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::Hamiltonian, beta::Real; eq::Bool = false)
+    num_ops = diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
+
+    lsize = link_list_update_beta!(qmc_state, H)
+
+    f(lsize, qmc_state, H)
+
+    cluster_update_beta!(rng, lsize, qmc_state, H)
+
+    return num_ops
+end
+mc_step_beta!(f::Function, qmc_state, H, beta; eq = false) = mc_step_beta!(f, Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
+mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta; eq = false) = mc_step_beta!((args...) -> nothing, rng, qmc_state, H, beta; eq = eq)
+mc_step_beta!(qmc_state, H, beta; eq = false) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
+
 function resize_op_list!(qmc_state::BinaryThermalState{N, K}, H::AbstractIsing, new_size::Int) where {N, K}
     operator_list = filter!(op -> !isidentity(H, op), qmc_state.operator_list)
     len = length(operator_list)
@@ -9,7 +26,7 @@ function resize_op_list!(qmc_state::BinaryThermalState{N, K}, H::AbstractIsing, 
     end
 
     len = 4*length(operator_list)
-    # these are going to be overwritten by linked_list_update_beta
+    # these are going to be overwritten by link_list_update_beta!
     # which will be called right after the diagonal update that called this function
     resize!(qmc_state.linked_list, len)
     resize!(qmc_state.leg_types, len)
@@ -17,7 +34,7 @@ function resize_op_list!(qmc_state::BinaryThermalState{N, K}, H::AbstractIsing, 
 end
 
 
-function diagonal_update_beta!(qmc_state::BinaryThermalState, H::TFIM, beta::Real; eq::Bool = false)
+function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, H::TFIM, beta::Real; eq::Bool = false)
     P_norm = beta * H.P_normalization
 
     num_ids = count(op -> isidentity(H, op), qmc_state.operator_list)
@@ -30,15 +47,15 @@ function diagonal_update_beta!(qmc_state::BinaryThermalState, H::TFIM, beta::Rea
         if !isdiagonal(H, op)
             spin_prop[op[2]] ⊻= 1  # spinflip
         elseif !isidentity(H, op)
-            if rand() < P_remove
+            if rand(rng) < P_remove
                 qmc_state.operator_list[n] = (0, 0)
                 num_ids += 1
                 P_remove = (num_ids + 1) / P_norm
                 P_accept = P_norm / num_ids
             end
         else
-            if rand() < P_accept
-                success = insert_diagonal_operator!(qmc_state, H, spin_prop, n)
+            if rand(rng) < P_accept
+                success = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
 
                 if success
                     # save one operation lol
@@ -64,10 +81,11 @@ function diagonal_update_beta!(qmc_state::BinaryThermalState, H::TFIM, beta::Rea
 
     return num_ops
 end
+diagonal_update_beta!(qmc_state, H, beta; eq = false) = diagonal_update_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
 
 #############################################################################
 
-function linked_list_update_beta(qmc_state::BinaryThermalState, H::TFIM)
+function link_list_update_beta!(qmc_state::BinaryThermalState, H::TFIM)
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
 
@@ -183,7 +201,7 @@ end
 
 #############################################################################
 
-function cluster_update_beta!(lsize::Int, qmc_state::BinaryThermalState, H::TFIM)
+function cluster_update_beta!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThermalState, H::TFIM)
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
     operator_list = qmc_state.operator_list
@@ -203,7 +221,7 @@ function cluster_update_beta!(lsize::Int, qmc_state::BinaryThermalState, H::TFIM
             push!(cstack, i)
             in_cluster[i] = ccount
 
-            flip = rand(Bool)  # flip a coin for the SW cluster flip
+            flip = rand(rng, Bool)  # flip a coin for the SW cluster flip
             if flip
                 LegType[i] ⊻= 1  # spinflip
             end
@@ -245,7 +263,7 @@ function cluster_update_beta!(lsize::Int, qmc_state::BinaryThermalState, H::TFIM
             spin_right[i] = LegType[First[i]]  # right basis state
         else
             #randomly flip spins not connected to operators
-            spin_left[i] = spin_right[i] = rand(Bool)
+            spin_left[i] = spin_right[i] = rand(rng, Bool)
         end
 
     end
@@ -263,5 +281,5 @@ function cluster_update_beta!(lsize::Int, qmc_state::BinaryThermalState, H::TFIM
             ocount += 2
         end
     end
-
 end
+cluster_update_beta!(lsize, qmc_state, H) = cluster_update_beta!(Random.GLOBAL_RNG, lsize, qmc_state, H)
