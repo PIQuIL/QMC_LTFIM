@@ -210,16 +210,16 @@ function cluster_update_beta!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThe
     LegType = qmc_state.leg_types
     Associates = qmc_state.associates
 
-    in_cluster = zeros(Int, lsize)
+    in_cluster = falses(lsize)
     cstack = Stack{Int}()  # This is the stack of vertices in a cluster
     ccount = 0  # cluster number counter
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
-        if (in_cluster[i] == 0 && Associates[i] === (0, 0, 0))
-            ccount += 1
+        if (!in_cluster[i] && Associates[i] === (0, 0, 0))
+            # ccount += 1
             push!(cstack, i)
-            in_cluster[i] = ccount
+            in_cluster[i] = true
 
             flip = rand(rng, Bool)  # flip a coin for the SW cluster flip
             if flip
@@ -229,8 +229,8 @@ function cluster_update_beta!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThe
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
 
-                if in_cluster[leg] == 0
-                    in_cluster[leg] = ccount  # add the new leg and flip it
+                if !in_cluster[leg]
+                    in_cluster[leg] = true  # add the new leg and flip it
                     if flip
                         LegType[leg] ⊻= 1
                     end
@@ -240,7 +240,7 @@ function cluster_update_beta!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThe
                     if assoc !== (0, 0, 0)
                         for a in assoc
                             push!(cstack, a)
-                            in_cluster[a] = ccount
+                            in_cluster[a] = true
                             if flip
                                 LegType[a] ⊻= 1
                             end
@@ -251,8 +251,6 @@ function cluster_update_beta!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThe
             end
         end
     end
-
-    #println(in_cluster)
 
     # map back basis states and operator list
     First = qmc_state.first
