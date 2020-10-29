@@ -247,19 +247,16 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
                 end
             end
 
-            # w1 = op_list_weight(qmc_state, H)
-            # @inbounds for i in current_cluster
-            #     LegType[i] ⊻= 1  # spinflip
-            # end
-            # w2 = op_list_weight(qmc_state, H)
-            # A = w2/w1
-            flip = rand(rng) < (1 / (1 + (1 / A)))
+            # using A seems to give more accurate results?
+            # heat bath: (1 / (1 + (1 / A))) not good
+            # metropolis: A (equiv to min(A, 1)) pretty good
+            # scaled metropolis: min(A, 1)/2 also good
+            flip = rand(rng) < min(A, 1)/2
             if flip
                 @inbounds for i in current_cluster
                     LegType[i] ⊻= 1  # spinflip
                 end
             end
-            # @assert A ≈ (w2/w1)
         end
     end
 
