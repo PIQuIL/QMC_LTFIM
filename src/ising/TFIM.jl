@@ -28,12 +28,15 @@ end
 #  (-1,i) is a diagonal site operator h
 #  (0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
 #  (i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
-@inline isdiagonal(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(H::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] > 0)
-@inline getbondsites(H::TFIM, op::NTuple{2, Int}) = op
+@inline isdiagonal(::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] != -2)
+@inline isidentity(::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] == 0)
+@inline issiteoperator(::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] < 0)
+@inline isbondoperator(::TFIM, op::NTuple{2,Int}) = @inbounds (op[1] > 0)
+@inline getbondsites(::TFIM, op::NTuple{2, Int}) = op
 
+@inline makeidentity(::TFIM) = (0, 0)
+@inline makediagonalsiteop(::TFIM, i::Int) = (-1, i)
+@inline makeoffdiagonalsiteop(::TFIM, i::Int) = (-2, i)
 
 ###############################################################################
 

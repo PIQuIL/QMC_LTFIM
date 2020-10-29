@@ -1,14 +1,14 @@
 
 ########################## finite-beta #######################################
 
-function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::Hamiltonian, beta::Real; eq::Bool = false)
+function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState{N}, H::AbstractIsing{N}, beta::Real; eq::Bool = false) where N
     num_ops = diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
 
     lsize = link_list_update_beta!(qmc_state, H)
 
     f(lsize, qmc_state, H)
 
-    cluster_update_beta!(rng, lsize, qmc_state, H)
+    cluster_update!(rng, lsize, qmc_state, H)
 
     return num_ops
 end
@@ -16,7 +16,7 @@ mc_step_beta!(f::Function, qmc_state, H, beta; eq = false) = mc_step_beta!(f, Ra
 mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta; eq = false) = mc_step_beta!((args...) -> nothing, rng, qmc_state, H, beta; eq = eq)
 mc_step_beta!(qmc_state, H, beta; eq = false) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
 
-function resize_op_list!(qmc_state::BinaryThermalState{N, K}, H::AbstractIsing, new_size::Int) where {N, K}
+function resize_op_list!(qmc_state::BinaryThermalState{N, K}, H::AbstractIsing{N}, new_size::Int) where {N, K}
     operator_list = filter!(op -> !isidentity(H, op), qmc_state.operator_list)
     len = length(operator_list)
 
@@ -34,7 +34,7 @@ function resize_op_list!(qmc_state::BinaryThermalState{N, K}, H::AbstractIsing, 
 end
 
 
-function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, H::TFIM, beta::Real; eq::Bool = false)
+function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState{N}, H::AbstractIsing{N}, beta::Real; eq::Bool = false) where N
     P_norm = beta * H.P_normalization
 
     num_ids = count(op -> isidentity(H, op), qmc_state.operator_list)
@@ -48,7 +48,7 @@ function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, 
             spin_prop[op[2]] ⊻= 1  # spinflip
         elseif !isidentity(H, op)
             if rand(rng) < P_remove
-                qmc_state.operator_list[n] = (0, 0)
+                qmc_state.operator_list[n] = makeidentity(H)
                 num_ids += 1
                 P_remove = (num_ids + 1) / P_norm
                 P_accept = P_norm / num_ids
@@ -85,7 +85,7 @@ diagonal_update_beta!(qmc_state, H, beta; eq = false) = diagonal_update_beta!(Ra
 
 #############################################################################
 
-function link_list_update_beta!(qmc_state::BinaryThermalState, H::TFIM)
+function link_list_update_beta!(qmc_state::BinaryThermalState{N}, H::AbstractIsing{N}) where N
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
 
@@ -104,6 +104,8 @@ function link_list_update_beta!(qmc_state::BinaryThermalState, H::TFIM)
 
     # A diagonal bond operator has non trivial associates for cluster building
     Associates = qmc_state.associates
+
+    flipping_weights = qmc_state.flipping_weights
 
     First = fill!(qmc_state.first, 0)  #initialize the First list
     Last = fill!(qmc_state.last, 0)   #initialize the Last list
@@ -132,11 +134,17 @@ function link_list_update_beta!(qmc_state::BinaryThermalState, H::TFIM)
             end
             First[site] = current_link + 1
             Associates[idx] = (0, 0, 0)
+            if H isa LTFIM
+                flipping_weights[idx] = 1.0
+            end
 
             # upper or right leg
             idx += 1
             LegType[idx] = spin_prop[site]
             Associates[idx] = (0, 0, 0)
+            if H isa LTFIM
+                flipping_weights[idx] = 1.0
+            end
         elseif isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = getbondsites(H, op)
 
@@ -155,6 +163,15 @@ function link_list_update_beta!(qmc_state::BinaryThermalState, H::TFIM)
             First[site1] = current_link + 2
             vertex1 = current_link
             Associates[idx] = (vertex1 + 1, vertex1 + 2, vertex1 + 3)
+
+            if H isa LTFIM
+                s1, s2 = spin_prop[site1], spin_prop[site2]
+                w1 = getweight(H.op_sampler, op)
+                new_t = getbondtype(H, !s1, !s2)
+                w2 = getweight(H.op_sampler, (new_t, site1, site2))
+                flipping_weights[idx] = w2/w1
+                flipping_weights[idx + 1 : idx + 3] .= 1.0
+            end
 
             # lower right
             idx += 1
@@ -198,85 +215,3 @@ function link_list_update_beta!(qmc_state::BinaryThermalState, H::TFIM)
 
     return len
 end
-
-#############################################################################
-
-function cluster_update_beta!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThermalState, H::TFIM)
-    Ns = nspins(H)
-    spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
-    operator_list = qmc_state.operator_list
-
-    LinkList = qmc_state.linked_list
-    LegType = qmc_state.leg_types
-    Associates = qmc_state.associates
-
-    in_cluster = falses(lsize)
-    cstack = Stack{Int}()  # This is the stack of vertices in a cluster
-    # ccount = 0  # cluster number counter
-
-    @inbounds for i in 1:lsize
-        # Add a new leg onto the cluster
-        if (!in_cluster[i] && Associates[i] === (0, 0, 0))
-            # ccount += 1
-            push!(cstack, i)
-            in_cluster[i] = true
-
-            flip = rand(rng, Bool)  # flip a coin for the SW cluster flip
-            if flip
-                LegType[i] ⊻= 1  # spinflip
-            end
-
-            while !isempty(cstack)
-                leg = LinkList[pop!(cstack)]
-
-                if !in_cluster[leg]
-                    in_cluster[leg] = true  # add the new leg and flip it
-                    if flip
-                        LegType[leg] ⊻= 1
-                    end
-
-                    # now check all associates and add to cluster
-                    assoc = Associates[leg]  # a 3-tuple
-                    if assoc !== (0, 0, 0)
-                        for a in assoc
-                            push!(cstack, a)
-                            in_cluster[a] = true
-                            if flip
-                                LegType[a] ⊻= 1
-                            end
-                        end
-                    end
-                end
-
-            end
-        end
-    end
-
-    # map back basis states and operator list
-    First = qmc_state.first
-    Last = qmc_state.last
-    @inbounds for i in 1:Ns
-        if First[i] != 0
-            spin_left[i] = LegType[Last[i]]  # left basis state
-            spin_right[i] = LegType[First[i]]  # right basis state
-        else
-            #randomly flip spins not connected to operators
-            spin_left[i] = spin_right[i] = rand(rng, Bool)
-        end
-    end
-
-    ocount = 1  # first leg
-    @inbounds for (n, op) in enumerate(operator_list)
-        if isbondoperator(H, op)
-            ocount += 4
-        elseif !isidentity(H, op)
-            if LegType[ocount] == LegType[ocount+1]  # diagonal
-                operator_list[n] = (-1, op[2])
-            else  # off-diagonal
-                operator_list[n] = (-2, op[2])
-            end
-            ocount += 2
-        end
-    end
-end
-cluster_update_beta!(lsize, qmc_state, H) = cluster_update_beta!(Random.GLOBAL_RNG, lsize, qmc_state, H)

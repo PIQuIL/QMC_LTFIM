@@ -50,7 +50,7 @@ for M = 200:200:1000
     ###########################################################################
 
 
-    for (H, ts) in [(HT, "TFIM_thermalstate")] #, (HL, "LTFIM_thermalstate")]
+    for (H, ts) in [(HT, "TFIM_thermalstate"), (HL, "LTFIM_thermalstate")]
         SUITE[ts][M] = BenchmarkGroup()
         beta = 10.0
         thermalstate = BinaryThermalState(H, M)
@@ -60,7 +60,7 @@ for M = 200:200:1000
         SUITE[ts][M]["linked_list_update"] =
             @benchmarkable QMC.link_list_update_beta!($thermalstate, $H)
         SUITE[ts][M]["cluster_update"] =
-            @benchmarkable(QMC.cluster_update_beta!(lsize, $thermalstate, $H),
+            @benchmarkable(QMC.cluster_update!(lsize, $thermalstate, $H),
                         setup=(lsize = QMC.link_list_update_beta!($thermalstate, $H)))
 
         SUITE[ts][M]["mc_step"] = @benchmarkable QMC.mc_step_beta!($thermalstate, $H, $beta)

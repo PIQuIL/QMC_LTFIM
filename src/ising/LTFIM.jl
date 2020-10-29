@@ -28,15 +28,19 @@ end
 #    t = 4 -> 11 -> up-up
 #    spin_config(t) = divrem(t - 1, 2)
 #
-@inline isdiagonal(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(H::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
-@inline getbondsites(H::LTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
-@inline getbondtype(H::LTFIM, s1::Bool, s2::Bool) = 2*s1 + s2 + 1
+@inline isdiagonal(::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
+@inline isidentity(::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
+@inline issiteoperator(::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
+@inline isbondoperator(::LTFIM, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
 
-# could try converting to bool as well so we can use ===
-@inline spin_config(H::LTFIM, t::Int)::NTuple{2,Int} = divrem(t - 1, 2)
+@inline getbondsites(::LTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
+@inline getbondtype(::LTFIM, s1::Bool, s2::Bool) = (s1<<1 | s2) + 1
+
+@inline makeidentity(::LTFIM) = (0, 0, 0)
+@inline makediagonalsiteop(::LTFIM, i::Int) = (-1, i, 0)
+@inline makeoffdiagonalsiteop(::LTFIM, i::Int) = (-2, i, 0)
+
+@inline spin_config(::LTFIM, t::Int)::NTuple{2,Int} = divrem(t - 1, 2)
 @inline spin_config(H::LTFIM, op::NTuple{3, Int}) = @inbounds spin_config(H, op[1])
 
 ###############################################################################

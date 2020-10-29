@@ -16,9 +16,8 @@ mc_step!(qmc_state, H) = mc_step!(Random.GLOBAL_RNG, qmc_state, H)
 @inline alignment_check(::TFIM{N,false}, op::NTuple{2, Int}, s1::Bool, s2::Bool) where N = xor(s1, s2)
 
 
-@inline function alignment_check(H::LTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool)
-    return spin_config(H, op) == (s1, s2)
-end
+@inline alignment_check(H::LTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
+    (op[1] == getbondtype(H, s1, s2))
 
 
 # insert_diagonal_operator! returns true if operator insertion succeeded
@@ -200,7 +199,7 @@ function op_list_weight(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N}) wh
     return prod(op -> getweight(H.op_sampler, op), qmc_state.operator_list)
 end
 
-function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundState{N}, H::LTFIM{N}) where N
+function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState{N}, H::AbstractLTFIM{N}) where N
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
     operator_list = qmc_state.operator_list
@@ -265,12 +264,8 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundSt
     end
 
     # map back basis states and operator list
-    @inbounds for i in 1:Ns
-        spin_left[i] = LegType[i]  # left basis state
-        spin_right[i] = LegType[lsize-Ns+i]  # right basis state
-    end
+    ocount = _map_back_basis_states!(rng, lsize, qmc_state, H)
 
-    ocount = Ns + 1  # next on is leg Ns + 1
     @inbounds for (n, op) in enumerate(operator_list)
         if isbondoperator(H, op)
             s1, s2 = LegType[ocount], LegType[ocount+1]
@@ -278,11 +273,11 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundSt
             site1, site2 = getbondsites(H, op)
             operator_list[n] = (t, site1, site2)
             ocount += 4
-        else
+        elseif issiteoperator(H, op)
             if LegType[ocount] == LegType[ocount+1]  # diagonal
-                operator_list[n] = (-1, op[2], 0)
+                operator_list[n] = makediagonalsiteop(H, op[2])
             else  # off-diagonal
-                operator_list[n] = (-2, op[2], 0)
+                operator_list[n] = makeoffdiagonalsiteop(H, op[2])
             end
             ocount += 2
         end
@@ -290,7 +285,39 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundSt
 end
 
 
-function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundState{N}, H::TFIM{N}) where N
+@inline function _map_back_basis_states!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundState, H::AbstractIsing)
+    Ns = nspins(H)
+    spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
+    LegType = qmc_state.leg_types
+
+    @inbounds for i in 1:Ns
+        spin_left[i] = LegType[i]  # left basis state
+        spin_right[i] = LegType[lsize-Ns+i]  # right basis state
+    end
+    return Ns + 1  # next on is leg Ns + 1
+end
+
+@inline function _map_back_basis_states!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThermalState, H::AbstractIsing)
+    Ns = nspins(H)
+    spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
+    LegType = qmc_state.leg_types
+
+    First = qmc_state.first
+    Last = qmc_state.last
+    @inbounds for i in 1:Ns
+        if First[i] != 0
+            spin_left[i] = LegType[Last[i]]  # left basis state
+            spin_right[i] = LegType[First[i]]  # right basis state
+        else
+            #randomly flip spins not connected to operators
+            spin_left[i] = spin_right[i] = rand(rng, Bool)
+        end
+    end
+    return 1  # first leg
+end
+
+
+function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState{N}, H::AbstractTFIM{N}) where N
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
     operator_list = qmc_state.operator_list
@@ -342,20 +369,16 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundSt
     end
 
     # map back basis states and operator list
-    @inbounds for i in 1:Ns
-        spin_left[i] = LegType[i]  # left basis state
-        spin_right[i] = LegType[lsize-Ns+i]  # right basis state
-    end
+    ocount = _map_back_basis_states!(rng, lsize, qmc_state, H)
 
-    ocount = Ns + 1  # next on is leg Ns + 1
     @inbounds for (n, op) in enumerate(operator_list)
         if isbondoperator(H, op)
             ocount += 4
-        else
+        elseif issiteoperator(H, op)
             if LegType[ocount] == LegType[ocount+1]  # diagonal
-                operator_list[n] = (-1, op[2])
+                operator_list[n] = makediagonalsiteop(H, op[2])
             else  # off-diagonal
-                operator_list[n] = (-2, op[2])
+                operator_list[n] = makeoffdiagonalsiteop(H, op[2])
             end
             ocount += 2
         end
