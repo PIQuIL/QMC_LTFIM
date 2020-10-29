@@ -82,7 +82,12 @@ end
 
 function make_info_file(info_file, samples_file, mc_opts, op_list_length, observables, corr_time)
     M, MCS, EQ_MCS, skip = mc_opts
-    mag, abs_mag, mag_sqr, energy = observables
+    if length(observables) == 5
+        mag, abs_mag, mag_sqr, energy, heat_capacity = observables
+    else
+        mag, abs_mag, mag_sqr, energy = observables
+        heat_capacity = nothing
+    end
 
     open(info_file, "w") do file_io
         streams = [Base.stdout, file_io]
@@ -91,7 +96,11 @@ function make_info_file(info_file, samples_file, mc_opts, op_list_length, observ
             @printf(io, "⟨M⟩   = % .16f +/- %.16f\n", mag.val, mag.err)
             @printf(io, "⟨|M|⟩ = % .16f +/- %.16f\n", abs_mag.val, abs_mag.err)
             @printf(io, "⟨M^2⟩ = % .16f +/- %.16f\n", mag_sqr.val, mag_sqr.err)
-            @printf(io, "⟨E⟩   = % .16f +/- %.16f\n\n", energy.val, energy.err)
+            @printf(io, "⟨H⟩   = % .16f +/- %.16f\n", energy.val, energy.err)
+            if heat_capacity !== nothing
+                @printf(io, "C     = % .16f +/- %.16f\n", heat_capacity.val, heat_capacity.err)
+            end
+            println(io)
 
             println(io, "Correlation time: $(corr_time)\n")
 

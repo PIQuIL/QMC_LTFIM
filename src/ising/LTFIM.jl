@@ -49,6 +49,7 @@ function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, ep
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     bond_spins = Set(bond_spins)
     edge_sites = Set{Int}()
+    edge_bonds = Set{NTuple{2,Int}}()
 
     if !pbc
         pbc_s = Set(lattice_bond_spins(dims, true)[1])
@@ -71,26 +72,35 @@ function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, ep
         hzb = hz / (2 * D)  # using Nb from the PBC case
         #   order:   DD,        DU,       UD,       UU
         p_spins   = [J - 2*hzb, -J,       -J,       J + 2*hzb]
-        p_spins_l = [J - 3*hzb, -J - hzb, -J + hzb, J + 3*hzb]
-        p_spins_r = [J - 3*hzb, -J + hzb, -J - hzb, J + 3*hzb]
+        p_spins_l = [ -2*hzb, 0, 0, 2*hzb]
+        # p_spins_l = [J - 3*hzb, -J - hzb, -J + hzb, J + 3*hzb]
+        # p_spins_r = [J - 3*hzb, -J + hzb, -J - hzb, J + 3*hzb]
         C   = abs(min(0, minimum(p_spins))) + epsilon
         C_e = abs(min(0, minimum(p_spins_l))) + epsilon
         p_spins   .+= C
         p_spins_l .+= C_e
-        p_spins_r .+= C_e
+        # p_spins_r .+= C_e
 
         for t in eachindex(p_spins)
             for (site1, site2) in bond_spins
-                if !(site1 in edge_sites || site2 in edge_sites)
+                # if !(site1 in edge_sites || site2 in edge_sites)
                     p_t = p_spins[t]
                     energy_shift += C/4
-                elseif site1 in edge_sites
-                    p_t = p_spins_l[t]
-                    energy_shift += C_e/4
-                elseif site2 in edge_sites
-                    p_t = p_spins_r[t]
-                    energy_shift += C_e/4
+                # elseif site1 in edge_sites
+                #     p_t = p_spins_l[t]
+                #     energy_shift += C_e/4
+                # elseif site2 in edge_sites
+                #     p_t = p_spins_r[t]
+                #     energy_shift += C_e/4
+                # end
+                if !iszero(p_t)
+                    push!(ops, (t, site1, site2))
+                    push!(p, p_t)
                 end
+            end
+            for (site1, site2) in edge_bonds
+                p_t = p_spins_l[t]
+                energy_shift += C_e/4
                 if !iszero(p_t)
                     push!(ops, (t, site1, site2))
                     push!(p, p_t)
@@ -107,6 +117,6 @@ end
 
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     ops, p, Ns, Nb, energy_shift = make_prob_vector(dims, J, hx, hz, pbc)
-    op_sampler = OperatorSampler(ops, p)
+    op_sampler = HierarchicalOperatorSampler(ops, p)
     return LTFIM{N, typeof(op_sampler)}(op_sampler, J, hx, hz, sum(p), Ns, Nb, energy_shift)
 end

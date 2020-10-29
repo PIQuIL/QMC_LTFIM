@@ -1,6 +1,8 @@
 using LinearAlgebra
 using ArgParse
 using Printf
+using JSON
+using DataStructures
 
 
 s = ArgParseSettings()
@@ -32,6 +34,10 @@ s = ArgParseSettings()
 
     "--thermal"
         help = "Include Thermal State calculations for various beta values"
+        action = :store_true
+
+    "--json"
+        help = "Output statistics in JSON format"
         action = :store_true
 end
 
@@ -96,18 +102,30 @@ magnetization = SumSz' * abs2.(Diag.vectors)
 abs_mag = AbsSumSz' * abs2.(Diag.vectors)
 mag_squared = SumSzSq' * abs2.(Diag.vectors)
 
-println("Ground State Properties: \n")
-@printf("⟨M⟩    = % .16f\n", (magnetization[1] / N))
-@printf("⟨|M|⟩  = % .16f\n", (abs_mag[1] / N))
-@printf("⟨M^2⟩  = % .16f\n", (mag_squared[1] / (N*N)))
-@printf("⟨H⟩    = % .16f\n", Diag.values[1] / N)
-println()
-println("-"^70)
+gs_statistics = OrderedDict{String, Float64}("M" => magnetization[1] / N,
+                                             "|M|" => abs_mag[1] / N,
+                                             "M^2" => mag_squared[1] / (N*N),
+                                             "H" => Diag.values[1] / N)
+
+if !parsed_args["json"]
+    println("Ground State Properties: \n")
+    @printf("⟨M⟩    = % .16f\n", gs_statistics["M"])
+    @printf("⟨|M|⟩  = % .16f\n", gs_statistics["|M|"])
+    @printf("⟨M^2⟩  = % .16f\n", gs_statistics["M^2"])
+    @printf("⟨H⟩    = % .16f\n", gs_statistics["H"])
+    println()
+    println("-"^70)
+end
+
 
 if parsed_args["thermal"]
     beta_vals = [20,15,10,5,3,2,1,0.8,0.5,0.2]
+    th_statistics = OrderedDict{Float64, OrderedDict{String, Float64}}()
+    th_statistics[Inf64] = gs_statistics
 
-    println("Thermal State Properties: \n")
+    if !parsed_args["json"]
+        println("Thermal State Properties: \n")
+    end
     for β in beta_vals
         weights = exp.(-β * Diag.values)
         Z = sum(weights)
@@ -119,14 +137,28 @@ if parsed_args["thermal"]
         M_abs = dot(weights, abs_mag) / (N*Z)
         M2 = dot(weights, mag_squared) / (N*N*Z)
 
-        @printf("β      = % .16f\n", β)
+        th_statistics[β] = OrderedDict{String, Float64}("M" => M, "|M|" => M_abs,
+                                                        "M^2" => M2,
+                                                        "H" => E, "C" => C)
 
-        @printf("⟨M⟩    = % .16f\n", M)
-        @printf("⟨|M|⟩  = % .16f\n", M_abs)
-        @printf("⟨M^2⟩  = % .16f\n", M2)
-        @printf("⟨H⟩    = % .16f\n", E)
-        @printf("C      = % .16f\n", C)
-        println()
+        if !parsed_args["json"]
+            @printf("β      = % .16f\n", β)
+
+            @printf("⟨M⟩    = % .16f\n", M)
+            @printf("⟨|M|⟩  = % .16f\n", M_abs)
+            @printf("⟨M^2⟩  = % .16f\n", M2)
+            @printf("⟨H⟩    = % .16f\n", E)
+            @printf("C      = % .16f\n", C)
+            println()
+        end
     end
-    println("-"^70)
+    if !parsed_args["json"]
+        println("-"^70)
+    else
+        JSON.print(Base.stdout, th_statistics, 4)
+    end
+else
+    if parsed_args["json"]
+        JSON.print(Base.stdout, gs_statistics, 4)
+    end
 end

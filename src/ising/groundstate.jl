@@ -33,6 +33,23 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N
     end
 end
 
+# function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::TFIM{N}, spin_prop::BitArray{N}, n::Int) where N
+#     P_h = H.h*nspins(H) / (H.h*nspins(H) + 2*H.J*nbonds(H))
+
+#     if rand(rng) < P_h
+#         qmc_state.operator_list[n] = (-1, rand(rng, 1:nspins(H)))
+#         return true
+#     else
+#         site1, site2 = H.bonds[rand(rng, 1:nbonds(H))]
+#         if spin_prop[site1] == spin_prop[site2]
+#             qmc_state.operator_list[n] = (site1, site2)
+#             return true
+#         end
+#     end
+#     return false
+# end
+
+
 function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::ArbitraryInteractionTFIM{N}, spin_prop::BitArray{N}, n::Int) where N
     op = rand(rng, H.op_sampler)
     site1, site2 = getbondsites(H, op)
@@ -58,6 +75,7 @@ function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState{N}, H::
             while !success
                 success = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
             end
+
         end
     end
 
@@ -251,7 +269,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
             # heat bath: (1 / (1 + (1 / A))) not good
             # metropolis: A (equiv to min(A, 1)) pretty good
             # scaled metropolis: min(A, 1)/2 also good
-            flip = rand(rng) < min(A, 1)/2
+            flip = rand(rng) < min(A, 1)
             if flip
                 @inbounds for i in current_cluster
                     LegType[i] ⊻= 1  # spinflip

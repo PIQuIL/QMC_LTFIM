@@ -8,6 +8,7 @@ struct TFIM{N,F,O} <: AbstractTFIM{N,O}
     P_normalization::Float64
     Ns::Int
     Nb::Int
+    bonds::Vector{NTuple{2,Int}}
 end
 
 
@@ -90,9 +91,9 @@ end
 
 function TFIM(bond_spin, Dim::Int, Ns::Int, Nb::Int, h::Float64, J::Float64)
     ops, p = make_prob_vector(bond_spin, Ns, J, h)
-    op_sampler = HierarchicalOperatorSampler(ops, p)
+    op_sampler = OperatorSampler(ops, p)
     F = !signbit(J)  # true if J > 0 (ferromagnetic)
-    return TFIM{Dim, F, typeof(op_sampler)}(op_sampler, J, h, sum(p), Ns, Nb)
+    return TFIM{Dim, F, typeof(op_sampler)}(op_sampler, J, h, sum(p), Ns, Nb, bond_spin)
 end
 
 function ArbitraryInteractionTFIM(J::AbstractMatrix{Float64}, h::AbstractVector{Float64}; dim::Int=1)

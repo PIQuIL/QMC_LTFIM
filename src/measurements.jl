@@ -16,20 +16,25 @@ function sample(H::AbstractIsing, qmc_state::BinaryQMCState)
     return spin_prop
 end
 
-function simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState)
+function simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState, r::OrdinalRange{Int, Int})
     operator_list = qmc_state.operator_list
 
-    cell = falses(length(qmc_state.left_config), length(operator_list))
+    cell = falses(length(qmc_state.left_config), length(r))
     spin_prop = copy(qmc_state.left_config)
+    c = 1
 
     @inbounds for (n, op) in enumerate(operator_list)
         if issiteoperator(H, op) && !isdiagonal(H, op)
             spin_prop[op[2]] ⊻= 1 #spinflip
         end
-        copy!(cell[:, n], spin_prop)
+        if n in r
+            copy!(view(cell, :, c), spin_prop)
+            c += 1
+        end
     end
     return cell
 end
+simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState) = simulation_cell(H, qmc_state, 1:length(qmc_state.operator_list))
 
 # 1 -> spin-up (+1)
 # 0 -> spin-down (-1)
