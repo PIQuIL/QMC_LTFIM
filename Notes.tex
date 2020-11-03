@@ -65,10 +65,10 @@ Inspiration can be taken from Sandvik's directed loops paper, wherein the XXZ mo
 \end{subequations}
 Here, 
 \begin{equation}
-    h_{z,b} = \frac{Nh_z}{2N_b}
+    h_{z,b} = \frac{h_z}{2D}
 \end{equation}
-is the modified logitudinal field strength to account for over counting when the sum over sites is put into the sum over bonds.
-This general expression accounts for PBCs, OBCs, and any lattice dimension.
+is the modified logitudinal field strength to account for over counting when the sum over sites is put into the sum over bonds ($D$ is the lattice dimension).
+This general expression accounts for PBCs and OBCs.
 $C = \max(J, 2 h_{z,b} - J) + \varepsilon$ is a constant to aleviate sign problems with $H_{1,b}$, and $\varepsilon$ is a small non-negative constant to aid with numerics. 
 In all, we have added a constant shift to Eq.~\eqref{eq:LTFIM_hamiltonian} of $N_b C + Nh$ that must be accounted for when calculating the energy. 
 
@@ -449,7 +449,7 @@ The directed loop equations for the upper-left quadrant are
 \begin{subequations} \label{eq:directed_loop_eq1}
     \begin{align}
         W_3 = -J + C =& W(3,4,4) + W(3,4,2) = b_1 + a, \\
-        W_2 = J - 2\Omega_b + C =& W(2,2,4) + W(2,2,2) = a + b_2.
+        W_2 = J - 2h_{z,b} + C =& W(2,2,4) + W(2,2,2) = a + b_2.
     \end{align}
 \end{subequations}
 Note that we used Eq.~\ref{eq:db_1} to equate $W(3,4,2) = W(2,2,4) = a$.
@@ -458,7 +458,7 @@ For the lower-left quadrant,
 \begin{subequations} \label{eq:directed_loop_eq2}
     \begin{align}
         W_3 = -J + C =& W(3,2,2) + W(3,2,4) = b_3 + d, \\
-        W_1 = J + 2\Omega_b + C =& W(1,4,2) + W(1,4,4) = d + b_4.
+        W_1 = J + 2h_{z,b} + C =& W(1,4,2) + W(1,4,4) = d + b_4.
     \end{align}
 \end{subequations}
 Note that we used Eq.~\ref{eq:db_1} to equate $W(3,2,4) = W(1,4,2) = d$.
@@ -492,14 +492,14 @@ Let's solve for the $b_i$'s,
 \begin{subequations}
     \begin{align}
         b_1 =& -a - J + C, \\
-        b_2 =& -a + J - 2\Omega_b + C,
+        b_2 =& -a + J - 2h_{z,b} + C,
     \end{align}
 \end{subequations}
 and
 \begin{subequations}
     \begin{align}
         b_3 =& -d - J + C, \\
-        b_4 =& -d + J + 2\Omega_b + C.
+        b_4 =& -d + J + 2h_{z,b} + C.
     \end{align}
 \end{subequations}
 
