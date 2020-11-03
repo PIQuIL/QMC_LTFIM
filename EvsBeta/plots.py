@@ -33,17 +33,17 @@ plt.style.use('seaborn-deep')
 #        # get an array of the possible B values
 #        tmp1 = dataN[np.where(dataN[:,1] == 0.5)]
 #        tmp1 = tmp1[np.where(tmp1[:,3] == 0.0)]
-#        # get an array of the possible Omega values
+#        # get an array of the possible hz values
 #        tmp2 = dataN[np.where(dataN[:,1] == 0.5)]
 #        tmp2 = tmp2[np.where(tmp2[:,2] == 0.0)]
 #        
 #        B = tmp1[:,2]
-#        Omega = tmp2[:,3]
+#        hz = tmp2[:,3]
 #    
 #        fig, ax = plt.subplots(2, 2, sharex=True)
 #        for b in B:
 #            filter1 = dataN[np.where(dataN[:,2] == b)]
-#            for omega in Omega:
+#            for omega in hz:
 #    
 #                filter2 = filter1[np.where(filter1[:,3] == omega)]
 #        
@@ -53,7 +53,7 @@ plt.style.use('seaborn-deep')
 #                ax[int(b*2)%2, floor(b)].plot(
 #                    beta, 
 #                    energy, 
-#                    label=r'$\Omega = {}$'.format(omega),
+#                    label=r'$\hz = {}$'.format(omega),
 #                    ls='--'
 #                )
 #                ax[int(b*2)%2, floor(b)].set_title(r'$B = {}$'.format(b))
@@ -66,10 +66,12 @@ plt.style.use('seaborn-deep')
 
 def E_vs_N(N):
 
+    # beta=2.BC_name=PBC_Dim=1_J=1_M=10000_hx=1_hz=1_skip=10_info.txt
+
     J = 1 # interaction strength
 
     # stuff for exact data 
-    data_file = "../energy_magnetization.txt"
+    data_file = "energy_magnetization.txt"
     data = np.loadtxt(data_file, skiprows=1)
     dataN = data[np.where(data[:,0] == N)]
 
@@ -78,39 +80,40 @@ def E_vs_N(N):
     QMC_files = os.listdir(main_path)
     for f in QMC_files:
         parsed = f.split('_')
-        n = int(parsed[5].split('=')[1])
-        if n != N or f.endswith("samples.txt"):
+        n = int(parsed[7].split('=')[1])
+        if n != N or f.endswith('samples.txt') or f.endswith('state.jld2'):
             QMC_files.remove(f)
 
     beta_list = []
-    Omega_list = []
-    h_list = []
+    hz_list = []
+    hx_list = []
     for qmc_file in QMC_files:
         parsed = qmc_file.split('_')
-        
+      
         beta = float(parsed[0][5:(len(parsed[0])-3)])
         beta_list.append(beta)
 
-        Omega = float(parsed[7][2:len(parsed[7])])
-        Omega_list.append(Omega)
+        hz = float(parsed[6][3:len(parsed[6])])
+        hz_list.append(hz)
 
-        h = float(parsed[4][2:len(parsed[4])])
-        h_list.append(h)
+        hx = float(parsed[5][3:len(parsed[5])])
+        hx_list.append(hx)
 
     beta_list = np.unique(np.array(sorted(beta_list)))
-    Omega_list = np.unique(np.array(sorted(Omega_list)))
-    h_list = np.unique(np.array(sorted(h_list)))
+    hz_list = np.unique(np.array(sorted(hz_list)))
+    hx_list = np.unique(np.array(sorted(hx_list)))
 
-    for idx,h in enumerate(h_list):
+    for idx, hx in enumerate(hx_list):
     
-        num_rows = ceil(len(Omega_list)/2)
+        num_rows = ceil(len(hz_list)/2)
+        print(num_rows)
         fig, ax = plt.subplots(num_rows, 2, sharex=True)
         axs = [ax[i,j] for i in range(num_rows) for j in range(2)]
 
-        filter1 = dataN[np.where(dataN[:,2] == h)]
-        for c, omega in enumerate(Omega_list):
+        filter1 = dataN[np.where(dataN[:,2] == hx)]
+        for c, hz in enumerate(hz_list):
 
-            filter2 = filter1[np.where(filter1[:,3] == omega)]
+            filter2 = filter1[np.where(filter1[:,3] == hz)]
             beta = filter2[:,1]
             energy = filter2[:,4]
 
@@ -122,18 +125,20 @@ def E_vs_N(N):
                 if beta%2 == 1 or beta%2 == 0:
                     beta = int(beta)
 
-                if omega%2 == 1 or omega%2 == 0:
-                    omega = int(omega)
+                if hz%2 == 1 or hz%2 == 0:
+                    hz = int(hz)
 
-                if h%2 == 1 or h%2 == 0:
-                    h = int(h)
+                if hx%2 == 1 or hx%2 == 0:
+                    hx = int(hx)
 
-                QMC_info_path = main_path + "beta={}.BC_name=OBC_Dim=1_J={}_h={}_nX={}_skip=10_Ω={}_info.txt".format(
+                # beta=2.BC_name=PBC_Dim=1_J=1_M=10000_hx=1_hz=0_nX=10_skip=10_info.txt
+                #QMC_info_path = main_path + "beta={}.BC_name=OBC_Dim=1_J={}_hx={}_nX={}_skip=10_hz={}_info.txt".format(
+                QMC_info_path = main_path + "beta={}.BC_name=PBC_Dim=1_J={}_M=10000_hx={}_hz={}_nX={}_skip=10_info.txt".format(
                     beta, 
                     J,
-                    h,
-                    N, 
-                    omega
+                    hx,
+                    hz, 
+                    N
                 )
 
                 QMC_info_file = open(QMC_info_path, "r").readlines()
@@ -142,17 +147,17 @@ def E_vs_N(N):
                 energies[i] = QMC_energy
 
             axs[c].plot(beta_list, energies, ls='--', label=r'QMC', color='purple')
-            axs[c].set_title(r'$\Omega = {}$'.format(omega), fontsize=9)
+            axs[c].set_title(r'$h_z = {}$'.format(hz), fontsize=9)
 
         try:
-            os.mkdir('h={}/'.format(h))
+            os.mkdir('hx={}/'.format(hx))
         except OSError:
             print("OSError: Could not make directory")
 
         axs[0].legend(loc='best', frameon=False)
         fig.text(0.5, 0.04, r'$\beta$', ha='center')
         fig.text(0.04, 0.5, r'$\frac{E}{N}$', ha='center')
-        fig.savefig("h={}/N={}_h={}_EvsBeta_QMCvsExact.pdf".format(h, N, h), dpi=1000, bbox_inches='tight')
+        fig.savefig("hx={}/N={}_hx={}_EvsBeta_QMCvsExact.pdf".format(hx, N, hx), dpi=1000, bbox_inches='tight')
 
-for N in [4,6,8]:
+for N in [2, 4, 6, 8, 10]:
     E_vs_N(N)

@@ -8,28 +8,25 @@ header = ["N" "β" "B" "Ω" "E/N" "M/N"]
 
 global data_full = header
 
-#for N = 2:10
-#    @show N
-#    for β = 0.5:0.5:5
-#        for B = 0.0:0.5:3.0
-#            for Ω = 0.0:0.5:3.0
-#
-#                ltfim = LTFIM_1D_OBC(N, B, Ω, β)
-#                energy = ltfim.Energy
-#                magnetization = ltfim.Magnetization
-#
-#                data = [N β B Ω energy magnetization]
-#                global data_full = vcat(data_full, data)
-#
-#            end
-#        end
-#    end                
-#end
-#
-#
-#open("energy_magnetization.txt", "w") do io
-#    writedlm(io, data_full)
-#end
-#
-ltfim = LTFIM_1D_OBC(4, 0, 0.5, 0.5)
-println(ltfim.Energy)
+for N = 2:2:10
+    @show N
+    for β = 0.2:0.2:2
+        for hx = 0.0:0.5:2
+            for hz = 0.0:0.5:2
+
+                ltfim = LTFIM_1D(N, hx, hz, β)
+                energy = ltfim.Energy
+                magnetization = ltfim.Magnetization
+
+                data = [N β hx hz energy magnetization]
+                global data_full = vcat(data_full, data)
+
+            end
+        end
+    end                
+end
+
+
+open("energy_magnetization.txt", "w") do io
+    writedlm(io, data_full)
+end

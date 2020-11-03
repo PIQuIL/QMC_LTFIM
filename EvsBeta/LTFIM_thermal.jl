@@ -1,16 +1,16 @@
 using LinearAlgebra
 
-struct LTFIM_1D_OBC
+struct LTFIM_1D
     N::Int
-    B::Float64
-    Ω::Float64
+    hx::Float64
+    hz::Float64
     β::Float64
     Hamiltonian::Array{Float64,2}
     Energy::Float64
     Magnetization::Float64
 end
 
-function H(N::Int, B::Float64, Ω::Float64)
+function H(N::Int, hx::Float64, hz::Float64; PBC=true)
     
     Dim = 2^N
     H_ = zeros(Dim,Dim)   #This is your 2D Hamiltonian matrix
@@ -25,11 +25,18 @@ function H(N::Int, B::Float64, Ω::Float64)
             Spin2 = 2*((Ket>>NextIndex)&1) - 1
             Diagonal = Diagonal - J*Spin1*Spin2 #spins are +1 and -1
         end
+
+        # PBC term
+        if PBC
+            Spin1 = 2*((Ket>>0)&1) - 1
+            SpinN = 2*((Ket>>(N-1))&1) - 1
+            Diagonal = Diagonal - J*Spin1*SpinN #spins are +1 and -1
+        end
     
         # long. field term
         for SpinIndex = 0:N-1
             Spin = 2*((Ket>>SpinIndex)&1) - 1
-            Diagonal = Diagonal - Ω*Spin
+            Diagonal = Diagonal - hz*Spin
         end
     
         H_[Ket+1,Ket+1] = Diagonal
@@ -37,7 +44,7 @@ function H(N::Int, B::Float64, Ω::Float64)
         for SpinIndex = 0:N-1
             bit = 2^SpinIndex   #The "label" of the bit to be flipped
             Bra = Ket ⊻ bit    #Binary XOR flips the bit
-            H_[Bra+1,Ket+1] = -B
+            H_[Bra+1,Ket+1] = -hx
         end
     
     end
@@ -68,15 +75,17 @@ function ThermalObservables(β::Float64, H::Array{Float64,2})
 end
 
 
-function LTFIM_1D_OBC(N::Int, B::Float64, Ω::Float64, β::Float64)
+function LTFIM_1D(N::Int, hx::Float64, hz::Float64, β::Float64)
 
-    Hamiltonian = H(N, B, Ω)
+    # TODO: figure out how to make PBC an option with default=False
+
+    Hamiltonian = H(N, hx, hz, PBC=true)
     ThermalEnergy, ThermalMagnetization = ThermalObservables(β, Hamiltonian)
 
-    return LTFIM_1D_OBC(
+    return LTFIM_1D(
         N, 
-        B, 
-        Ω, 
+        hx, 
+        hz, 
         β, 
         Hamiltonian, 
         ThermalEnergy, 
