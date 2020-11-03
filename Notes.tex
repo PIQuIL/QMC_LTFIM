@@ -43,7 +43,7 @@ Here, $n_i$ is simply an occupation number (i.e. either 0 or 1). We can therefor
 
 The Rydberg Hamiltonian is extremely similar to a LTFIM (general $J_{ij}$ for all pairs, assuming $J_{ij} > 0 \quad \forall \quad i,j$ as in the Rydberg case since $V_{ij} = \frac{C}{R_{ij}^6}$).
 \begin{align} \label{eq:LTFIM_hamiltonian}
-    H = & - h \sum_{i = 1}^N \sigma^x_i - \Omega \sum_{i=1}^N \sigma_i^z + \sum_{\expval{i,j}} J_{ij} \sigma_i^z \sigma_j^z \qquad \mathrm{LTFIM}
+    H = & - h_x \sum_{i = 1}^N \sigma^x_i - h_z \sum_{i=1}^N \sigma_i^z + \sum_{\expval{i,j}} J_{ij} \sigma_i^z \sigma_j^z \qquad \mathrm{LTFIM}
 \end{align}
 Thus, if an efficient SSE formalism exists for such a Hamiltonian, then it is foreseeable that one may exist for the Rydberg Hamiltonian. So, let's work with the LTFIM as a toy model for the Rydberg Hamiltonian.
 
@@ -58,27 +58,27 @@ Inspiration can be taken from Sandvik's directed loops paper, wherein the XXZ mo
 \begin{subequations} \label{eq:decomposition}
     \begin{align}
         H_{0,0} =& \mathbb{1} \\
-        H_{-1,a} =& h \sigma_i^x \\
-        H_{1,a} =& h \\
-        H_{1,b} =& J \sigma_i^z \sigma_j^z + \Omega_b (\sigma_i^z + \sigma_j^z) + C
+        H_{-1,a} =& h_x \sigma_i^x \\
+        H_{1,a} =& h_x \\
+        H_{1,b} =& J \sigma_i^z \sigma_j^z + h_{z,b} (\sigma_i^z + \sigma_j^z) + C
     \end{align}
 \end{subequations}
 Here, 
 \begin{equation}
-    \Omega_b = \frac{N\Omega}{2N_b}
+    h_{z,b} = \frac{Nh_z}{2N_b}
 \end{equation}
 is the modified logitudinal field strength to account for over counting when the sum over sites is put into the sum over bonds.
 This general expression accounts for PBCs, OBCs, and any lattice dimension.
-$C = \max(J, 2 \Omega_b - J) + \varepsilon$ is a constant to aleviate sign problems with $H_{1,b}$, and $\varepsilon$ is a small non-negative constant to aid with numerics. 
+$C = \max(J, 2 h_{z,b} - J) + \varepsilon$ is a constant to aleviate sign problems with $H_{1,b}$, and $\varepsilon$ is a small non-negative constant to aid with numerics. 
 In all, we have added a constant shift to Eq.~\eqref{eq:LTFIM_hamiltonian} of $N_b C + Nh$ that must be accounted for when calculating the energy. 
 
 The non-zero matrix elements of all parts of the Hamiltonian (Eq.~\eqref{eq:decomposition}) are
 \begin{subequations} \label{eq:mat_elems}
     \begin{align}
-        \matrixel{\uparrow}{H_{-1,a}}{\downarrow} = \matrixel{\downarrow}{H_{-1,a}}{\uparrow} =& h \\
-        \matrixel{\uparrow}{H_{1,a}}{\uparrow} = \matrixel{\downarrow}{H_{1,a}}{\downarrow} =& h \\
-        W_1 \equiv \matrixel{\uparrow \uparrow}{H_{1,b}}{\uparrow \uparrow} =& J + 2\Omega_b + C \\
-        W_2 \equiv \matrixel{\downarrow \downarrow}{H_{1,b}}{\downarrow \downarrow} =& J - 2\Omega_b + C \\
+        \matrixel{\uparrow}{H_{-1,a}}{\downarrow} = \matrixel{\downarrow}{H_{-1,a}}{\uparrow} =& h_x \\
+        \matrixel{\uparrow}{H_{1,a}}{\uparrow} = \matrixel{\downarrow}{H_{1,a}}{\downarrow} =& h_x \\
+        W_1 \equiv \matrixel{\uparrow \uparrow}{H_{1,b}}{\uparrow \uparrow} =& J + 2h_{z,b} + C \\
+        W_2 \equiv \matrixel{\downarrow \downarrow}{H_{1,b}}{\downarrow \downarrow} =& J - 2h_{z,b} + C \\
         W_3 \equiv \matrixel{\downarrow \uparrow}{H_{1,b}}{\downarrow \uparrow} = \matrixel{\uparrow \downarrow}{H_{1,b}}{\uparrow \downarrow} =& -J + C
     \end{align}
 \end{subequations}
@@ -89,58 +89,41 @@ We may have to toy around with the following procedures, but the general flow of
 Given that the matrix elements of the diagonal operators are not the same, we must keep track of the propagated spin state $\ket{\alpha_p}$ at every time-slice.
 For proposal modifications to the simulation cell, I will use primes.
 Traverse the operator list and,
+
 \begin{enumerate}
-    \item if $H_{1,a}$ is encountered remove it ($n \rightarrow n - 1$) with probability
+    \item if $H_{1,a}$ or $H_{1,b}$ is encountered remove it ($n \rightarrow n - 1$) with probability
           \begin{align*}
-              P_{[1,a]_p \rightarrow [0,0]_p} =& \mathrm{min}\left( \frac{1}{N}\frac{W^\prime(\alpha(p), S_M)}{W(\alpha(p), S_M)}, 1 \right) \\
-              =& \mathrm{min}\left( \frac{\beta^{n-1}(M-(n-1))!}{N \times M!} \prod_{i=1}^{M} \matrixel{\alpha_{i-1}}{H_{t_i,a_i}}{\alpha_i}^\prime \times \frac{M!}{\beta^n(M-n)!} \left[\prod_{i=1}^{M} \matrixel{\alpha_{i-1}}{H_{t_i,a_i}}{\alpha_i}\right]^{-1}, 1 \right) \\
-              =& \mathrm{min}\left(\frac{M-n+1}{\beta Nh },1\right).
+              P_{[1,a]_p / [1,b]_p \rightarrow [0,0]_p} =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{ W(H_{[1,a]_p} \text{ or } H_{[1,b]_{p,\uparrow\uparrow}} \text{ or } H_{[1,b]_{p,\downarrow\downarrow}} \text{ or } H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}}) }, 1 \right) \\
+              =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{NW(H_{[1,a]_p}) + N_b(W(H_{[1,b]_{p,\uparrow\uparrow}}) + W(H_{[1,b]_{p,\downarrow\downarrow}}) + W(H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}})) }, 1 \right) \\
+              =& \mathrm{min}\left(\frac{M-n+1}{\beta \left(Nh + N_b\left(W_1 + W_2 + 2W_3\right)\right) },1\right).
           \end{align*}
-    The factor of $N$ in the denominator is from the fact that where the operator $H_{1,a}$ is when we remove it does not matter. {\color{red} Is this right? Or do we not need the factor of $N$ anymore?} 
-    \item if $H_{1,b}$ is encountered remove it ($n \rightarrow n - 1$) with probability
-          \begin{align*}
-              P_{[1,b]_p \rightarrow [0,0]_p} =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{W(\alpha(p), S_M)}, 1 \right) \\
-              =& \mathrm{min}\left( \frac{\beta^{n-1}(M-(n-1))!}{M!} \prod_{i=1}^{M} \matrixel{\alpha_{i-1}}{H_{t_i,a_i}}{\alpha_i}^\prime \times \frac{M!}{\beta^n(M-n)!} \left[\prod_{i=1}^{M} \matrixel{\alpha_{i-1}}{H_{t_i,a_i}}{\alpha_i}\right]^{-1}, 1 \right) \\
-              =& \begin{cases}
-                \mathrm{min}\left(\frac{M-n+1}{ \beta N_{\uparrow\uparrow} (J + 2\Omega_b + C) },1\right); & W_1 \\
-                \mathrm{min}\left(\frac{M-n+1}{ \beta N_{\downarrow\downarrow} (J - 2\Omega_b + C) },1\right); & W_2 \\
-                \mathrm{min}\left(\frac{M-n+1}{ \beta N_{\uparrow\downarrow / \downarrow\uparrow} (C - J) },1\right); & W_3 \\
-              \end{cases}
-          \end{align*}
-    where $N_{\uparrow\uparrow}$, $N_{\downarrow\downarrow}$, and $N_{\uparrow\downarrow / \downarrow\uparrow}$ are the number of bonds at the current time slice with the corresponding spin configuration.
-    Note that $N_{\uparrow\uparrow} + N_{\downarrow\downarrow} + N_{\uparrow\downarrow / \downarrow\uparrow} = N_b$.
+    The factor of $N$ or $N_b$ in the denominator is from the fact that where the operator $H_{1,a}$ or $H_{1,b}$ is when we remove it does not matter. 
     \item if the unity operator $H_{0,0}$ is encountered, insert a diagonal operator with the following procedure.
     First note that $W(A \text{ or } B \text{ or } C) = W(A) + W(B) + W(C)$. 
           \begin{itemize}
-              \item Decide whether or not to insert a diagonal operator with the probability ($n \rightarrow n + 1$)
-                    \begin{align*}
-                        P_{H_{[1,a]_p} \text{ or } H_{[1,b]_p}} =& \mathrm{min}\left( \frac{W(H_{[1,a]_p} \text{ or } H_{[1,b]_{p,\uparrow\uparrow}} \text{ or } H_{[1,b]_{p,\downarrow\downarrow}} \text{ or } H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}}) }{W(H_{[0,0]_p})} , 1 \right) \\
-                        P_{H_{[1,a]_p} \text{ or } H_{[1,b]_p}} =& \mathrm{min}\left( \frac{W(H_{[1,a]_p}) + W(H_{[1,b]_{p,\uparrow\uparrow}}) + W(H_{[1,b]_{p,\downarrow\downarrow}}) + W(H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}}) }{W(H_{[0,0]_p})} , 1 \right) \\
-                        P_{H_{[1,a]_p} \text{ or } H_{[1,b]_p}} =& \mathrm{min}\left( \frac{\beta[Nh + N_{\uparrow\uparrow}(J + 2\Omega_b + C) + N_{\downarrow\downarrow}(J - 2\Omega_b + C) + N_{\uparrow\downarrow / \downarrow\uparrow}(C - J)]}{M - n} , 1 \right)
-                    \end{align*}
+              \item Decide whether or not to accept inserting a diagonal operator with the probability ($n \rightarrow n + 1$)
                     \begin{align}
-                        P_{H_{[1,a]_p} \text{ or } H_{[1,b]_p}} =& \mathrm{min}\left( \frac{\beta[Nh + N_{\uparrow\uparrow}(J + 2\Omega_b) + N_{\downarrow\downarrow}(J - 2\Omega_b) - N_{\uparrow\downarrow / \downarrow\uparrow}J + N_bC]}{M - n} , 1 \right)
+                        P_{H_{[0,0]_p} \rightarrow H_{[1,a]_p} / H_{[1,b]_p}} =& \mathrm{min}\left(\frac{\beta \left(Nh + N_b\left(W_1 + W_2 + 2W_3\right)\right) }{M-n},1\right)
                     \end{align}
               \item If it was decided to insert a diagonal operator, choose the operator to insert with probabilities
                     \begin{align}
-                        P_{H_{[1,b]_p},\uparrow\uparrow} = & \frac{N_{\uparrow\uparrow}(J + 2\Omega_b + C)}{Nh + 4N_bC}, \\
-                        P_{H_{[1,b]_p},\downarrow\downarrow} = & \frac{N_{\downarrow\downarrow}(J - 2\Omega_b + C)}{Nh + 4N_bC}, \\
-                        P_{H_{[1,b]_p},\uparrow\downarrow / \downarrow\uparrow} = & \frac{N_{\uparrow\downarrow / \downarrow\uparrow}(C - J)}{Nh + 4N_bC}, \\
-                        P_{H_{[1,a]_p}} =& \frac{Nh}{Nh + 4N_bC}
+                        P_{H_{[1,a]_p}} = & \frac{Nh}{Nh + N_b\left(W_1 + W_2 + 2W_3\right)}, \\
+                        P_{H_{[1,b]_p}} = & \frac{N_b\left(W_1 + W_2 + 2W_3\right)}{Nh + N_b\left(W_1 + W_2 + 2W_3\right)}.
                     \end{align}
-                \item If it was decided to insert $H_{1,a}$, then choose a random site (probability $1 / N$) to put the operator. Note that it can be put at any site regardless of spin! \\
+                \item If it was decided to insert $H_{1,a}$, then choose a random site (probability $1 / N$) to put the operator.
 
-                If it was decided to insert $H_{1,b}$, choose a bond according to the weights of each matrix element (i.e. find the up-up, down-down, and anti-parallel bonds and choose a bond according to heatbath probabilities associated with $W_1, W_2$ and $W_3$).
+                If it was decided to insert $H_{1,b}$, choose a random bond to insert it.
+                In the case when one of $W_1$, $W_2$, or $W_3$ are zero and that corresponding bond is chosen as the insertion location, the insertion must be rejected in its entirety.
           \end{itemize}
 \end{enumerate}
 
 \subsection{Loop Updates}
 
 In the spirit of the TFIM SSE formalism, we may still terminate on site operators $H_{1,a}$ and $H_{-1,a}$. 
-However, loop formation is not deterministic since the matrix elements of $H_{1,b}$ are not all the same.
-Therefore, we must devise a non-deterministic loop formation algorithm wherein detailed balance (DB) is satisfied.
+However, loop formation does not have to be deterministic since the matrix elements of $H_{1,b}$ are not all the same and a Swendsen-Wang (SW) update procedure would be invalid.
+Therefore, we must either devise a non-deterministic loop formation algorithm wherein detailed balance (DB) is satisfied, or form deterministic loops as in the case of the TFIM SSE formalism but flip the cluster by accounting for the weight change (unlike a traditional SW procedure).
 
-\subsection{Detailed balance}
+\subsubsection{Detailed balance for non-deterministic loops}
 
 Recall the DB requirement given a configuration $s$ and $s^\prime$.
 \begin{align} \label{eq:detailed_balance}
@@ -162,8 +145,9 @@ It turns out that for detailed balance to be satisfied when loop segments reach 
     \item $W(s,e,x) = W_s P(s,e \rightarrow s^\prime, x)$
 \end{itemize}
 Eq.~\eqref{eq:db_requirements} define the direted loop equations that must be satisfied for DB. 
+It should also be noted that although multi-branching loop segments should be allowed for non-deterministic loop formation, they are excluded in this discussion for simplicity. 
 
-\subsection{Directed loop equations}
+\subsubsection{Directed loop equations}
 
 To obtain directed loop equations and devise ways to satisfy them, we need to first look at possible loop segments through vertices corresponding to matrix elements of $H_{1,b}$.
 Following Sandvik's directed loops paper, any ``switch'' loop segment (i.e. a segment whose exit leg is not the same lattice site as the entrance leg) will not be allowed since flipping the entrance and exit legs will yield off-diagonal matrix element of $H_{1,b}$, which is non-existant ($H_{1,b}$ is a diagonal operator).
@@ -521,5 +505,21 @@ and
 
 Clearly, the lines defining $b_{1,2}$ vs $a$ are parallel and will never intersect, similarily for the lines defining $b_{3,4}$ vs $d$.
 So there doesn't exist a solution to Eqs.~\ref{eq:directed_loop_eq1} and \ref{eq:directed_loop_eq2} wherein $b_i = 0$ $\forall$ $b_i$.
+Clearly, this is not favorable. 
+Bounce probabilities will always persist and formed loops, flipped or not, won't update the simulation cell and advance the simulation. 
+
+\subsubsection{Deterministic loops}
+
+Instead of the forseeably inefficient non-deterministic directed loops, we may instead form deterministic clusters in the same exact way as is outlined in the well-known SSE formalism for the transverse-field Ising model.
+\begin{itemize}
+    \item Clusters terminate on site operators.
+    \item When a bond operator is encountered, the cluster branches from every possible leg of the bond vertex.
+\end{itemize}
+However, the difference here is that instead of flipping with probability 1/2, we now flip each cluster, labelled by an index $c$, in the simulation cell with the following Metropolis probability.
+\begin{align}
+    P_{\text{flip},c} =& \min\left(\frac{W_c^\prime}{W_c}, 1\right)
+\end{align}
+Here, $W_c$ primed (unprimed) denotes the weight of the local cluster $c$ being flipped (unflipped).
+Specifically, $W_c$ (primed or unprimed) is the product of all matrix element weights ($W_1$, $W_2$, $W_3$, or $h$) present in the local cluster $c$. 
 
 \end{document}
