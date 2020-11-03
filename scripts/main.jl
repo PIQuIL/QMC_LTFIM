@@ -34,7 +34,9 @@ function init_mc_cli(parsed_args)
     J = parsed_args["interaction"]
 
     Dim = length(parsed_args["dims"])
-    nX = parsed_args["dims"]
+    # NOTE: nX saved as list: ([nX]), so output file name doesn't have nX
+    # parsed_args["dims"][1] fixes it but needs a better solution for >1D
+    nX = parsed_args["dims"][1]
 
     BC_name = PBC ? "PBC" : "OBC"
 
@@ -65,6 +67,7 @@ function init_mc_cli(parsed_args)
 
     mc_opts = @ntuple M MCS EQ_MCS skip
 
+    # NOTE: why is this 2M?
     if haskey(parsed_args, "beta")
         qmc_state = BinaryThermalState(H, 2M)
     else
@@ -136,7 +139,9 @@ function mixedstate(parsed_args)
 
     max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
 
-    resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
+    # TODO: bug with 3//2. Using 1.5 instead
+    #resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
+    resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
         ns[i] = mc_step_beta!(rng, qmc_state, H, beta) do lsize, qmc_state, H
