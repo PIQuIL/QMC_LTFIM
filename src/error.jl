@@ -26,6 +26,11 @@ function jackknife(f::Function, x::Vector...)
     μ = mean(f_J)
     σ = sqrt(N - 1) * std(f_J; mean=μ)
 
-    return μ ± σ
+    f_ = f((sum_x / N)...)
+    # bias = ((N - 1) * μ) - ((N - 1) * f_)
+
+    μ′ = N*f_ - (N-1)*μ
+
+    return μ′ ± σ
 end
 jackknife(x::Vector) = jackknife(identity, x)
