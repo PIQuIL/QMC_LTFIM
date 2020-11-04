@@ -16,8 +16,8 @@ mc_step!(rng::AbstractRNG, qmc_state, H) = mc_step!((args...) -> nothing, rng, q
 mc_step!(qmc_state, H) = mc_step!(Random.GLOBAL_RNG, qmc_state, H)
 
 
-@inline alignment_check(::TFIM{N,true}, op::NTuple{2, Int}, s1::Bool, s2::Bool) where N = !xor(s1, s2)
-@inline alignment_check(::TFIM{N,false}, op::NTuple{2, Int}, s1::Bool, s2::Bool) where N = xor(s1, s2)
+@inline alignment_check(::TFIM{N,true}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where {N, K} = !xor(s1, s2)
+@inline alignment_check(::TFIM{N,false}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where {N, K} = xor(s1, s2)
 
 
 @inline alignment_check(H::LTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =

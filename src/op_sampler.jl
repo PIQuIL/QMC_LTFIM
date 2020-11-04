@@ -3,26 +3,15 @@ abstract type AbstractOperatorSampler{K, T, P <: AbstractProbabilityVector{T}} e
 firstindex(::AbstractOperatorSampler) = 1
 lastindex(os::AbstractOperatorSampler) = length(os)
 
-function getweight(os::AbstractOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
-    # idx = get(os.op_indices, op, 0)
-    idx = os.op_indices[conv_op_to_idx(op, os.strides, os.shifts)]
-    # idx = get(os.op_indices, conv_op_to_idx(op, os.strides, os.shifts), 0)
-    if iszero(idx)
-        return zero(T)
-    else
-        return getweight(os.pvec, idx)
-    end
-end
 
-
-function getlogweight(os::AbstractOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
-    # idx = get(os.op_indices, op, 0)
-    idx = os.op_indices[conv_op_to_idx(op, os.strides, os.shifts)]
-    # idx = get(os.op_indices, conv_op_to_idx(op, os.strides, os.shifts), 0)
-    if iszero(idx)
-        return zero(T)
-    else
-        return getlogweight(os.pvec, idx)
+for fn in [:getweight, :getlogweight]
+    @eval function $fn(os::AbstractOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
+        idx = os.op_indices[conv_op_to_idx(op, os.strides, os.shifts)]
+        if iszero(idx)
+            return zero(T)
+        else
+            return $fn(os.pvec, idx)
+        end
     end
 end
 
@@ -38,10 +27,23 @@ end
 
 function conv_op_to_idx(op::NTuple{K, Int}, strides::NTuple{K, Int}, shifts::NTuple{K, Int}) where K
     idx = 0
-    @inbounds for i in reverse(eachindex(op))
-        idx += (op[i] - shifts[i])
-        idx *= strides[i]
+    if K > 1
+        # compute packed storage format for last two indices (i, j),
+        #  assuming i <= j which we've enforced in all of our constructors
+        i, j = op[end-1] - shifts[end-1], op[end] - shifts[end]
+        p_ij = i + ((j * (j-1)) ÷ 2)
+        idx += p_ij
+        idx *= strides[end-1]
+
+        @inbounds for i in reverse(eachindex(op[1:end-2]))
+            idx += (op[i] - shifts[i])
+            idx *= strides[i]
+        end
+    elseif K == 1
+        idx += (op[1] - shifts[1])
+        idx *= strides[1]
     end
+
     return idx + 1
 end
 
@@ -123,11 +125,18 @@ function rand(rng::AbstractRNG, os::HierarchicalOperatorSampler{K})::NTuple{K, I
     return @inbounds ops_list[l]
 end
 
-function getweight(os::HierarchicalOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
-    idx = get(os.op_indices, op, 0)
-    if iszero(idx)
-        return zero(T)
+for fn in [:getweight, :getlogweight]
+    if fn == :getweight
+        body = :($fn(os.pvec, idx) / length(os.operator_bins[idx]))
     else
-        return getweight(os.pvec, idx) / length(os.operator_bins[idx])
+        body = :($fn(os.pvec, idx) - log(length(os.operator_bins[idx])))
+    end
+    @eval function $fn(os::HierarchicalOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
+        idx = get(os.op_indices, op, 0)
+        if iszero(idx)
+            return zero(T)
+        else
+            return $body
+        end
     end
 end
