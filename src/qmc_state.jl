@@ -71,7 +71,7 @@ function BinaryThermalState(left_config::BitArray{N}, right_config::BitArray{N},
     linked_list = zeros(Int, len)
     leg_types = falses(len)
     associates = [(0, 0, 0) for _ in 1:len]
-    flipping_weights = ones(len)
+    flipping_weights = zeros(len)
 
     first = zeros(Int, length(left_config))
     last = copy(first)

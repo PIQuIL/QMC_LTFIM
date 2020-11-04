@@ -135,7 +135,7 @@ function link_list_update_beta!(qmc_state::BinaryThermalState{N}, H::AbstractIsi
             First[site] = current_link + 1
             Associates[idx] = (0, 0, 0)
             if H isa LTFIM
-                flipping_weights[idx] = 1.0
+                flipping_weights[idx] = 0.0
             end
 
             # upper or right leg
@@ -143,7 +143,7 @@ function link_list_update_beta!(qmc_state::BinaryThermalState{N}, H::AbstractIsi
             LegType[idx] = spin_prop[site]
             Associates[idx] = (0, 0, 0)
             if H isa LTFIM
-                flipping_weights[idx] = 1.0
+                flipping_weights[idx] = 0.0
             end
         elseif isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = getbondsites(H, op)
@@ -166,11 +166,13 @@ function link_list_update_beta!(qmc_state::BinaryThermalState{N}, H::AbstractIsi
 
             if H isa LTFIM
                 s1, s2 = spin_prop[site1], spin_prop[site2]
-                w1 = getweight(H.op_sampler, op)
+                lw1 = getlogweight(H.op_sampler, op)
                 new_t = getbondtype(H, !s1, !s2)
-                w2 = getweight(H.op_sampler, (new_t, site1, site2))
-                flipping_weights[idx] = w2/w1
-                flipping_weights[idx + 1 : idx + 3] .= 1.0
+                lw2 = getlogweight(H.op_sampler, (new_t, site1, site2))
+                flipping_weights[idx] = lw2 - lw1
+                @simd for l in 1:3
+                    flipping_weights[idx + l] = 0.0
+                end
             end
 
             # lower right
