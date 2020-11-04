@@ -14,6 +14,8 @@ for n in 10:10:100
         @benchmarkable rand(p_vec) setup=(p_vec = ProbabilityVector(rand(1:10, $n)))
     SUITE["probability_vector"][n]["heap"] =
         @benchmarkable rand(p_heap) setup=(p_heap = ProbabilityHeap(rand(1:10, $n)))
+    SUITE["probability_vector"][n]["alias"] =
+        @benchmarkable rand(p_alias) setup=(p_alias = ProbabilityAlias(rand(1:10, $n)))
 end
 
 

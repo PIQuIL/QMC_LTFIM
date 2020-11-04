@@ -26,6 +26,15 @@ using Statistics
             @test isapprox(mean_, mean(X), atol=0.05)
             @test isapprox(var_, var(X), atol=0.05)
         end
+
+
+        @testset "ProbabilityAlias" begin
+            pvec = ProbabilityAlias(p)
+            X = [rand(pvec) for _ in 1:1_000_000]
+
+            @test isapprox(mean_, mean(X), atol=0.05)
+            @test isapprox(var_, var(X), atol=0.05)
+        end
     end
 end
 
