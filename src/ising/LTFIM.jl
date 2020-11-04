@@ -36,9 +36,12 @@ end
 @inline getbondsites(::LTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
 @inline getbondtype(::LTFIM, s1::Bool, s2::Bool) = (s1<<1 | s2) + 1
 
-@inline makeidentity(::LTFIM) = (0, 0, 0)
-@inline makediagonalsiteop(::LTFIM, i::Int) = (-1, i, 0)
-@inline makeoffdiagonalsiteop(::LTFIM, i::Int) = (-2, i, 0)
+@inline makeidentity(::Type{<:LTFIM}) = (0, 0, 0)
+@inline makediagonalsiteop(::Type{<:LTFIM}, i::Int) = (-1, i, i)
+@inline makeoffdiagonalsiteop(::Type{<:LTFIM}, i::Int) = (-2, i, i)
+@inline makeidentity(H::LTFIM) = makeidentity(typeof(H))
+@inline makediagonalsiteop(H::LTFIM, i::Int) = makediagonalsiteop(typeof(H), i)
+@inline makeoffdiagonalsiteop(H::LTFIM, i::Int) = makeoffdiagonalsiteop(typeof(H), i)
 
 @inline spin_config(::LTFIM, t::Int)::NTuple{2,Int} = divrem(t - 1, 2)
 @inline spin_config(H::LTFIM, op::NTuple{3, Int}) = @inbounds spin_config(H, op[1])
@@ -63,7 +66,7 @@ function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, ep
 
     if !iszero(hx)
         for i in 1:Ns
-            push!(ops, (-1, i, 0))
+            push!(ops, makediagonalsiteop(LTFIM, i))
             push!(p, hx)
         end
     end
@@ -117,6 +120,6 @@ end
 
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     ops, p, Ns, Nb, energy_shift = make_prob_vector(dims, J, hx, hz, pbc)
-    op_sampler = HierarchicalOperatorSampler(ops, p)
+    op_sampler = OperatorSampler(ops, p)
     return LTFIM{N, typeof(op_sampler)}(op_sampler, J, hx, hz, sum(p), Ns, Nb, energy_shift)
 end

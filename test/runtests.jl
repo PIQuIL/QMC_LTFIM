@@ -29,10 +29,10 @@ using Statistics
     end
 end
 
-# @testset "ltfim" begin
-#     include("ltfim.jl")
-# end
 
-@testset "tfim" begin
-    include("tfim.jl")
-end
+
+THRESHOLD = 2.576  # 99% Two-sided CI of the t-distribution with infinite dofs
+
+
+# include("ltfim.jl")
+# include("tfim.jl")
