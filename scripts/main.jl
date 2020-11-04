@@ -168,13 +168,8 @@ function mixedstate(parsed_args)
     abs_mag = mean_and_stderr(abs, mags)
     mag_sqr = mean_and_stderr(abs2, mags)
 
-    if H isa TFIM
-        energy = mean_and_stderr(x -> -x/beta, ns) + abs(H.J)*nbonds(H) + H.h*nspins(H)
-        energy /= nspins(H)
-    elseif H isa LTFIM
-        energy = mean_and_stderr(x -> -x/beta, ns) + H.energy_shift
-        energy /= nspins(H)
-    end
+    energy = mean_and_stderr(x -> -x/beta, ns) + H.energy_shift
+    energy /= nspins(H)
 
     observables = (mag, abs_mag, mag_sqr, energy)
 
@@ -197,12 +192,17 @@ function groundstate(parsed_args)
     measurements = zeros(Int, MCS, nspins(H))
     mags = zeros(MCS)
     ns = zeros(MCS)
+    # diag_update_fails = zeros(MCS)
+    # cluster_update_accep = zeros(MCS)
+    # num_clusters = zeros(Int, MCS)
+    # cluster_sizes = zeros(MCS)
 
     @showprogress "Warm up..." for i in 1:EQ_MCS
         mc_step!(rng, qmc_state, H)
     end
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
+        # diag_update_fails[i], cluster_update_accep[i], num_clusters[i], cluster_sizes[i] =
         mc_step!(rng, qmc_state, H) do lsize, qmc_state, H
             spin_prop = sample(H, qmc_state)
             measurements[i, :] = spin_prop
@@ -220,23 +220,19 @@ function groundstate(parsed_args)
     abs_mag = mean_and_stderr(abs, mags)
     mag_sqr = mean_and_stderr(abs2, mags)
 
-    if H isa TFIM
-        @time energy = jackknife(ns) do n
-            if H.h != 0
-                (-H.h * ((1.0 / n) - 1)) + abs(H.J) * (nbonds(H) / nspins(H))
-            else
-                abs(H.J) * (nbonds(H) / nspins(H))
-            end
-        end
-    elseif H isa LTFIM
-        @time energy = jackknife(ns) do n
-            if H.hx != 0
-                (-H.hx * (1.0 / n)) + H.energy_shift / nspins(H)
-            else
-                H.energy_shift / nspins(H)
-            end
+    h = (H isa TFIM) ? H.h : H.hx
+    @time energy = jackknife(ns) do n
+        if h != 0
+            (-h / n) + H.energy_shift / nspins(H)
+        else
+            H.energy_shift / nspins(H)
         end
     end
+
+    # println("Diag update acceptance rate:    ", 1 - mean_and_stderr(diag_update_fails))
+    # println("Cluster update acceptance rate: ", mean_and_stderr(cluster_update_accep))
+    # println("Average number of clusters: ", mean_and_stderr(num_clusters))
+    # println("Average cluster size: ", mean_and_stderr(cluster_sizes))
 
     observables = (mag, abs_mag, mag_sqr, energy)
 

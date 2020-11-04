@@ -1,11 +1,15 @@
 function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian)
+    # diag_update_fails = diagonal_update!(rng, qmc_state, H)
     diagonal_update!(rng, qmc_state, H)
 
     lsize = link_list_update!(qmc_state, H)
 
     f(lsize, qmc_state, H)
 
+    # cluster_update_accept, num_clusters, cluster_sizes = cluster_update!(rng, lsize, qmc_state, H)
     cluster_update!(rng, lsize, qmc_state, H)
+
+    # return diag_update_fails, cluster_update_accept, num_clusters, cluster_sizes
 end
 mc_step!(f::Function, qmc_state, H) = mc_step!(f, Random.GLOBAL_RNG, qmc_state, H)
 mc_step!(rng::AbstractRNG, qmc_state, H) = mc_step!((args...) -> nothing, rng, qmc_state, H)
@@ -67,22 +71,26 @@ insert_diagonal_operator!(qmc_state, H, spin_prop, n) = insert_diagonal_operator
 function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState{N}, H::AbstractIsing{N}) where N
     spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
+    # failures = Vector{Int}()
     for (n, op) in enumerate(qmc_state.operator_list)
         if !isdiagonal(H, op)
             @inbounds spin_prop[op[2]] ⊻= 1  # spinflip
         else
             success = false
+            # i = -1
             while !success
                 success = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
+                # i += 1
             end
-
+            # push!(failures, i)
         end
     end
 
-    # DEBUG
-    # if spin_prop != qmc_state.right_config  # check the spin propagation for error
-    #     error("Basis state propagation error in diagonal update!")
-    # end
+    # @debug statements are not run unless debug logging is enabled
+    @debug("Diagonal Update basis state propagation status: $(spin_prop == qmc_state.right_config)",
+           spin_prop,
+           qmc_state.right_config)
+    # return mean(failures)
 end
 diagonal_update!(qmc_state, H) = diagonal_update!(Random.GLOBAL_RNG, qmc_state, H)
 
@@ -114,7 +122,7 @@ function link_list_update!(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N})
         LegType[i] = spin_left[i]
         First[i] = i
         Associates[i] = (0, 0, 0)
-        flipping_weights[i] = 1.0
+        flipping_weights[i] = 0.0
     end
 
     spin_prop = copyto!(qmc_state.propagated_config, spin_left)  # the propagated spin state
@@ -138,7 +146,7 @@ function link_list_update!(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N})
             First[site] = current_link + 1
             Associates[idx] = (0, 0, 0)
             if H isa LTFIM
-                flipping_weights[idx] = 1.0
+                flipping_weights[idx] = 0.0
             end
 
             # upper or right leg
@@ -146,7 +154,7 @@ function link_list_update!(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N})
             LegType[idx] = spin_prop[site]
             Associates[idx] = (0, 0, 0)
             if H isa LTFIM
-                flipping_weights[idx] = 1.0
+                flipping_weights[idx] = 0.0
             end
         else  # diagonal bond operator
             site1, site2 = getbondsites(H, op)
@@ -164,11 +172,13 @@ function link_list_update!(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N})
 
             if H isa LTFIM
                 s1, s2 = spin_prop[site1], spin_prop[site2]
-                w1 = getweight(H.op_sampler, op)
+                lw1 = getlogweight(H.op_sampler, op)
                 new_t = getbondtype(H, !s1, !s2)
-                w2 = getweight(H.op_sampler, (new_t, site1, site2))
-                flipping_weights[idx] = w2/w1
-                flipping_weights[idx + 1 : idx + 3] .= 1.0
+                lw2 = getlogweight(H.op_sampler, (new_t, site1, site2))
+                flipping_weights[idx] = lw2 - lw1
+                @simd for l in 1:3
+                    flipping_weights[idx + l] = 0.0
+                end
             end
 
             # lower right
@@ -200,13 +210,14 @@ function link_list_update!(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N})
         LegType[idx] = spin_prop[i]
         LinkList[First[i]] = idx
         Associates[idx] = (0, 0, 0)
-        flipping_weights[idx] = 1.0
+        flipping_weights[idx] = 0.0
     end
 
     # DEBUG
-    # if spin_prop != spin_right
-    #     @debug "Basis state propagation error: LINKED LIST"
-    # end
+    # @debug statements are not run unless debug logging is enabled
+    @debug("Link List basis state propagation status: $(spin_prop == qmc_state.right_config)",
+           spin_prop,
+           qmc_state.right_config)
 
     return len
 end
@@ -231,6 +242,8 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
     cstack = Stack{Int}()  # This is the stack of vertices in a cluster
     current_cluster = Vector{Int}()
     # ccount = 0  # cluster number counter
+    # cluster_sizes = Vector{Int}()
+    # acceptance = Vector{Float64}()
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
@@ -241,7 +254,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
             empty!(current_cluster)
             push!(current_cluster, i)
-            A = flipping_weights[i]
+            lnA = flipping_weights[i]
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
@@ -250,7 +263,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
                     in_cluster[leg] = true  # add the new leg and flip it
 
                     push!(current_cluster, leg)
-                    A *= flipping_weights[leg]
+                    lnA += flipping_weights[leg]
 
                     # now check all associates and add to cluster
                     assoc = Associates[leg]  # a 3-tuple
@@ -259,22 +272,26 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
                             push!(cstack, a)
                             in_cluster[a] = true
                             push!(current_cluster, a)
-                            A *= flipping_weights[a]
+                            lnA += flipping_weights[a]
                         end
                     end
                 end
             end
-
-            # using A seems to give more accurate results?
-            # heat bath: (1 / (1 + (1 / A))) not good
+            A = exp(min(lnA, zero(lnA)))
+            # push!(acceptance, A)
+            # heat bath: inv(1 + inv(A))) = W2/(W1 + W2) not good
             # metropolis: A (equiv to min(A, 1)) pretty good
             # scaled metropolis: min(A, 1)/2 also good
-            flip = rand(rng) < min(A, 1)
+            # |M| and M^2 only seem to converge to 99% CIs
+            #  when using metropolis (not the scaled variant)
+            flip = rand(rng) < A
             if flip
                 @inbounds for i in current_cluster
                     LegType[i] ⊻= 1  # spinflip
                 end
             end
+
+            # push!(cluster_sizes, length(current_cluster))
         end
     end
 
@@ -297,6 +314,8 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
             ocount += 2
         end
     end
+
+    # return mean(acceptance), ccount, mean(cluster_sizes)
 end
 
 
@@ -344,13 +363,16 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
     in_cluster = falses(lsize)
     cstack = Stack{Int}()  # This is the stack of vertices in a cluster
     # ccount = 0  # cluster number counter
+    # cluster_sizes = Vector{Int}()
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
+        # cluster_size = 0
         if (!in_cluster[i] && Associates[i] === (0, 0, 0))
             # ccount += 1
             push!(cstack, i)
             in_cluster[i] = true
+            # cluster_size += 1
 
             flip = rand(rng, Bool)  # flip a coin for the SW cluster flip
             if flip
@@ -362,6 +384,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
                 if !in_cluster[leg]
                     in_cluster[leg] = true  # add the new leg and flip it
+                    # cluster_size += 1
                     if flip
                         LegType[leg] ⊻= 1
                     end
@@ -372,6 +395,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
                         for a in assoc
                             push!(cstack, a)
                             in_cluster[a] = true
+                            # cluster_size += 1
                             if flip
                                 LegType[a] ⊻= 1
                             end
@@ -379,7 +403,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
                     end
                 end
             end
-
+            # push!(cluster_sizes, cluster_size)
         end
     end
 
@@ -398,5 +422,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
             ocount += 2
         end
     end
+
+    # return 1/2, ccount, mean(cluster_sizes)
 end
 cluster_update!(lsize, qmc_state, H) = cluster_update!(Random.GLOBAL_RNG, lsize, qmc_state, H)
