@@ -4,22 +4,20 @@ firstindex(::AbstractOperatorSampler) = 1
 lastindex(os::AbstractOperatorSampler) = length(os)
 
 
-for fn in [:getweight, :getlogweight]
-    @eval function $fn(os::AbstractOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
-        idx = os.op_indices[conv_op_to_idx(op, os.strides, os.shifts)]
-        if iszero(idx)
-            return zero(T)
-        else
-            return $fn(os.pvec, idx)
-        end
-    end
+function getlogweight(os::AbstractOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
+    return os.op_log_weights[conv_op_to_idx(op, os.strides, os.shifts)]
+    # if iszero(idx)
+    #     return zero(T)
+    # else
+    #     return getlogweight(os.pvec, idx)
+    # end
 end
 
 
 struct OperatorSampler{K, T, P} <: AbstractOperatorSampler{K, T, P}
     operators::Vector{NTuple{K, Int}}
     pvec::P
-    op_indices::Vector{Int}
+    op_log_weights::Vector{T}
     strides::NTuple{K, Int}
     shifts::NTuple{K, Int}
 end
@@ -57,12 +55,12 @@ function OperatorSampler(operators::Vector{NTuple{K, Int}}, p::Vector{T}) where 
 
     l = conv_op_to_idx(tuple([max for (_, max) in axs]...), strides, shifts)
 
-    op_indices = zeros(Int, l)
+    op_log_weights = zeros(T, l)
     for (i, op) in enumerate(operators)
         idx = conv_op_to_idx(op, strides, shifts)
-        op_indices[idx] = i
+        op_log_weights[idx] = getlogweight(pvec, i)
     end
-    return OperatorSampler{K, T, typeof(pvec)}(operators, pvec, op_indices, strides, shifts)
+    return OperatorSampler{K, T, typeof(pvec)}(operators, pvec, op_log_weights, strides, shifts)
 end
 rand(rng::AbstractRNG, os::OperatorSampler{K}) where K = @inbounds os.operators[rand(rng, os.pvec)]
 @inline length(os::OperatorSampler) = length(os.operators)

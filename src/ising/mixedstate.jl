@@ -166,12 +166,21 @@ function link_list_update_beta!(qmc_state::BinaryThermalState{N}, H::AbstractIsi
 
             if H isa LTFIM
                 s1, s2 = spin_prop[site1], spin_prop[site2]
-                lw1 = getlogweight(H.op_sampler, op)
-                new_t = getbondtype(H, !s1, !s2)
-                lw2 = getlogweight(H.op_sampler, (new_t, site1, site2))
-                flipping_weights[idx] = lw2 - lw1
-                @simd for l in 1:3
-                    flipping_weights[idx + l] = 0.0
+                if xor(s1, s2)
+                    # no weight change if spins are anti-parallel
+                    # NOTE: this simplification does not apply in the
+                    #       case of a non-uniform z-field
+                    @simd for l in 0:3
+                        flipping_weights[idx + l] = 0.0
+                    end
+                else
+                    lw1 = getlogweight(H.op_sampler, op)
+                    new_t = getbondtype(H, !s1, !s2)
+                    lw2 = getlogweight(H.op_sampler, (new_t, site1, site2))
+                    flipping_weights[idx] = lw2 - lw1
+                    @simd for l in 1:3
+                        flipping_weights[idx + l] = 0.0
+                    end
                 end
             end
 

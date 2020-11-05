@@ -20,8 +20,9 @@ mc_step!(qmc_state, H) = mc_step!(Random.GLOBAL_RNG, qmc_state, H)
 @inline alignment_check(::TFIM{N,false}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where {N, K} = xor(s1, s2)
 
 
+# NOTE: this simplification does not apply in the case of a non-uniform z-field
 @inline alignment_check(H::LTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
-    (op[1] == getbondtype(H, s1, s2))
+    (op[1] == getbondtype(H, s1, s2)) || (op[1] == getbondtype(H, s2, s1))
 
 
 # insert_diagonal_operator! returns true if operator insertion succeeded
@@ -172,12 +173,21 @@ function link_list_update!(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N})
 
             if H isa LTFIM
                 s1, s2 = spin_prop[site1], spin_prop[site2]
-                lw1 = getlogweight(H.op_sampler, op)
-                new_t = getbondtype(H, !s1, !s2)
-                lw2 = getlogweight(H.op_sampler, (new_t, site1, site2))
-                flipping_weights[idx] = lw2 - lw1
-                @simd for l in 1:3
-                    flipping_weights[idx + l] = 0.0
+                if xor(s1, s2)
+                    # no weight change if spins are anti-parallel
+                    # NOTE: this simplification does not apply in the
+                    #       case of a non-uniform z-field
+                    @simd for l in 0:3
+                        flipping_weights[idx + l] = 0.0
+                    end
+                else
+                    lw1 = getlogweight(H.op_sampler, op)
+                    new_t = getbondtype(H, !s1, !s2)
+                    lw2 = getlogweight(H.op_sampler, (new_t, site1, site2))
+                    flipping_weights[idx] = lw2 - lw1
+                    @simd for l in 1:3
+                        flipping_weights[idx + l] = 0.0
+                    end
                 end
             end
 
@@ -277,13 +287,14 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
                     end
                 end
             end
-            A = exp(min(lnA, zero(lnA)))
-            # push!(acceptance, A)
             # heat bath: inv(1 + inv(A))) = W2/(W1 + W2) not good
             # metropolis: A (equiv to min(A, 1)) pretty good
             # scaled metropolis: min(A, 1)/2 also good
             # |M| and M^2 only seem to converge to 99% CIs
             #  when using metropolis (not the scaled variant)
+
+            A = exp(min(lnA, zero(lnA))) #/ 2
+            # push!(acceptance, A)
             flip = rand(rng) < A
             if flip
                 @inbounds for i in current_cluster
@@ -328,7 +339,7 @@ end
         spin_left[i] = LegType[i]  # left basis state
         spin_right[i] = LegType[lsize-Ns+i]  # right basis state
     end
-    return Ns + 1  # next on is leg Ns + 1
+    return Ns + 1  # next one is leg Ns + 1
 end
 
 @inline function _map_back_basis_states!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThermalState, H::AbstractIsing)
