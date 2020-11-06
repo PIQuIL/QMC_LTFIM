@@ -22,6 +22,9 @@ struct BinaryGroundState{N,K} <: AbstractGroundState{2,N,K}
     associates::Vector{NTuple{3,Int}}
     flipping_weights::Vector{Float64}
 
+    in_cluster::BitVector
+    cstack::CircularDeque{Int}
+
     first::Vector{Int}
 end
 
@@ -34,11 +37,15 @@ function BinaryGroundState(left_config::BitArray{N}, right_config::BitArray{N}, 
     associates = [(0, 0, 0) for _ in 1:len]
     flipping_weights = zeros(len)
 
+    in_cluster = falses(len)
+    cstack = CircularDeque{Int}(len)
+
     first = zeros(Int, length(left_config))
 
     BinaryGroundState{N,K}(left_config, right_config, copy(left_config),
                            operator_list,
                            linked_list, leg_types, associates, flipping_weights,
+                           in_cluster, cstack,
                            first)
 end
 

@@ -32,6 +32,7 @@ function init_mc_cli(parsed_args)
     hx = parsed_args["hx"]
     hz = parsed_args["hz"]
     J = parsed_args["interaction"]
+    runstats = parsed_args["runstats"]
 
     Dim = length(parsed_args["dims"])
     # NOTE: nX saved as list: ([nX]), so output file name doesn't have nX
@@ -46,7 +47,8 @@ function init_mc_cli(parsed_args)
     EQ_MCS = div(MCS, 10)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
-    if iszero(hz)
+    if hz === "nothing"
+        println("Running TFIM(J=$J, hx=$hx)")
         if Dim == 1
             nX = nX[1]
             bond_spin, Ns, Nb = lattice_bond_spins(nX, PBC)
@@ -59,6 +61,8 @@ function init_mc_cli(parsed_args)
         H = TFIM(bond_spin, Dim, Ns, Nb, hx, J)
         d = @ntuple Dim nX BC_name J hx hz skip M
     else
+        hz = parse(Float64, hz)
+        println("Running LTFIM(J=$J, hx=$hx, hz=$hz)")
         H = LTFIM(Tuple(nX), J, hx, hz, PBC)
         d = @ntuple Dim nX BC_name J hx hz skip M
     end
@@ -76,7 +80,7 @@ function init_mc_cli(parsed_args)
 
     rng = Xorshifts.Xoroshiro128Plus(parsed_args["seed"])
 
-    return H, qmc_state, savename(d; digits = 4), mc_opts, rng
+    return H, qmc_state, savename(d; digits = 4), mc_opts, rng, Val{runstats}()
 end
 
 
@@ -134,7 +138,7 @@ end
 
 
 function mixedstate(parsed_args)
-    H, qmc_state, sname, mc_opts, rng = init_mc_cli(parsed_args)
+    H, qmc_state, sname, mc_opts, rng, _ = init_mc_cli(parsed_args)
     beta = parsed_args["beta"]
 
     M, MCS, EQ_MCS, skip = mc_opts
@@ -182,7 +186,7 @@ end
 
 
 function groundstate(parsed_args)
-    H, qmc_state, sname, mc_opts, rng = init_mc_cli(parsed_args)
+    H, qmc_state, sname, mc_opts, rng, runstats = init_mc_cli(parsed_args)
 
     M, MCS, EQ_MCS, skip = mc_opts
 
@@ -192,18 +196,19 @@ function groundstate(parsed_args)
     measurements = zeros(Int, MCS, nspins(H))
     mags = zeros(MCS)
     ns = zeros(MCS)
-    # diag_update_fails = zeros(MCS)
-    # cluster_update_accep = zeros(MCS)
-    # num_clusters = zeros(Int, MCS)
-    # cluster_sizes = zeros(MCS)
+    if runstats isa Val{true}
+        diag_update_fails = zeros(MCS)
+        cluster_update_accep = zeros(MCS)
+        num_clusters = zeros(Int, MCS)
+        cluster_sizes = zeros(MCS)
+    end
 
     @showprogress "Warm up..." for i in 1:EQ_MCS
         mc_step!(rng, qmc_state, H)
     end
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
-        # diag_update_fails[i], cluster_update_accep[i], num_clusters[i], cluster_sizes[i] =
-        mc_step!(rng, qmc_state, H) do lsize, qmc_state, H
+        output = mc_step!(rng, qmc_state, H, runstats) do lsize, qmc_state, H
             spin_prop = sample(H, qmc_state)
             measurements[i, :] = spin_prop
 
@@ -211,9 +216,20 @@ function groundstate(parsed_args)
             mags[i] = magnetization(spin_prop)
         end
 
+        if runstats isa Val{true}
+            diag_update_fails[i], cluster_update_accep[i], num_clusters[i], cluster_sizes[i] = output
+        end
+
         for _ in 1:skip
             mc_step!(rng, qmc_state, H)
         end
+    end
+
+    if runstats isa Val{true}
+        println("Diag update acceptance rate:    ", 1 - mean_and_stderr(diag_update_fails))
+        println("Cluster update acceptance rate: ", mean_and_stderr(cluster_update_accep))
+        println("Average number of clusters: ", mean_and_stderr(num_clusters))
+        println("Average cluster size: ", mean_and_stderr(cluster_sizes))
     end
 
     mag = mean_and_stderr(mags)
@@ -228,11 +244,6 @@ function groundstate(parsed_args)
             H.energy_shift / nspins(H)
         end
     end
-
-    # println("Diag update acceptance rate:    ", 1 - mean_and_stderr(diag_update_fails))
-    # println("Cluster update acceptance rate: ", mean_and_stderr(cluster_update_accep))
-    # println("Average number of clusters: ", mean_and_stderr(num_clusters))
-    # println("Average cluster size: ", mean_and_stderr(cluster_sizes))
 
     observables = (mag, abs_mag, mag_sqr, energy)
 
@@ -274,8 +285,8 @@ end
         default = 1.0
     "--hz"
         help = "Strength of the longitudinal field"
-        arg_type = Float64
-        default = 0.0
+        arg_type = Union{Float64, String}
+        default = "nothing"
     "--interaction", "-J"
         help = "Strength of the interaction"
         arg_type = Float64
@@ -299,6 +310,10 @@ end
         help = "Random seed"
         arg_type = Int
         default = 1234
+
+    "--runstats"
+        help = "Print run statistics (acceptance rates, cluster sizes, etc."
+        action = :store_true
 end
 
 import_settings!(s["mixedstate"], s["groundstate"])
