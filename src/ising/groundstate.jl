@@ -246,7 +246,7 @@ end
 
 #############################################################################
 
-function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState{N}, H::AbstractLTFIM{N}, runstats=Val{false}()) where N
+function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState{N}, H::AbstractIsing{N}, runstats=Val{false}()) where N
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
 
@@ -257,8 +257,8 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
     in_cluster = fill!(qmc_state.in_cluster, false)
     cstack = qmc_state.cstack # This is the stack of vertices in a cluster
+    current_cluster = qmc_state.current_cluster
 
-    current_cluster = PushVector{Int}(4*Ns)
     if runstats isa Val{true}
         ccount = 0  # cluster number counter
         cluster_sizes = Vector{Int}()
@@ -305,11 +305,16 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
             # in the TFIM case, acceptance rate is exactly 1
             #   so we set it to 1/2 to ensure ergodicity
-            A = iszero(H.hz) ? 0.5 : exp(min(lnA, zero(lnA)))
+            if H isa LTFIM
+                A = iszero(H.hz) ? 0.5 : exp(min(lnA, zero(lnA)))
+                flip = rand(rng) < A
+            else
+                A = 0.5
+                flip = rand(rng, Bool)
+            end
 
             if runstats isa Val{true}; push!(acceptance, A); end
 
-            flip = rand(rng) < A
             if flip
                 @inbounds for i in current_cluster
                     LegType[i] ⊻= 1  # spinflip
@@ -325,10 +330,12 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
     @inbounds for (n, op) in enumerate(operator_list)
         if isbondoperator(H, op)
-            s1, s2 = LegType[ocount], LegType[ocount+1]
-            t = getbondtype(H, s1, s2)
-            site1, site2 = getbondsites(H, op)
-            operator_list[n] = (t, site1, site2)
+            if H isa AbstractLTFIM
+                s1, s2 = LegType[ocount], LegType[ocount+1]
+                t = getbondtype(H, s1, s2)
+                site1, site2 = getbondsites(H, op)
+                operator_list[n] = (t, site1, site2)
+            end
             ocount += 4
         elseif issiteoperator(H, op)
             if LegType[ocount] == LegType[ocount+1]  # diagonal
@@ -387,7 +394,8 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
     Associates = qmc_state.associates
 
     in_cluster = fill!(qmc_state.in_cluster, false)
-    cstack = qmc_state.cstack #CircularDeque{Int}(lsize)  # This is the stack of vertices in a cluster
+    cstack = qmc_state.cstack  # This is the stack of vertices in a cluster
+
     if runstats isa Val{true}
         ccount = 0  # cluster number counter
         cluster_sizes = Vector{Int}()
