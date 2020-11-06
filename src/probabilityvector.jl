@@ -270,29 +270,37 @@ function show(io::IO, p::ProbabilityAlias{T}) where T
 end
 
 function rand(rng::AbstractRNG, pvec::ProbabilityAlias{T}) where T
-    u, i::Int = @fastmath modf(muladd(length(pvec), rand(rng), 1.0))
+    u, i::Int = modf(muladd(length(pvec), rand(rng), 1.0))
+    return @inbounds (u < pvec.cutoffs[i]) ? i : pvec.alias[i]
+end
+
+using RandomNumbers.Xorshifts: AbstractXoroshiro128
+# xoroshiro128 seems to be noticably faster if you just sample from it twice
+function rand(rng::AbstractXoroshiro128, pvec::ProbabilityAlias{T}) where T
+    u = rand(rng)
+    i = rand(rng, 1:length(pvec))
     return @inbounds (u < pvec.cutoffs[i]) ? i : pvec.alias[i]
 end
 
 
 @inline function getweight(pvec::ProbabilityAlias, i::Int)
     @boundscheck checkbounds(pvec.probabilities, i)
-    return pvec.probabilities[i]
+    return @inbounds pvec.probabilities[i]
 end
 
 @inline function getweight(pvec::ProbabilityAlias, r::AbstractArray{Int})
     @boundscheck checkbounds(pvec.probabilities, r)
-    return pvec.probabilities[r]
+    return @inbounds pvec.probabilities[r]
 end
 
 @inline function getlogweight(pvec::ProbabilityAlias, i::Int)
     @boundscheck checkbounds(pvec.log_probs, i)
-    return pvec.log_probs[i]
+    return @inbounds pvec.log_probs[i]
 end
 
 @inline function getlogweight(pvec::ProbabilityAlias, r::AbstractArray{Int})
     @boundscheck checkbounds(pvec.log_probs, r)
-    return pvec.log_probs[r]
+    return @inbounds pvec.log_probs[r]
 end
 
 
