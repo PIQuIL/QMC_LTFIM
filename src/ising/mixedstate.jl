@@ -1,7 +1,7 @@
 
 ########################## finite-beta #######################################
 
-function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState{N}, H::AbstractIsing{N}, beta::Real; eq::Bool = false) where N
+function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
     num_ops = diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
 
     lsize = link_list_update_beta!(qmc_state, H)
@@ -16,7 +16,7 @@ mc_step_beta!(f::Function, qmc_state, H, beta; eq = false) = mc_step_beta!(f, Ra
 mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta; eq = false) = mc_step_beta!((args...) -> nothing, rng, qmc_state, H, beta; eq = eq)
 mc_step_beta!(qmc_state, H, beta; eq = false) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
 
-function resize_op_list!(qmc_state::BinaryThermalState{N, K}, H::AbstractIsing{N}, new_size::Int) where {N, K}
+function resize_op_list!(qmc_state::BinaryThermalState{K}, H::AbstractIsing, new_size::Int) where {K}
     operator_list = filter!(op -> !isidentity(H, op), qmc_state.operator_list)
     len = length(operator_list)
 
@@ -34,7 +34,7 @@ function resize_op_list!(qmc_state::BinaryThermalState{N, K}, H::AbstractIsing{N
 end
 
 
-function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState{N}, H::AbstractIsing{N}, beta::Real; eq::Bool = false) where N
+function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
     P_norm = beta * H.P_normalization
 
     num_ids = count(op -> isidentity(H, op), qmc_state.operator_list)
@@ -85,7 +85,7 @@ diagonal_update_beta!(qmc_state, H, beta; eq = false) = diagonal_update_beta!(Ra
 
 #############################################################################
 
-function link_list_update_beta!(qmc_state::BinaryThermalState{N}, H::AbstractIsing{N}) where N
+function link_list_update_beta!(qmc_state::BinaryThermalState, H::AbstractIsing)
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
 

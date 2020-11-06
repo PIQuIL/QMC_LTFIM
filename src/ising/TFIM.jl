@@ -1,7 +1,7 @@
-abstract type AbstractIsing{N,O} <: Hamiltonian{2,N,O} end
-abstract type AbstractTFIM{N,O} <: AbstractIsing{N,O} end
+abstract type AbstractIsing{O} <: Hamiltonian{2,O} end
+abstract type AbstractTFIM{O} <: AbstractIsing{O} end
 
-struct TFIM{N,F,O} <: AbstractTFIM{N,O}
+struct TFIM{F,O} <: AbstractTFIM{O}
     op_sampler::O
     J::Float64
     h::Float64
@@ -13,7 +13,7 @@ struct TFIM{N,F,O} <: AbstractTFIM{N,O}
 end
 
 
-struct ArbitraryInteractionTFIM{N,O,M <: AbstractMatrix{Float64},V <: AbstractVector{Float64}} <: AbstractTFIM{N,O}
+struct ArbitraryInteractionTFIM{O,M <: AbstractMatrix{Float64},V <: AbstractVector{Float64}} <: AbstractTFIM{O}
     op_sampler::O
     J::M
     h::V
@@ -98,18 +98,18 @@ end
 
 ###############################################################################
 
-function TFIM(bond_spin, Dim::Int, Ns::Int, Nb::Int, h::Float64, J::Float64)
+function TFIM(bond_spin, Ns::Int, Nb::Int, h::Float64, J::Float64)
     ops, p = make_prob_vector(bond_spin, Ns, J, h)
     op_sampler = OperatorSampler(ops, p)
     energy_shift = h*Ns + abs(J)*Nb
     F = !signbit(J)  # true if J > 0 (ferromagnetic)
-    return TFIM{Dim, F, typeof(op_sampler)}(op_sampler, J, h, sum(p), Ns, Nb, bond_spin, energy_shift)
+    return TFIM{F, typeof(op_sampler)}(op_sampler, J, h, sum(p), Ns, Nb, bond_spin, energy_shift)
 end
 
 total_hx(H::TFIM) = H.h * nspins(H)
 total_hx(H::ArbitraryInteractionTFIM) = sum(H.h)
 
-function energy(::BinaryGroundState{N}, H::AbstractIsing{N}, ns::Vector{T}) where {N, T <: Real}
+function energy(::BinaryGroundState, H::AbstractIsing, ns::Vector{<:Real})
     hx = total_hx(H)
 
     if !iszero(hx)
@@ -121,7 +121,7 @@ function energy(::BinaryGroundState{N}, H::AbstractIsing{N}, ns::Vector{T}) wher
     return H.energy_shift + E
 end
 
-function ArbitraryInteractionTFIM(J::AbstractMatrix{Float64}, h::AbstractVector{Float64}; dim::Int=1)
+function ArbitraryInteractionTFIM(J::AbstractMatrix{Float64}, h::AbstractVector{Float64})
     @assert length(h) == size(J, 1) == size(J, 2)
 
     ops, p = make_prob_vector(J, h)
@@ -131,7 +131,7 @@ function ArbitraryInteractionTFIM(J::AbstractMatrix{Float64}, h::AbstractVector{
 
     energy_shift = sum(h) + sum(abs, J)
 
-    return ArbitraryInteractionTFIM{dim, typeof(op_sampler), typeof(J), typeof(h)}(
+    return ArbitraryInteractionTFIM{typeof(op_sampler), typeof(J), typeof(h)}(
         op_sampler, J, h, sum(p), Ns, Nb, energy_shift
     )
 end

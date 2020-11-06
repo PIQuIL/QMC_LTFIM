@@ -21,8 +21,8 @@ mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstat
 mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats)
 
 
-@inline alignment_check(::TFIM{N,true}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where {N, K} = !xor(s1, s2)
-@inline alignment_check(::TFIM{N,false}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where {N, K} = xor(s1, s2)
+@inline alignment_check(::TFIM{true}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where K = !xor(s1, s2)
+@inline alignment_check(::TFIM{false}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where K = xor(s1, s2)
 
 
 @inline alignment_check(H::LTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
@@ -31,7 +31,7 @@ mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = 
 
 # insert_diagonal_operator! returns true if operator insertion succeeded
 # returns true if operator insertion succeeded
-function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::AbstractIsing{N}, spin_prop::AbstractArray{T, N}, n::Int) where {N, T}
+function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, BV}, H::AbstractIsing, spin_prop::BV, n::Int) where {K, BV}
     op = rand(rng, H.op_sampler)
     site1, site2 = getbondsites(H, op)
     @inbounds if issiteoperator(H, op) || alignment_check(H, op, spin_prop[site1], spin_prop[site2])
@@ -59,7 +59,7 @@ end
 # end
 
 
-function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::ArbitraryInteractionTFIM{N}, spin_prop::AbstractArray{T, N}, n::Int) where {N, T}
+function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, BV}, H::ArbitraryInteractionTFIM, spin_prop::BV, n::Int) where {K, BV}
     op = rand(rng, H.op_sampler)
     site1, site2 = getbondsites(H, op)
     @inbounds if issiteoperator(H, op) || xor(!signbit(H.J[site1, site2]), spin_prop[site1], spin_prop[site2])
@@ -73,7 +73,7 @@ insert_diagonal_operator!(qmc_state, H, spin_prop, n) = insert_diagonal_operator
 
 #############################################################################
 
-function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState{N}, H::AbstractIsing{N}, runstats=Val{false}()) where N
+function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats=Val{false}())
     spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
     if runstats isa Val{true}
@@ -111,7 +111,7 @@ diagonal_update!(qmc_state, H, runstats=Val{false}()) = diagonal_update!(Random.
 
 #############################################################################
 
-function link_list_update!(qmc_state::BinaryGroundState{N}, H::AbstractIsing{N}) where N
+function link_list_update!(qmc_state::BinaryGroundState, H::AbstractIsing)
     Ns = nspins(H)
     spin_left = qmc_state.left_config
 
@@ -246,7 +246,7 @@ end
 
 #############################################################################
 
-function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState{N}, H::AbstractIsing{N}, runstats=Val{false}()) where N
+function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats=Val{false}())
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
 
@@ -385,7 +385,7 @@ end
 end
 
 
-function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState{N}, H::AbstractTFIM{N}, runstats=Val{false}()) where N
+function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractTFIM, runstats=Val{false}())
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
 

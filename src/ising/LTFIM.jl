@@ -1,9 +1,9 @@
 using Base.Iterators
 
 
-abstract type AbstractLTFIM{N,O} <: AbstractIsing{N,O} end
+abstract type AbstractLTFIM{O} <: AbstractIsing{O} end
 
-struct LTFIM{N,O} <: AbstractLTFIM{N,O}
+struct LTFIM{O} <: AbstractLTFIM{O}
     op_sampler::O
     J::Float64
     hx::Float64
@@ -116,7 +116,7 @@ end
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     ops, p, Ns, Nb, energy_shift, hzb = make_prob_vector(dims, J, hx, hz, pbc)
     op_sampler = OperatorSampler(ops, p)
-    return LTFIM{N, typeof(op_sampler)}(op_sampler, J, hx, hz, hzb, sum(p), Ns, Nb, energy_shift)
+    return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, hzb, sum(p), Ns, Nb, energy_shift)
 end
 
 total_hx(H::LTFIM) = H.hx * nspins(H)
