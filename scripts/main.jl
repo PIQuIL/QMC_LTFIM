@@ -63,7 +63,7 @@ function init_mc_cli(parsed_args)
     else
         hz = parse(Float64, hz)
         println("Running LTFIM(J=$J, hx=$hx, hz=$hz)")
-        H = LTFIM(Tuple(nX), J, hx, hz, PBC)
+        H = LTFIM(tuple(nX...), J, hx, hz, PBC)
         d = @ntuple Dim nX BC_name J hx hz skip M
     end
 
@@ -172,8 +172,7 @@ function mixedstate(parsed_args)
     abs_mag = mean_and_stderr(abs, mags)
     mag_sqr = mean_and_stderr(abs2, mags)
 
-    energy = mean_and_stderr(x -> -x/beta, ns) + H.energy_shift
-    energy /= nspins(H)
+    energy = energy_density(qmc_state, H, beta, ns)
 
     observables = (mag, abs_mag, mag_sqr, energy)
 
@@ -236,14 +235,7 @@ function groundstate(parsed_args)
     abs_mag = mean_and_stderr(abs, mags)
     mag_sqr = mean_and_stderr(abs2, mags)
 
-    h = (H isa TFIM) ? H.h : H.hx
-    @time energy = jackknife(ns) do n
-        if h != 0
-            (-h / n) + H.energy_shift / nspins(H)
-        else
-            H.energy_shift / nspins(H)
-        end
-    end
+    @time energy = energy_density(qmc_state, H, ns)
 
     observables = (mag, abs_mag, mag_sqr, energy)
 

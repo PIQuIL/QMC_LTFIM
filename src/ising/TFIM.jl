@@ -13,37 +13,38 @@ struct TFIM{N,F,O} <: AbstractTFIM{N,O}
 end
 
 
-struct ArbitraryInteractionTFIM{N,O} <: AbstractTFIM{N,O}
+struct ArbitraryInteractionTFIM{N,O,M <: AbstractMatrix{Float64},V <: AbstractVector{Float64}} <: AbstractTFIM{N,O}
     op_sampler::O
-    J::Matrix{Float64}
-    h::Vector{Float64}
+    J::M
+    h::V
     P_normalization::Float64
     Ns::Int
     Nb::Int
+    energy_shift::Float64
 end
 
 
 ###############################################################################
 
 # TFIM ops:
-#  (-2,i,i) is an off-diagonal site operator h(sigma^+_i + sigma^-_i)
+#  (-2,i,i) is an off-diagonal site operator h*sigma^x_i
 #  (-1,i,i) is a diagonal site operator h
 #  (0,0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
 #  (1,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
-@inline isdiagonal(::TFIM, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(::TFIM, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(::TFIM, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(::TFIM, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
+@inline isdiagonal(::AbstractTFIM, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
+@inline isidentity(::AbstractTFIM, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
+@inline issiteoperator(::AbstractTFIM, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
+@inline isbondoperator(::AbstractTFIM, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
 
-@inline getbondsites(::TFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
-@inline getbondtype(::TFIM, s1::Bool, s2::Bool) = 1
+@inline getbondsites(::AbstractTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
+@inline getbondtype(::AbstractTFIM, s1::Bool, s2::Bool) = 1
 
-@inline makeidentity(::Type{<:TFIM}) = (0, 0, 0)
-@inline makediagonalsiteop(::Type{<:TFIM}, i::Int) = (-1, i, i)
-@inline makeoffdiagonalsiteop(::Type{<:TFIM}, i::Int) = (-2, i, i)
-@inline makeidentity(H::TFIM) = makeidentity(typeof(H))
-@inline makediagonalsiteop(H::TFIM, i::Int) = makediagonalsiteop(typeof(H), i)
-@inline makeoffdiagonalsiteop(H::TFIM, i::Int) = makeoffdiagonalsiteop(typeof(H), i)
+@inline makeidentity(::Type{<:AbstractTFIM}) = (0, 0, 0)
+@inline makediagonalsiteop(::Type{<:AbstractTFIM}, i::Int) = (-1, i, i)
+@inline makeoffdiagonalsiteop(::Type{<:AbstractTFIM}, i::Int) = (-2, i, i)
+@inline makeidentity(H::AbstractTFIM) = makeidentity(typeof(H))
+@inline makediagonalsiteop(H::AbstractTFIM, i::Int) = makediagonalsiteop(typeof(H), i)
+@inline makeoffdiagonalsiteop(H::AbstractTFIM, i::Int) = makeoffdiagonalsiteop(typeof(H), i)
 
 ###############################################################################
 
@@ -105,6 +106,21 @@ function TFIM(bond_spin, Dim::Int, Ns::Int, Nb::Int, h::Float64, J::Float64)
     return TFIM{Dim, F, typeof(op_sampler)}(op_sampler, J, h, sum(p), Ns, Nb, bond_spin, energy_shift)
 end
 
+total_hx(H::TFIM) = H.h * nspins(H)
+total_hx(H::ArbitraryInteractionTFIM) = sum(H.h)
+
+function energy(::BinaryGroundState{N}, H::AbstractIsing{N}, ns::Vector{T}) where {N, T <: Real}
+    hx = total_hx(H)
+
+    if !iszero(hx)
+        E = -hx * jackknife(inv, ns)
+    else
+        E = zero(H.energy_shift)
+    end
+
+    return H.energy_shift + E
+end
+
 function ArbitraryInteractionTFIM(J::AbstractMatrix{Float64}, h::AbstractVector{Float64}; dim::Int=1)
     @assert length(h) == size(J, 1) == size(J, 2)
 
@@ -113,5 +129,9 @@ function ArbitraryInteractionTFIM(J::AbstractMatrix{Float64}, h::AbstractVector{
     Nb = count(isbondoperator, ops)
     op_sampler = HierarchicalOperatorSampler(ops, p)
 
-    return ArbitraryInteractionTFIM{dim, typeof(op_sampler)}(op_sampler, Matrix(J), Vector(h), sum(p), Ns, Nb)
+    energy_shift = sum(h) + sum(abs, J)
+
+    return ArbitraryInteractionTFIM{dim, typeof(op_sampler), typeof(J), typeof(h)}(
+        op_sampler, J, h, sum(p), Ns, Nb, energy_shift
+    )
 end

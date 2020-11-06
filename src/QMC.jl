@@ -23,7 +23,7 @@ import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex, r
 
 
 export BinaryQMCState, BinaryGroundState, BinaryThermalState,
-        Hamiltonian, TFIM, LTFIM, nspins, nbonds, ClusterData, mc_step!, mc_step_beta!,
+        Hamiltonian, TFIM, LTFIM, nspins, nbonds, energy, energy_density, mc_step!, mc_step_beta!,
         resize_op_list!,
         sample, simulation_cell, magnetization, num_single_site_diag, num_single_site_offdiag,
         num_single_site, num_two_site_diag, autocorrelation, correlation_time, jackknife, mean_and_stderr,
@@ -41,8 +41,8 @@ end
 include("lattice.jl")
 include("probabilityvector.jl")
 include("op_sampler.jl")
-include("hamiltonian.jl")
 include("qmc_state.jl")
+include("hamiltonian.jl")
 include("ising/Ising.jl")
 include("measurements.jl")
 include("error.jl")

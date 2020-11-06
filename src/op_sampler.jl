@@ -5,7 +5,7 @@ lastindex(os::AbstractOperatorSampler) = length(os)
 
 
 function getlogweight(os::AbstractOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
-    return os.op_log_weights[conv_op_to_idx(op, os.strides, os.shifts)]
+    return @inbounds os.op_log_weights[conv_op_to_idx(op, os.strides, os.shifts)]
     # if iszero(idx)
     #     return zero(T)
     # else
@@ -25,7 +25,7 @@ end
 
 function conv_op_to_idx(op::NTuple{K, Int}, strides::NTuple{K, Int}, shifts::NTuple{K, Int}) where K
     idx = 0
-    if K > 1
+    @inbounds if K > 1
         # compute packed storage format for last two indices (i, j),
         #  assuming i <= j which we've enforced in all of our constructors
         i, j = op[end-1] - shifts[end-1], op[end] - shifts[end]
@@ -33,7 +33,7 @@ function conv_op_to_idx(op::NTuple{K, Int}, strides::NTuple{K, Int}, shifts::NTu
         idx += p_ij
         idx *= strides[end-1]
 
-        @inbounds for i in reverse(eachindex(op[1:end-2]))
+        for i in reverse(eachindex(op[1:end-2]))
             idx += (op[i] - shifts[i])
             idx *= strides[i]
         end

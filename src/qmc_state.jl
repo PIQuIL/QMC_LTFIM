@@ -54,11 +54,6 @@ function BinaryGroundState(left_config::BA, right_config::BA, operator_list::Vec
     )
 end
 
-function BinaryGroundState(H::Hamiltonian{2,N,O}, M::Int) where {N, K, O <: AbstractOperatorSampler{K}}
-    BinaryGroundState(zero(H), zero(H), init_op_list(2*M, K))
-end
-
-
 
 struct BinaryThermalState{N,K,BA <: AbstractArray{Bool, N},BV <: AbstractVector{Bool}} <: AbstractThermalState{2,N,K}
     left_config::BA
@@ -74,6 +69,7 @@ struct BinaryThermalState{N,K,BA <: AbstractArray{Bool, N},BV <: AbstractVector{
 
     in_cluster::BV
     cstack::PushVector{Int, Vector{Int}}
+    current_cluster::PushVector{Int, Vector{Int}}
 
     first::Vector{Int}
     last::Vector{Int}
@@ -90,7 +86,8 @@ function BinaryThermalState(left_config::BA, right_config::BA, operator_list::Ve
     flipping_weights = zeros(len)
 
     in_cluster = zeros(Bool, len)
-    cstack = PushVector{Int}(2*length(left_config))
+    cstack = PushVector{Int}(nextpow(2, length(left_config)))
+    current_cluster = PushVector{Int}(nextpow(2, length(left_config)))
 
     first = zeros(Int, length(left_config))
     last = copy(first)
@@ -99,13 +96,9 @@ function BinaryThermalState(left_config::BA, right_config::BA, operator_list::Ve
         left_config, right_config, copy(left_config),
         operator_list,
         linked_list, leg_types, associates, flipping_weights,
-        in_cluster, cstack,
+        in_cluster, cstack, current_cluster,
         first, last
     )
-end
-
-function BinaryThermalState(H::Hamiltonian{2,N,O}, cutoff::Int) where {N, K, O <: AbstractOperatorSampler{K}}
-    BinaryThermalState(zero(H), zero(H), init_op_list(cutoff, K))
 end
 
 
