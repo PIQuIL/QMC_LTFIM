@@ -31,7 +31,7 @@ mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = 
 
 # insert_diagonal_operator! returns true if operator insertion succeeded
 # returns true if operator insertion succeeded
-function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::AbstractIsing{N}, spin_prop::BitArray{N}, n::Int) where N
+function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::AbstractIsing{N}, spin_prop::AbstractArray{T, N}, n::Int) where {N, T}
     op = rand(rng, H.op_sampler)
     site1, site2 = getbondsites(H, op)
     @inbounds if issiteoperator(H, op) || alignment_check(H, op, spin_prop[site1], spin_prop[site2])
@@ -59,7 +59,7 @@ end
 # end
 
 
-function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::ArbitraryInteractionTFIM{N}, spin_prop::BitArray{N}, n::Int) where N
+function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::ArbitraryInteractionTFIM{N}, spin_prop::AbstractArray{T, N}, n::Int) where {N, T}
     op = rand(rng, H.op_sampler)
     site1, site2 = getbondsites(H, op)
     @inbounds if issiteoperator(H, op) || xor(!signbit(H.J[site1, site2]), spin_prop[site1], spin_prop[site2])

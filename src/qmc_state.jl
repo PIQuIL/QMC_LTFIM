@@ -10,43 +10,45 @@ abstract type AbstractThermalState{D,N,K} <: AbstractQMCState{D,N,K} end
 
 
 
-struct BinaryGroundState{N,K} <: AbstractGroundState{2,N,K}
-    left_config::BitArray{N}
-    right_config::BitArray{N}
-    propagated_config::BitArray{N}
+struct BinaryGroundState{N,K,BA <: AbstractArray{Bool, N},BV <: AbstractVector{Bool}} <: AbstractGroundState{2,N,K}
+    left_config::BA
+    right_config::BA
+    propagated_config::BA
 
     operator_list::Vector{NTuple{K,Int}}
 
     linked_list::Vector{Int}
-    leg_types::BitVector
+    leg_types::BV
     associates::Vector{NTuple{3,Int}}
     flipping_weights::Vector{Float64}
 
-    in_cluster::BitVector
+    in_cluster::BV
     cstack::CircularDeque{Int}
 
     first::Vector{Int}
 end
 
-function BinaryGroundState(left_config::BitArray{N}, right_config::BitArray{N}, operator_list::Vector{NTuple{K,Int}}) where {N, K}
+function BinaryGroundState(left_config::BA, right_config::BA, operator_list::Vector{NTuple{K,Int}}) where {N, K, BA <: AbstractArray{Bool, N}}
     @assert left_config !== right_config "left_config and right_config can't be the same array!"
 
     len = 2*length(left_config) + 4*length(operator_list)
     linked_list = zeros(Int, len)
-    leg_types = falses(len)
+    leg_types = zeros(Bool, len)
     associates = [(0, 0, 0) for _ in 1:len]
     flipping_weights = zeros(len)
 
-    in_cluster = falses(len)
+    in_cluster = zeros(Bool, len)
     cstack = CircularDeque{Int}(len)
 
     first = zeros(Int, length(left_config))
 
-    BinaryGroundState{N,K}(left_config, right_config, copy(left_config),
-                           operator_list,
-                           linked_list, leg_types, associates, flipping_weights,
-                           in_cluster, cstack,
-                           first)
+    BinaryGroundState{N,K,typeof(left_config),typeof(leg_types)}(
+        left_config, right_config, copy(left_config),
+        operator_list,
+        linked_list, leg_types, associates, flipping_weights,
+        in_cluster, cstack,
+        first
+    )
 end
 
 function BinaryGroundState(H::Hamiltonian{2,N,O}, M::Int) where {N, K, O <: AbstractOperatorSampler{K}}
@@ -55,38 +57,47 @@ end
 
 
 
-struct BinaryThermalState{N,K} <: AbstractThermalState{2,N,K}
-    left_config::BitArray{N}
-    right_config::BitArray{N}
-    propagated_config::BitArray{N}
+struct BinaryThermalState{N,K,BA <: AbstractArray{Bool, N},BV <: AbstractVector{Bool}} <: AbstractThermalState{2,N,K}
+    left_config::BA
+    right_config::BA
+    propagated_config::BA
 
     operator_list::Vector{NTuple{K,Int}}
 
     linked_list::Vector{Int}
-    leg_types::BitVector
+    leg_types::BV
     associates::Vector{NTuple{3,Int}}
     flipping_weights::Vector{Float64}
+
+    in_cluster::BV
+    cstack::CircularDeque{Int}
 
     first::Vector{Int}
     last::Vector{Int}
 end
 
-function BinaryThermalState(left_config::BitArray{N}, right_config::BitArray{N}, operator_list::Vector{NTuple{K,Int}}) where {N, K}
+function BinaryThermalState(left_config::BA, right_config::BA, operator_list::Vector{NTuple{K,Int}}) where {N, K, BA <: AbstractArray{Bool, N}}
     @assert left_config !== right_config "left_config and right_config can't be the same array!"
 
     len = 4*length(operator_list)
     linked_list = zeros(Int, len)
-    leg_types = falses(len)
+    leg_types = zeros(Bool, len)
     associates = [(0, 0, 0) for _ in 1:len]
     flipping_weights = zeros(len)
+
+    in_cluster = zeros(Bool, len)
+    cstack = CircularDeque{Int}(len)
 
     first = zeros(Int, length(left_config))
     last = copy(first)
 
-    BinaryThermalState{N,K}(left_config, right_config, copy(left_config),
-                            operator_list,
-                            linked_list, leg_types, associates, flipping_weights,
-                            first, last)
+    BinaryThermalState{N,K,typeof(left_config),typeof(leg_types)}(
+        left_config, right_config, copy(left_config),
+        operator_list,
+        linked_list, leg_types, associates, flipping_weights,
+        in_cluster, cstack,
+        first, last
+    )
 end
 
 function BinaryThermalState(H::Hamiltonian{2,N,O}, cutoff::Int) where {N, K, O <: AbstractOperatorSampler{K}}
