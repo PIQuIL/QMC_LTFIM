@@ -8,6 +8,7 @@ struct LTFIM{N,O} <: AbstractLTFIM{N,O}
     J::Float64
     hx::Float64
     hz::Float64
+    hzb::Float64
     P_normalization::Float64
     Ns::Int
     Nb::Int
@@ -51,13 +52,11 @@ end
 function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, epsilon=0.0) where {D, T}
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     bond_spins = Set(bond_spins)
-    edge_sites = Set{Int}()
     edge_bonds = Set{NTuple{2,Int}}()
 
     if !pbc
         pbc_s = Set(lattice_bond_spins(dims, true)[1])
         edge_bonds = setdiff(pbc_s, bond_spins)
-        edge_sites = Set(flatten(edge_bonds))
     end
 
     ops = Vector{NTuple{3, Int}}()
@@ -71,8 +70,8 @@ function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, ep
         end
     end
 
+    hzb = hz / (2 * D)  # using Nb from the PBC case
     if !(iszero(J) && iszero(hz))
-        hzb = hz / (2 * D)  # using Nb from the PBC case
         #   order:   DD,        DU,       UD,       UU
         p_spins   = [J - 2*hzb, -J,       -J,       J + 2*hzb]
         p_spins_e = [ -2*hzb, 0, 0, 2*hzb]
@@ -109,13 +108,13 @@ function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, ep
 
     end
 
-    return ops, p, Ns, Nb, energy_shift
+    return ops, p, Ns, Nb, energy_shift, hzb
 end
 
 ###############################################################################
 
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
-    ops, p, Ns, Nb, energy_shift = make_prob_vector(dims, J, hx, hz, pbc)
+    ops, p, Ns, Nb, energy_shift, hzb = make_prob_vector(dims, J, hx, hz, pbc)
     op_sampler = OperatorSampler(ops, p)
-    return LTFIM{N, typeof(op_sampler)}(op_sampler, J, hx, hz, sum(p), Ns, Nb, energy_shift)
+    return LTFIM{N, typeof(op_sampler)}(op_sampler, J, hx, hz, hzb, sum(p), Ns, Nb, energy_shift)
 end

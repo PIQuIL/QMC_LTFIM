@@ -34,7 +34,9 @@ end
 @inline isidentity(::TFIM, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
 @inline issiteoperator(::TFIM, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
 @inline isbondoperator(::TFIM, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
+
 @inline getbondsites(::TFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
+@inline getbondtype(::TFIM, s1::Bool, s2::Bool) = 1
 
 @inline makeidentity(::Type{<:TFIM}) = (0, 0, 0)
 @inline makediagonalsiteop(::Type{<:TFIM}, i::Int) = (-1, i, i)
