@@ -21,8 +21,8 @@ mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstat
 mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats)
 
 
-@inline alignment_check(::TFIM{true}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where K = !xor(s1, s2)
-@inline alignment_check(::TFIM{false}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where K = xor(s1, s2)
+# @inline alignment_check(::TFIM{true}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where K = !xor(s1, s2)
+# @inline alignment_check(::TFIM{false}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where K = xor(s1, s2)
 
 
 @inline alignment_check(H::LTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
@@ -59,7 +59,7 @@ end
 # end
 
 
-function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, BV}, H::ArbitraryInteractionTFIM, spin_prop::BV, n::Int) where {K, BV}
+function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, BV}, H::TFIM, spin_prop::BV, n::Int) where {K, BV}
     op = rand(rng, H.op_sampler)
     site1, site2 = getbondsites(H, op)
     @inbounds if issiteoperator(H, op) || xor(!signbit(H.J[site1, site2]), spin_prop[site1], spin_prop[site2])

@@ -58,7 +58,7 @@ function init_mc_cli(parsed_args)
         else
             error("Unsupported number of dimensions")
         end
-        H = TFIM(bond_spin, Dim, Ns, Nb, hx, J)
+        H = TFIM(bond_spin, Ns, Nb, hx, J)
         d = @ntuple Dim nX BC_name J hx hz skip M
     else
         hz = parse(Float64, hz)

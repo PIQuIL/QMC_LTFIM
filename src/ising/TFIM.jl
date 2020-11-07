@@ -1,22 +1,10 @@
 abstract type AbstractIsing{O} <: Hamiltonian{2,O} end
 abstract type AbstractTFIM{O} <: AbstractIsing{O} end
 
-struct TFIM{F,O} <: AbstractTFIM{O}
-    op_sampler::O
-    J::Float64
-    h::Float64
-    P_normalization::Float64
-    Ns::Int
-    Nb::Int
-    bonds::Vector{NTuple{2,Int}}
-    energy_shift::Float64
-end
-
-
-struct ArbitraryInteractionTFIM{O,M <: AbstractMatrix{Float64},V <: AbstractVector{Float64}} <: AbstractTFIM{O}
+struct TFIM{O,M <: AbstractMatrix{Float64},V <: AbstractVector{Float64}} <: AbstractTFIM{O}
     op_sampler::O
     J::M
-    h::V
+    hx::V
     P_normalization::Float64
     Ns::Int
     Nb::Int
@@ -31,10 +19,14 @@ end
 #  (-1,i,i) is a diagonal site operator h
 #  (0,0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
 #  (1,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
-@inline isdiagonal(::AbstractTFIM, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(::AbstractTFIM, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(::AbstractTFIM, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(::AbstractTFIM, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
+@inline isdiagonal(::Type{<:AbstractTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
+@inline isidentity(::Type{<:AbstractTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
+@inline issiteoperator(::Type{<:AbstractTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
+@inline isbondoperator(::Type{<:AbstractTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
+@inline isdiagonal(H::AbstractTFIM, op::NTuple{3,Int}) = isdiagonal(typeof(H), op)
+@inline isidentity(H::AbstractTFIM, op::NTuple{3,Int}) = isidentity(typeof(H), op)
+@inline issiteoperator(H::AbstractTFIM, op::NTuple{3,Int}) = issiteoperator(typeof(H), op)
+@inline isbondoperator(H::AbstractTFIM, op::NTuple{3,Int}) = isbondoperator(typeof(H), op)
 
 @inline getbondsites(::AbstractTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
 @inline getbondtype(::AbstractTFIM, s1::Bool, s2::Bool) = 1
@@ -51,63 +43,64 @@ end
 function make_prob_vector(J::AbstractMatrix{T}, hx::AbstractVector{T}) where T
     ops = Vector{NTuple{3, Int}}(undef, 0)
     p = Vector{T}(undef, 0)
+    energy_shift = zero(T)
 
     k = 0
     for i in eachindex(hx)
         if hx[i] != 0
             push!(ops, makediagonalsiteop(TFIM, i))
             push!(p, hx[i])
+            energy_shift += hx[i]
         end
     end
 
-    # only take J_ij terms from upper diagonal since it's symmetric
+    # only take J_ij terms from upper triangle
     for j in axes(J, 2), i in axes(J, 1)
         if i <= j
             if J[i, j] != 0
                 push!(ops, (1, i, j))
                 push!(p, 2*abs(J[i, j]))
+                energy_shift += abs(J[i, j])
             end
         end
     end
 
-    return ops, p
+    return ops, p, energy_shift
 end
 
-function make_prob_vector(bond_spins::Vector{NTuple{2,Int}}, Ns::Int, J::T, h::T) where T
-    ops = Vector{NTuple{3, Int}}(undef, 0)
-    p = Vector{T}(undef, 0)
-
-    if !iszero(h)
-        for i in 1:Ns
-            push!(ops, makediagonalsiteop(TFIM, i))
-            push!(p, h)
-        end
+function make_uniform_tfim(bond_spins::Vector{NTuple{2,Int}}, Ns::Int, J::T, hx::T) where T
+    hx_ = hx * ones(T, Ns)
+    J_ = zeros(T, Ns, Ns)
+    for (i, j) in bond_spins
+        i, j = (i <= j) ? (i, j) : (j, i)
+        J_[i, j] = J
     end
 
-    if !iszero(J)
-        for op in bond_spins
-            site1, site2 = op
-            site1, site2 = (site1 <= site2) ? (site1, site2) : (site2, site1)
-            push!(ops, (1, site1, site2))
-            push!(p, 2*abs(J))
-        end
-    end
-
-    return ops, p
+    return J_, hx_
 end
 
 ###############################################################################
 
-function TFIM(bond_spin, Ns::Int, Nb::Int, h::Float64, J::Float64)
-    ops, p = make_prob_vector(bond_spin, Ns, J, h)
+function TFIM(J::AbstractMatrix{Float64}, hx::AbstractVector{Float64})
+    @assert length(hx) == size(J, 1) == size(J, 2)
+
+    ops, p, energy_shift = make_prob_vector(J, hx)
+    Ns = length(hx)
+    Nb = count(op -> isbondoperator(TFIM, op), ops)
     op_sampler = OperatorSampler(ops, p)
-    energy_shift = h*Ns + abs(J)*Nb
-    F = !signbit(J)  # true if J > 0 (ferromagnetic)
-    return TFIM{F, typeof(op_sampler)}(op_sampler, J, h, sum(p), Ns, Nb, bond_spin, energy_shift)
+
+    return TFIM{typeof(op_sampler), typeof(J), typeof(hx)}(
+        op_sampler, J, hx, sum(p), Ns, Nb, energy_shift
+    )
 end
 
-total_hx(H::TFIM) = H.h * nspins(H)
-total_hx(H::ArbitraryInteractionTFIM) = sum(H.h)
+
+function TFIM(bond_spin, Ns::Int, Nb::Int, hx::Float64, J::Float64)
+    J_, hx_ = make_uniform_tfim(bond_spin, Ns, J, hx)
+    return TFIM(J_, hx_)
+end
+
+total_hx(H::TFIM) = sum(H.hx)
 
 function energy(::BinaryGroundState, H::AbstractIsing, ns::Vector{<:Real})
     hx = total_hx(H)
@@ -119,19 +112,4 @@ function energy(::BinaryGroundState, H::AbstractIsing, ns::Vector{<:Real})
     end
 
     return H.energy_shift + E
-end
-
-function ArbitraryInteractionTFIM(J::AbstractMatrix{Float64}, h::AbstractVector{Float64})
-    @assert length(h) == size(J, 1) == size(J, 2)
-
-    ops, p = make_prob_vector(J, h)
-    Ns = length(h)
-    Nb = count(isbondoperator, ops)
-    op_sampler = HierarchicalOperatorSampler(ops, p)
-
-    energy_shift = sum(h) + sum(abs, J)
-
-    return ArbitraryInteractionTFIM{typeof(op_sampler), typeof(J), typeof(h)}(
-        op_sampler, J, h, sum(p), Ns, Nb, energy_shift
-    )
 end

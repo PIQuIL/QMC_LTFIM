@@ -2,13 +2,12 @@ using Base.Iterators
 
 
 abstract type AbstractLTFIM{O} <: AbstractIsing{O} end
-
+# ,M <: AbstractMatrix{Float64},V <: AbstractVector{Float64}
 struct LTFIM{O} <: AbstractLTFIM{O}
     op_sampler::O
     J::Float64
     hx::Float64
     hz::Float64
-    hzb::Float64
     P_normalization::Float64
     Ns::Int
     Nb::Int
@@ -29,10 +28,15 @@ end
 #    t = 4 -> 11 -> up-up
 #    spin_config(t) = divrem(t - 1, 2)
 #
-@inline isdiagonal(::AbstractLTFIM, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(::AbstractLTFIM, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(::AbstractLTFIM, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(::AbstractLTFIM, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
+@inline isdiagonal(::Type{<:AbstractLTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
+@inline isidentity(::Type{<:AbstractLTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
+@inline issiteoperator(::Type{<:AbstractLTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
+@inline isbondoperator(::Type{<:AbstractLTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
+@inline isdiagonal(H::AbstractLTFIM, op::NTuple{3,Int}) = isdiagonal(typeof(H), op)
+@inline isidentity(H::AbstractLTFIM, op::NTuple{3,Int}) = isidentity(typeof(H), op)
+@inline issiteoperator(H::AbstractLTFIM, op::NTuple{3,Int}) = issiteoperator(typeof(H), op)
+@inline isbondoperator(H::AbstractLTFIM, op::NTuple{3,Int}) = isbondoperator(typeof(H), op)
+
 
 @inline getbondsites(::AbstractLTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
 @inline getbondtype(::AbstractLTFIM, s1::Bool, s2::Bool) = (s1<<1 | s2) + 1
@@ -116,7 +120,7 @@ end
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     ops, p, Ns, Nb, energy_shift, hzb = make_prob_vector(dims, J, hx, hz, pbc)
     op_sampler = OperatorSampler(ops, p)
-    return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, hzb, sum(p), Ns, Nb, energy_shift)
+    return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, sum(p), Ns, Nb, energy_shift)
 end
 
 total_hx(H::LTFIM) = H.hx * nspins(H)
