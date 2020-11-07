@@ -116,7 +116,7 @@ struct ProbabilityHeap{T} <: AbstractProbabilityVector{T}
         end
 
         L = length(p)
-        d = 2 ^ ceil(Int, log2(L))
+        d = nextpow(2, L)
 
         heap = zeros(T, 2*d)
         @inbounds @views heap[d : d + L - 1] = p
@@ -135,7 +135,7 @@ normalization(pvec::ProbabilityHeap) = @inbounds pvec.prob_heap[1]
 function show(io::IO, p::ProbabilityHeap{T}) where T
     heap, L = p.prob_heap, p.length
 
-    d = 2 ^ ceil(Int, log2(L))
+    d = nextpow(2, L)
 
     pvec = heap[d : d + L - 1]
     r = repr(pvec; context=IOContext(io, :limit=>true))
@@ -307,14 +307,5 @@ end
 
 ###############################################################################
 
-
-const CUTOFF = 50
-
-function probability_vector(p::Vector{T})::AbstractProbabilityVector{T} where T
-    # if length(p) < CUTOFF
-    #     return ProbabilityVector(p)
-    # else
-    #     return ProbabilityHeap(p)
-    # end
-    return ProbabilityAlias(p)
-end
+# Get the "recommended" probability vector type
+probability_vector(p::Vector{T}) where T = ProbabilityAlias(p)

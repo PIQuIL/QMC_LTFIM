@@ -8,8 +8,9 @@ function sample(H::AbstractIsing, qmc_state::BinaryQMCState)
     M = length(operator_list) ÷ 2
     spin_prop = copy(qmc_state.left_config)
 
-    @inbounds for op in operator_list[1:M] #propagate half the list only (to the middle)
-        if issiteoperator(H, op) && !isdiagonal(H, op)
+    @inbounds for i in 1:M #propagate half the list only (to the middle)
+        op = operator_list[i]
+        if !isdiagonal(H, op)
             spin_prop[op[2]] ⊻= 1 #spinflip
         end
     end
@@ -24,7 +25,7 @@ function simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState, r::Ordinal
     c = 1
 
     @inbounds for (n, op) in enumerate(operator_list)
-        if issiteoperator(H, op) && !isdiagonal(H, op)
+        if !isdiagonal(H, op)
             spin_prop[op[2]] ⊻= 1 #spinflip
         end
         if n in r

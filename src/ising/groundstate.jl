@@ -21,17 +21,16 @@ mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstat
 mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats)
 
 
-# @inline alignment_check(::TFIM{true}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where K = !xor(s1, s2)
-# @inline alignment_check(::TFIM{false}, ::NTuple{K, Int}, s1::Bool, s2::Bool) where K = xor(s1, s2)
+Base.@propagate_inbounds alignment_check(H::AbstractTFIM, (_, site1, site2)::NTuple{3, Int}, s1::Bool, s2::Bool) =
+    xor(signbit(H.J[site1, site2]), s1, s2)
 
-
-@inline alignment_check(H::LTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
+Base.@propagate_inbounds alignment_check(H::AbstractLTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
     (op[1] == getbondtype(H, s1, s2))
 
 
 # insert_diagonal_operator! returns true if operator insertion succeeded
 # returns true if operator insertion succeeded
-function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, BV}, H::AbstractIsing, spin_prop::BV, n::Int) where {K, BV}
+function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, V}, H::AbstractIsing, spin_prop::V, n::Int) where {K, V}
     op = rand(rng, H.op_sampler)
     site1, site2 = getbondsites(H, op)
     @inbounds if issiteoperator(H, op) || alignment_check(H, op, spin_prop[site1], spin_prop[site2])
@@ -58,17 +57,6 @@ end
 #     return false
 # end
 
-
-function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, BV}, H::TFIM, spin_prop::BV, n::Int) where {K, BV}
-    op = rand(rng, H.op_sampler)
-    site1, site2 = getbondsites(H, op)
-    @inbounds if issiteoperator(H, op) || xor(!signbit(H.J[site1, site2]), spin_prop[site1], spin_prop[site2])
-        qmc_state.operator_list[n] = op
-        return true
-    else
-        return false
-    end
-end
 insert_diagonal_operator!(qmc_state, H, spin_prop, n) = insert_diagonal_operator!(Random.GLOBAL_RNG, qmc_state, H, spin_prop, n)
 
 #############################################################################
@@ -77,8 +65,7 @@ function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Abs
     spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
     if runstats isa Val{true}
-        failures = zeros(Int, length(qmc_state.operator_list))
-        l = 0
+        failures = PushVector{Int}()
     end
 
     for (n, op) in enumerate(qmc_state.operator_list)
@@ -91,10 +78,7 @@ function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Abs
                 success = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
                 if runstats isa Val{true}; i += 1; end
             end
-            if runstats isa Val{true}
-                l += 1
-                failures[n] = i
-            end
+            if runstats isa Val{true}; push!(failures, i); end
         end
     end
 
@@ -103,7 +87,7 @@ function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Abs
            spin_prop,
            qmc_state.right_config)
     if runstats isa Val{true}
-        return iszero(l) ? l : (sum(failures) / l)
+        return mean(failures)
     end
 end
 diagonal_update!(qmc_state, H, runstats=Val{false}()) = diagonal_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
@@ -261,8 +245,8 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
     if runstats isa Val{true}
         ccount = 0  # cluster number counter
-        cluster_sizes = Vector{Int}()
-        acceptance = Vector{Float64}()
+        cluster_sizes = PushVector{Int}()
+        acceptance = PushVector{Float64}()
     end
 
     @inbounds for i in 1:lsize
@@ -398,7 +382,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
     if runstats isa Val{true}
         ccount = 0  # cluster number counter
-        cluster_sizes = Vector{Int}()
+        cluster_sizes = PushVector{Int}()
     end
 
     @inbounds for i in 1:lsize

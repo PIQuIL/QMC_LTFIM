@@ -1,7 +1,7 @@
 abstract type AbstractIsing{O} <: Hamiltonian{2,O} end
 abstract type AbstractTFIM{O} <: AbstractIsing{O} end
 
-struct TFIM{O,M <: AbstractMatrix{Float64},V <: AbstractVector{Float64}} <: AbstractTFIM{O}
+struct TFIM{O,M <: UpperTriangular{Float64},V <: AbstractVector{Float64}} <: AbstractTFIM{O}
     op_sampler::O
     J::M
     hx::V
@@ -40,14 +40,15 @@ end
 
 ###############################################################################
 
-function make_prob_vector(J::AbstractMatrix{T}, hx::AbstractVector{T}) where T
+function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}) where T
+    @assert length(hx) == size(J, 1) == size(J, 2)
+
     ops = Vector{NTuple{3, Int}}(undef, 0)
     p = Vector{T}(undef, 0)
     energy_shift = zero(T)
 
-    k = 0
     for i in eachindex(hx)
-        if hx[i] != 0
+        if !iszero(hx[i])
             push!(ops, makediagonalsiteop(TFIM, i))
             push!(p, hx[i])
             energy_shift += hx[i]
@@ -73,20 +74,20 @@ function make_uniform_tfim(bond_spins::Vector{NTuple{2,Int}}, Ns::Int, J::T, hx:
     J_ = zeros(T, Ns, Ns)
     for (i, j) in bond_spins
         i, j = (i <= j) ? (i, j) : (j, i)
-        J_[i, j] = J
+        J_[i, j] = -J
     end
 
-    return J_, hx_
+    return UpperTriangular(J_), hx_
 end
 
 ###############################################################################
 
-function TFIM(J::AbstractMatrix{Float64}, hx::AbstractVector{Float64})
+function TFIM(J::UpperTriangular{Float64}, hx::AbstractVector{Float64})
     @assert length(hx) == size(J, 1) == size(J, 2)
 
     ops, p, energy_shift = make_prob_vector(J, hx)
     Ns = length(hx)
-    Nb = count(op -> isbondoperator(TFIM, op), ops)
+    Nb = count(!iszero, UpperTriangular(J))
     op_sampler = OperatorSampler(ops, p)
 
     return TFIM{typeof(op_sampler), typeof(J), typeof(hx)}(

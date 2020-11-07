@@ -14,10 +14,11 @@ using PushVectors
 import PushVectors: PushVector
 using DataStructures
 using SparseArrays
+using LinearAlgebra
 
 using Random
 
-import Base: zero
+import Base: zero, one
 import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex, rand, show, pop!
 
 
