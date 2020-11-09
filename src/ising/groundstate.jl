@@ -208,8 +208,8 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Ab
                     end
                 else
                     lw1 = @inbounds getlogweight(H.op_sampler, op)
-                    new_t = getbondtype(H, !s1, !s2)
-                    lw2 = @inbounds getlogweight(H.op_sampler, (new_t, site1, site2))
+                    flip_t = getbondtype(H, !s1, !s2)
+                    lw2 = @inbounds getlogweight(H.op_sampler, (flip_t, site1, site2))
                     flipping_weights[idx] = lw2 - lw1
                     @simd for l in 1:3
                         flipping_weights[idx + l] = 0.0

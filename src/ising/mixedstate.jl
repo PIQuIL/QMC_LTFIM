@@ -2,7 +2,7 @@
 ########################## finite-beta #######################################
 
 function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
-    num_ops = diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
+    num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
 
     lsize = link_list_update_beta!(rng, qmc_state, H)
 
@@ -34,7 +34,7 @@ function resize_op_list!(qmc_state::BinaryThermalState{K}, H::AbstractIsing, new
 end
 
 
-function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
+function full_diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
     P_norm = beta * diag_update_normalization(H)
 
     num_ids = count(op -> isidentity(H, op), qmc_state.operator_list)
@@ -73,7 +73,7 @@ function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, 
 
     return num_ops
 end
-diagonal_update_beta!(qmc_state, H, beta; eq = false) = diagonal_update_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
+full_diagonal_update_beta!(qmc_state, H, beta; eq = false) = full_diagonal_update_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
 
 #############################################################################
 
