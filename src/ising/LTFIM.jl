@@ -2,18 +2,27 @@ using Base.Iterators
 
 
 abstract type AbstractLTFIM{O} <: AbstractIsing{O} end
-# ,M <: AbstractMatrix{Float64},V <: AbstractVector{Float64}
-struct LTFIM{O} <: AbstractLTFIM{O}
+
+struct GeneralLTFIM{O,M <: UpperTriangular{Float64},V <: AbstractVector{Float64}} <: AbstractLTFIM{O}
     op_sampler::O
-    J::Float64
-    hx::Float64
+    J::M
+    hx::V
     hz::Float64
-    P_normalization::Float64
     Ns::Int
     Nb::Int
     energy_shift::Float64
 end
 
+
+struct LTFIM{O} <: AbstractLTFIM{O}
+    op_sampler::O
+    J::Float64
+    hx::Float64
+    hz::Float64
+    Ns::Int
+    Nb::Int
+    energy_shift::Float64
+end
 ###############################################################################
 
 # LTFIM ops:
@@ -53,7 +62,110 @@ end
 
 ###############################################################################
 
-function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, epsilon=0.0) where {D, T}
+function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; epsilon=0.0) where T
+    @assert length(hx) == size(J, 1) == size(J, 2)
+
+    ops = Vector{NTuple{3, Int}}()
+    p = Vector{T}()
+    energy_shift = zero(T)
+
+    for i in eachindex(hx)
+        if !iszero(hx[i])
+            push!(ops, makediagonalsiteop(LTFIM, i))
+            push!(p, hx[i])
+            energy_shift += hx[i]
+        end
+    end
+
+    Ns = length(hx)
+    bond_spins = Set{NTuple{2,Int}}()
+    nbonds_per_site = Dict{Int,Int}(i => 0 for i in 1:Ns)
+    for j in axes(J, 2), i in axes(J, 1)
+        if !iszero(J[i, j])
+            site1, site2 = (i <= j) ? (i, j) : (j, i)
+            push!(bond_spins, (site1, site2))
+            nbonds_per_site[i] += 1
+            nbonds_per_site[j] += 1
+        end
+    end
+    Nb = length(bond_spins)
+
+    fictitious_bonds = Set{NTuple{2,Int}}()
+    if !iszero(hz)
+        max_nbonds = maximum(values(nbonds_per_site))
+        underfull = sort(
+            filter(pair -> pair[2] < max_nbonds, nbonds_per_site),
+            byvalue = true,
+            order = Base.Order.Reverse
+        )
+        while !isempty(underfull)
+            k = collect(keys(underfull))
+            i = k[1]
+
+            l = 2
+            j = k[l]
+            while true
+                j = k[l]
+                i, j = (i < j) ? (i, j) : (j, i)
+                if !((i, j) in fictitious_bonds)
+                    break
+                end
+                l += 1
+            end
+
+            push!(fictitious_bonds, (i, j))
+            nbonds_per_site[i] += 1
+            nbonds_per_site[j] += 1
+
+            underfull = sort(
+                filter(pair -> pair[2] < max_nbonds, nbonds_per_site),
+                byvalue = true,
+                order = Base.Order.Reverse
+            )
+        end
+    end
+
+    hzb = (hz * Ns) / (2 * (length(bond_spins) + length(fictitious_bonds)))
+    for (site1, site2) in bond_spins
+        # by this point we can assume site1 <= site2
+        J_ = -J[site1, site2]
+        #   order:   DD,          DU,  UD, UU
+        p_spins   = [J_ - 2*hzb, -J_, -J_, J_ + 2*hzb]
+        C   = abs(min(0, minimum(p_spins))) + epsilon
+        p_spins .+= C
+
+        for (t, p_t) in enumerate(p_spins)
+            if !iszero(p_t)
+                push!(ops, (t, site1, site2))
+                push!(p, p_t)
+            end
+        end
+
+        energy_shift += C
+    end
+
+    if !iszero(hz)
+        for (site1, site2) in fictitious_bonds
+            #   order:   DD,      DU,  UD, UU
+            p_spins_e = [-2*hzb, 0.0, 0.0, 2*hzb]
+            C_e = abs(min(0, minimum(p_spins_e))) + epsilon
+            p_spins_e .+= C_e
+
+            for (t, p_t) in enumerate(p_spins_e)
+                if !iszero(p_t)
+                    push!(ops, (t, site1, site2))
+                    push!(p, p_t)
+                end
+            end
+
+            energy_shift += C_e
+        end
+    end
+
+    return ops, p, energy_shift, Nb
+end
+
+function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true; epsilon=0.0) where {D, T}
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     bond_spins = Set(bond_spins)
     edge_bonds = Set{NTuple{2,Int}}()
@@ -90,7 +202,6 @@ function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, ep
             for (site1, site2) in bond_spins
                 p_t = p_spins[t]
                 energy_shift += C/4
-
                 site1, site2 = (site1 <= site2) ? (site1, site2) : (site2, site1)
                 if !iszero(p_t)
                     push!(ops, (t, site1, site2))
@@ -101,7 +212,6 @@ function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, ep
             for (site1, site2) in edge_bonds
                 p_t = p_spins_e[t]
                 energy_shift += C_e/4
-
                 site1, site2 = (site1 <= site2) ? (site1, site2) : (site2, site1)
                 if !iszero(p_t)
                     push!(ops, (t, site1, site2))
@@ -109,18 +219,26 @@ function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true, ep
                 end
             end
         end
-
     end
-
-    return ops, p, Ns, Nb, energy_shift, hzb
+    return ops, p, Ns, Nb, energy_shift
 end
+
 
 ###############################################################################
 
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
-    ops, p, Ns, Nb, energy_shift, hzb = make_prob_vector(dims, J, hx, hz, pbc)
+    ops, p, Ns, Nb, energy_shift = make_prob_vector(dims, J, hx, hz, pbc)
     op_sampler = OperatorSampler(ops, p)
-    return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, sum(p), Ns, Nb, energy_shift)
+    return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)
 end
 
-total_hx(H::LTFIM) = H.hx * nspins(H)
+function GeneralLTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
+    bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
+    J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
+    ops, p, energy_shift, _ = make_prob_vector(J_, hx_, hz)
+    op_sampler = OperatorSampler(ops, p)
+    return GeneralLTFIM{typeof(op_sampler),typeof(J_),typeof(hx_)}(op_sampler, J_, hx_, hz, Ns, Nb, energy_shift)
+end
+
+total_hx(H::GeneralLTFIM)::Float64 = sum(H.hx)
+total_hx(H::LTFIM)::Float64 = H.hx * nspins(H)

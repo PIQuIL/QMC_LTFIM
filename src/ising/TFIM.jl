@@ -1,11 +1,22 @@
 abstract type AbstractIsing{O} <: Hamiltonian{2,O} end
 abstract type AbstractTFIM{O} <: AbstractIsing{O} end
 
+# H = -J ∑_{⟨ij⟩} σ_i σ_j - h ∑_i σ^x_i
+struct NearestNeighbourTFIM{O} <: AbstractTFIM{O}
+    op_sampler::O
+    J::Float64
+    hx::Float64
+    Ns::Int
+    Nb::Int
+    energy_shift::Float64
+end
+
+
+# H = ∑_{ij} J_ij σ_i σ_j - ∑_i h_i σ^x_i
 struct TFIM{O,M <: UpperTriangular{Float64},V <: AbstractVector{Float64}} <: AbstractTFIM{O}
     op_sampler::O
     J::M
     hx::V
-    P_normalization::Float64
     Ns::Int
     Nb::Int
     energy_shift::Float64
@@ -91,7 +102,7 @@ function TFIM(J::UpperTriangular{Float64}, hx::AbstractVector{Float64})
     op_sampler = OperatorSampler(ops, p)
 
     return TFIM{typeof(op_sampler), typeof(J), typeof(hx)}(
-        op_sampler, J, hx, sum(p), Ns, Nb, energy_shift
+        op_sampler, J, hx, Ns, Nb, energy_shift
     )
 end
 
@@ -101,7 +112,23 @@ function TFIM(bond_spin, Ns::Int, Nb::Int, hx::Float64, J::Float64)
     return TFIM(J_, hx_)
 end
 
-total_hx(H::TFIM) = sum(H.hx)
+abstract type HXField; end
+struct ConstantHX; end
+struct VaryingHX; end
+
+hxfield(::AbstractIsing) = VaryingHX()
+hxfield(::NearestNeighbourTFIM) = ConstantHX()
+
+total_hx(::ConstantHX, H::AbstractIsing) = nspins(H) * H.hx
+total_hx(::VaryingHX, H::AbstractIsing) = sum(H.hx)
+total_hx(H::AbstractIsing) = total_hx(hxfield(H), H)
+
+Base.@propagate_inbounds isferromagnetic(H::TFIM, (site1, site2)::NTuple{2, Int}) = signbit(H.J[site1, site2])
+
+
+
+###############################################################################
+
 
 function energy(::BinaryGroundState, H::AbstractIsing, ns::Vector{<:Real})
     hx = total_hx(H)

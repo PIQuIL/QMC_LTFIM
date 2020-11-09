@@ -40,7 +40,7 @@ function conv_op_to_idx(op::NTuple{K, Int}, strides::NTuple{K, Int}, shifts::NTu
     return idx + 1
 end
 
-function OperatorSampler(operators::Vector{NTuple{K, Int}}, p::Vector{T}) where {K, T <: Real}
+function OperatorSampler(operators::Vector{NTuple{K, Int}}, p::Vector{T}) where {K, T <: AbstractFloat}
     @assert length(operators) == length(p) "Given vectors must have the same length!"
     pvec = probability_vector(p)
 
@@ -50,16 +50,24 @@ function OperatorSampler(operators::Vector{NTuple{K, Int}}, p::Vector{T}) where 
 
     l = conv_op_to_idx(tuple([max for (_, max) in axs]...), strides, shifts)
 
-    op_log_weights = zeros(T, l)
+    op_log_weights = log.(zeros(T, l))
     for (i, op) in enumerate(operators)
         idx = conv_op_to_idx(op, strides, shifts)
         op_log_weights[idx] = getlogweight(pvec, i)
     end
     return OperatorSampler{K, T, typeof(pvec)}(operators, pvec, op_log_weights, strides, shifts)
 end
-rand(rng::AbstractRNG, os::OperatorSampler{K}) where K = @inbounds os.operators[rand(rng, os.pvec)]
+
+@inline rand(rng::AbstractRNG, os::OperatorSampler{K}) where K = @inbounds os.operators[rand(rng, os.pvec)]
+
+function rand_with_logweight(rng::AbstractRNG, os::OperatorSampler{K}) where K
+    i = rand(rng, os.pvec)
+    return @inbounds (os.operators[i], os.op_log_weights[i])
+end
+
 @inline length(os::OperatorSampler) = length(os.operators)
 
 ##############################################################################
 
 include("hierarchical_op_sampler.jl")
+include("improved_op_sampler.jl")

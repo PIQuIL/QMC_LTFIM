@@ -1,18 +1,17 @@
 function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}())
     if runstats isa Val{true}
         diag_update_fails = diagonal_update!(rng, qmc_state, H, runstats)
-    else
-        diagonal_update!(rng, qmc_state, H)
-    end
+        lsize = link_list_update!(rng, qmc_state, H, runstats)
 
-    lsize = link_list_update!(qmc_state, H)
+        f(lsize, qmc_state, H)
 
-    f(lsize, qmc_state, H)
-
-    if runstats isa Val{true}
         cluster_update_accept, num_clusters, cluster_sizes = cluster_update!(rng, lsize, qmc_state, H, runstats)
         return diag_update_fails, cluster_update_accept, num_clusters, cluster_sizes
     else
+        diagonal_update!(rng, qmc_state, H)
+        lsize = link_list_update!(rng, qmc_state, H)
+
+        f(lsize, qmc_state, H)
         cluster_update!(rng, lsize, qmc_state, H)
     end
 end
@@ -21,8 +20,8 @@ mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstat
 mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats)
 
 
-Base.@propagate_inbounds alignment_check(H::AbstractTFIM, (_, site1, site2)::NTuple{3, Int}, s1::Bool, s2::Bool) =
-    xor(signbit(H.J[site1, site2]), s1, s2)
+Base.@propagate_inbounds alignment_check(H::AbstractTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
+    xor(isferromagnetic(H, getbondsites(H, op)), s1, s2)
 
 Base.@propagate_inbounds alignment_check(H::AbstractLTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
     (op[1] == getbondtype(H, s1, s2))
@@ -39,6 +38,29 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K
     else
         return false
     end
+end
+
+function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, V}, H::AbstractLTFIM{<:ImprovedOperatorSampler}, spin_prop::V, n::Int) where {K, V}
+    op, lw1 = rand_with_logweight(rng, H.op_sampler)
+
+    @inbounds if issiteoperator(H, op)
+        qmc_state.operator_list[n] = op
+        return true
+    elseif isbondoperator(H, op)
+        site1, site2 = getbondsites(H, op)
+        s1, s2 = spin_prop[site1], spin_prop[site2]
+        real_t = getbondtype(H, s1, s2)
+        op2 = (real_t, site1, site2)
+        lw2 = getlogweight(H.op_sampler, op2)
+
+        if rand(rng) < exp(lw2 - lw1)
+            qmc_state.operator_list[n] = op2
+            return true
+        else
+            return false
+        end
+    end
+    return false
 end
 
 # function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::TFIM{N}, spin_prop::BitArray{N}, n::Int) where N
@@ -95,14 +117,9 @@ diagonal_update!(qmc_state, H, runstats=Val{false}()) = diagonal_update!(Random.
 
 #############################################################################
 
-function link_list_update!(qmc_state::BinaryGroundState, H::AbstractIsing)
+function link_list_update!(::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats=Val{false}())
     Ns = nspins(H)
     spin_left = qmc_state.left_config
-
-    len = 2 * Ns
-    @simd for op in qmc_state.operator_list
-        len += ifelse(issiteoperator(H, op), 2, 4)
-    end
 
     # retrieve linked list data structures
     LinkList = qmc_state.linked_list  # needed for cluster update
@@ -127,7 +144,11 @@ function link_list_update!(qmc_state::BinaryGroundState, H::AbstractIsing)
     idx = Ns
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
-    @inbounds for op in qmc_state.operator_list
+    @inbounds for (n, op) in enumerate(qmc_state.operator_list)
+        # TODO: we can actually just do the diagonal update here
+        #    since we'll get the log weight at the same time we'll also save
+        #    on one lookup op during the link list creation
+
         if issiteoperator(H, op)
             site = op[2]
             # lower or left leg
@@ -143,7 +164,7 @@ function link_list_update!(qmc_state::BinaryGroundState, H::AbstractIsing)
             LinkList[First[site]] = current_link  # completes backwards link
             First[site] = current_link + 1
             Associates[idx] = (0, 0, 0)
-            if H isa LTFIM
+            if H isa AbstractLTFIM
                 flipping_weights[idx] = 0.0
             end
 
@@ -151,7 +172,7 @@ function link_list_update!(qmc_state::BinaryGroundState, H::AbstractIsing)
             idx += 1
             LegType[idx] = spin_prop[site]
             Associates[idx] = (0, 0, 0)
-            if H isa LTFIM
+            if H isa AbstractLTFIM
                 flipping_weights[idx] = 0.0
             end
         else  # diagonal bond operator
@@ -168,7 +189,7 @@ function link_list_update!(qmc_state::BinaryGroundState, H::AbstractIsing)
             vertex1 = current_link
             Associates[idx] = (vertex1 + 1, vertex1 + 2, vertex1 + 3)
 
-            if H isa LTFIM
+            if H isa AbstractLTFIM
                 s1, s2 = spin_prop[site1], spin_prop[site2]
                 if xor(s1, s2)
                     # no weight change if spins are anti-parallel
@@ -225,8 +246,9 @@ function link_list_update!(qmc_state::BinaryGroundState, H::AbstractIsing)
            spin_prop,
            qmc_state.right_config)
 
-    return len
+    return idx
 end
+link_list_update!(qmc_state, H, runstats=Val{false}()) = link_list_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
 
 #############################################################################
 
@@ -289,7 +311,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
             # in the TFIM case, acceptance rate is exactly 1
             #   so we set it to 1/2 to ensure ergodicity
-            if H isa LTFIM
+            if H isa AbstractLTFIM
                 A = iszero(H.hz) ? 0.5 : exp(min(lnA, zero(lnA)))
                 flip = rand(rng) < A
             else
