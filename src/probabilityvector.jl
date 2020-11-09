@@ -262,7 +262,7 @@ end
 
 ProbabilityAlias(p::Vector{T}) where T = ProbabilityAlias{T}(p)
 @inline length(pvec::ProbabilityAlias) = pvec.length
-normalization(::ProbabilityAlias{T}) where T = one(T)
+@inline normalization(pvec::ProbabilityAlias) = pvec.normalization
 
 function show(io::IO, p::ProbabilityAlias{T}) where T
     r = repr(p.probabilities; context=IOContext(io, :limit=>true))

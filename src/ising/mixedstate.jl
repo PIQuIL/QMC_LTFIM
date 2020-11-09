@@ -4,7 +4,7 @@
 function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
     num_ops = diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
 
-    lsize = link_list_update_beta!(qmc_state, H)
+    lsize = link_list_update_beta!(rng, qmc_state, H)
 
     f(lsize, qmc_state, H)
 
@@ -35,7 +35,7 @@ end
 
 
 function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
-    P_norm = beta * H.P_normalization
+    P_norm = beta * diag_update_normalization(H)
 
     num_ids = count(op -> isidentity(H, op), qmc_state.operator_list)
     P_remove = (num_ids + 1) / P_norm
@@ -85,18 +85,9 @@ diagonal_update_beta!(qmc_state, H, beta; eq = false) = diagonal_update_beta!(Ra
 
 #############################################################################
 
-function link_list_update_beta!(qmc_state::BinaryThermalState, H::AbstractIsing)
+function link_list_update_beta!(::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing)
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
-
-    len = 0
-    @simd for op in qmc_state.operator_list
-        if issiteoperator(H, op)
-            len += 2
-        elseif isbondoperator(H, op)
-            len += 4
-        end
-    end
 
     # initialize linked list data structures
     LinkList = qmc_state.linked_list  # needed for cluster update
@@ -222,7 +213,7 @@ function link_list_update_beta!(qmc_state::BinaryThermalState, H::AbstractIsing)
     # DEBUG
     # if spin_prop != spin_right
     #     @debug "Basis state propagation error: LINKED LIST"
-    # end
-
-    return len
+    # end\
+    return idx
 end
+link_list_update_beta!(qmc_state, H) = link_list_update_beta!(Random.GLOBAL_RNG, qmc_state, H)

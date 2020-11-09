@@ -2,15 +2,10 @@
 abstract type AbstractOperatorSampler{K, T, P <: AbstractProbabilityVector{T}} end
 firstindex(::AbstractOperatorSampler) = 1
 lastindex(os::AbstractOperatorSampler) = length(os)
-
+@inline normalization(os::AbstractOperatorSampler) = normalization(os.pvec)
 
 function getlogweight(os::AbstractOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
     return @inbounds os.op_log_weights[conv_op_to_idx(op, os.strides, os.shifts)]
-    # if iszero(idx)
-    #     return zero(T)
-    # else
-    #     return getlogweight(os.pvec, idx)
-    # end
 end
 
 
@@ -123,18 +118,11 @@ function rand(rng::AbstractRNG, os::HierarchicalOperatorSampler{K})::NTuple{K, I
     return @inbounds ops_list[l]
 end
 
-for fn in [:getweight, :getlogweight]
-    if fn == :getweight
-        body = :($fn(os.pvec, idx) / length(os.operator_bins[idx]))
+function getlogweight(os::HierarchicalOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
+    idx = get(os.op_indices, op, 0)
+    if iszero(idx)
+        return zero(T)
     else
-        body = :($fn(os.pvec, idx) - log(length(os.operator_bins[idx])))
-    end
-    @eval function $fn(os::HierarchicalOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
-        idx = get(os.op_indices, op, 0)
-        if iszero(idx)
-            return zero(T)
-        else
-            return $body
-        end
+        return getlogweight(os.pvec, idx) - log(length(os.operator_bins[idx]))
     end
 end

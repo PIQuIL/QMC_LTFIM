@@ -10,6 +10,7 @@ one(H::Hamiltonian) = ones(Int, nspins(H))
 nspins(H::Hamiltonian) = H.Ns
 nbonds(H::Hamiltonian) = H.Nb
 
+@inline diag_update_normalization(H::Hamiltonian) = normalization(H.op_sampler)
 
 function energy(::BinaryThermalState, H::Hamiltonian, β::Float64, ns::Vector{T}) where {T <: Real}
     E = -mean_and_stderr(ns) / β
