@@ -11,6 +11,8 @@ size(pvec::AbstractProbabilityVector) = (length(pvec),)
 ###############################################################################
 
 include("alias.jl")
+
+# Alias is the recommended method due to its speed so consider these two unmaintained:
 include("heap.jl")
 include("vector.jl")
 
