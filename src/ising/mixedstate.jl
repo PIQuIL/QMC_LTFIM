@@ -38,8 +38,6 @@ function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, 
     P_norm = beta * diag_update_normalization(H)
 
     num_ids = count(op -> isidentity(H, op), qmc_state.operator_list)
-    P_remove = (num_ids + 1) / P_norm
-    P_accept = P_norm / num_ids
 
     spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
@@ -47,21 +45,15 @@ function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, 
         if !isdiagonal(H, op)
             spin_prop[op[2]] ⊻= 1  # spinflip
         elseif !isidentity(H, op)
-            if rand(rng) < P_remove
+            if rand(rng)*P_norm < (num_ids + 1)
                 qmc_state.operator_list[n] = makeidentity(H)
                 num_ids += 1
-                P_remove = (num_ids + 1) / P_norm
-                P_accept = P_norm / num_ids
             end
         else
-            if rand(rng) < P_accept
+            if rand(rng)*num_ids < P_norm
                 success = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
-
                 if success
-                    # save one operation lol
-                    P_remove = num_ids / P_norm
                     num_ids -= 1
-                    P_accept = P_norm / num_ids
                 end
             end
         end
