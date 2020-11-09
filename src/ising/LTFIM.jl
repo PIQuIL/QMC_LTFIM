@@ -228,7 +228,7 @@ end
 
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     ops, p, Ns, Nb, energy_shift = make_prob_vector(dims, J, hx, hz, pbc)
-    op_sampler = OperatorSampler(ops, p)
+    op_sampler = ImprovedOperatorSampler(ops, p)
     return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)
 end
 
@@ -236,7 +236,7 @@ function GeneralLTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
     ops, p, energy_shift, _ = make_prob_vector(J_, hx_, hz)
-    op_sampler = OperatorSampler(ops, p)
+    op_sampler = ImprovedOperatorSampler(ops, p)
     return GeneralLTFIM{typeof(op_sampler),typeof(J_),typeof(hx_)}(op_sampler, J_, hx_, hz, Ns, Nb, energy_shift)
 end
 

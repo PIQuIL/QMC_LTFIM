@@ -41,7 +41,7 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K
 end
 
 function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, V}, H::AbstractLTFIM{<:ImprovedOperatorSampler}, spin_prop::V, n::Int) where {K, V}
-    op, w1 = rand_with_weight(rng, H.op_sampler)
+    op, lw1 = rand_with_logweight(rng, H.op_sampler)
 
     @inbounds if issiteoperator(H, op)
         qmc_state.operator_list[n] = op
@@ -55,9 +55,9 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K
         end
 
         op2 = (real_t, site1, site2)
-        w2 = getweight(H.op_sampler, op2)
+        lw2 = getlogweight(H.op_sampler, op2)
 
-        if rand(rng)*w1 < w2
+        if rand(rng) < exp(lw2 - lw1)
             qmc_state.operator_list[n] = op2
             return true
         else
