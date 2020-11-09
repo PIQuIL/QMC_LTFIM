@@ -40,8 +40,8 @@ end
 
 
 include("lattice.jl")
-include("probabilityvector.jl")
-include("op_sampler.jl")
+include("probabilityvectors/probabilityvector.jl")
+include("operatorsamplers/operatorsampler.jl")
 include("qmc_state.jl")
 include("hamiltonian.jl")
 include("ising/Ising.jl")
