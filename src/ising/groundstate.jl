@@ -1,6 +1,6 @@
 function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}())
     if runstats isa Val{true}
-        diag_update_fails = diagonal_update!(rng, qmc_state, H, runstats)
+        diag_update_fails = full_diagonal_update!(rng, qmc_state, H, runstats)
         lsize = link_list_update!(rng, qmc_state, H, runstats)
 
         f(lsize, qmc_state, H)
@@ -8,7 +8,7 @@ function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H
         cluster_update_accept, num_clusters, cluster_sizes = cluster_update!(rng, lsize, qmc_state, H, runstats)
         return diag_update_fails, cluster_update_accept, num_clusters, cluster_sizes
     else
-        diagonal_update!(rng, qmc_state, H)
+        full_diagonal_update!(rng, qmc_state, H)
         lsize = link_list_update!(rng, qmc_state, H)
 
         f(lsize, qmc_state, H)
@@ -29,29 +29,29 @@ Base.@propagate_inbounds alignment_check(H::AbstractLTFIM, op::NTuple{3, Int}, s
 
 # insert_diagonal_operator! returns true if operator insertion succeeded
 # returns true if operator insertion succeeded
-function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, V}, H::AbstractIsing, spin_prop::V, n::Int) where {K, V}
+function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, V}, H::AbstractIsing{O}, spin_prop::V, n::Int) where {K, V, T, O <: AbstractOperatorSampler{K, T}}
     op = rand(rng, H.op_sampler)
     site1, site2 = getbondsites(H, op)
     @inbounds if issiteoperator(H, op) || alignment_check(H, op, spin_prop[site1], spin_prop[site2])
         qmc_state.operator_list[n] = op
-        return true
+        return true, zero(T)
     else
-        return false
+        return false, zero(T)
     end
 end
 
-function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, V}, H::AbstractLTFIM{<:ImprovedOperatorSampler}, spin_prop::V, n::Int) where {K, V}
+function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K, V}, H::AbstractLTFIM{<:AbstractImprovedOperatorSampler}, spin_prop::V, n::Int) where {K, V}
     op, lw1 = rand_with_logweight(rng, H.op_sampler)
 
     @inbounds if issiteoperator(H, op)
         qmc_state.operator_list[n] = op
-        return true
+        return true, zero(lw1)
     else
         t, site1, site2 = op
         real_t = getbondtype(H, spin_prop[site1], spin_prop[site2])
         if t == real_t
             qmc_state.operator_list[n] = op
-            return true
+            return true, lw1
         end
 
         op2 = (real_t, site1, site2)
@@ -59,9 +59,9 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K
 
         if rand(rng) < exp(lw2 - lw1)
             qmc_state.operator_list[n] = op2
-            return true
+            return true, lw2
         else
-            return false
+            return false, zero(lw1)
         end
     end
 end
@@ -86,7 +86,7 @@ insert_diagonal_operator!(qmc_state, H, spin_prop, n) = insert_diagonal_operator
 
 #############################################################################
 
-function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats=Val{false}())
+function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats=Val{false}())
     spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
     if runstats isa Val{true}
@@ -100,7 +100,7 @@ function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Abs
             success = false
             if runstats isa Val{true}; i = -1; end
             while !success
-                success = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
+                success, _ = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
                 if runstats isa Val{true}; i += 1; end
             end
             if runstats isa Val{true}; push!(failures, i); end
@@ -115,12 +115,12 @@ function diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Abs
         return mean(failures)
     end
 end
-diagonal_update!(qmc_state, H, runstats=Val{false}()) = diagonal_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+full_diagonal_update!(qmc_state, H, runstats=Val{false}()) = full_diagonal_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
 
 
 #############################################################################
 
-function link_list_update!(::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats=Val{false}())
+function link_list_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats=Val{false}())
     Ns = nspins(H)
     spin_left = qmc_state.left_config
 
@@ -148,9 +148,14 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryGroundState, H::Abstr
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for (n, op) in enumerate(qmc_state.operator_list)
-        # TODO: we can actually just do the diagonal update here
-        #    since we'll get the log weight at the same time we'll also save
-        #    on one lookup op during the link list creation
+        # if isdiagonal(H, op)
+        #     success = false
+        #     lw1 = 0.0  # need to define it outside the loop so it's available later
+        #     while !success
+        #         success, lw1 = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
+        #     end
+        #     op = qmc_state.operator_list[n]
+        # end
 
         if issiteoperator(H, op)
             site = op[2]
@@ -202,9 +207,9 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryGroundState, H::Abstr
                         flipping_weights[idx + l] = 0.0
                     end
                 else
-                    lw1 = getlogweight(H.op_sampler, op)
+                    lw1 = @inbounds getlogweight(H.op_sampler, op)
                     new_t = getbondtype(H, !s1, !s2)
-                    lw2 = getlogweight(H.op_sampler, (new_t, site1, site2))
+                    lw2 = @inbounds getlogweight(H.op_sampler, (new_t, site1, site2))
                     flipping_weights[idx] = lw2 - lw1
                     @simd for l in 1:3
                         flipping_weights[idx + l] = 0.0

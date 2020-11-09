@@ -51,7 +51,7 @@ function diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, 
             end
         else
             if rand(rng)*num_ids < P_norm
-                success = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
+                success, _ = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
                 if success
                     num_ids -= 1
                 end

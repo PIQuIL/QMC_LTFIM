@@ -1,27 +1,16 @@
-# TODO: better name
-struct ImprovedOperatorSampler{K, T, P} <: AbstractOperatorSampler{K, T, P}
+abstract type AbstractImprovedOperatorSampler{K, T, P} <: AbstractOperatorSampler{K, T, P} end
+
+struct ImprovedOperatorSampler{K, T, P} <: AbstractImprovedOperatorSampler{K, T, P}
     operators::Vector{NTuple{K, Int}}
     pvec::P
-    op_log_weights::Vector{T}
-    strides::NTuple{K, Int}
-    shifts::NTuple{K, Int}
+    op_log_weights::OperatorDict{K, NTuple{K, Int}, T}
 end
 
 # only supports the LTFIM case for now
 function ImprovedOperatorSampler(operators::Vector{NTuple{3, Int}}, p::Vector{T}) where {T <: AbstractFloat}
     @assert length(operators) == length(p) "Given vectors must have the same length!"
 
-    axs = ntuple(i -> extrema(x->x[i], operators), 3)
-    strides = tuple(1, [max - min + 1 for (min, max) in axs[1:end-1]]...)
-    shifts = tuple([min for (min, _) in axs]...)
-
-    l = conv_op_to_idx(tuple([max for (_, max) in axs]...), strides, shifts)
-
-    op_log_weights = log.(zeros(T, l))
-    for (i, op) in enumerate(operators)
-        idx = conv_op_to_idx(op, strides, shifts)
-        op_log_weights[idx] = log(p[i])
-    end
+    op_log_weights = OperatorDict(operators, log.(p), default=T(-Inf))
 
     max_mel_ops = Vector{NTuple{3, Int}}()
     p_modified = Vector{T}()
@@ -64,12 +53,11 @@ function ImprovedOperatorSampler(operators::Vector{NTuple{3, Int}}, p::Vector{T}
     end
 
     pvec = probability_vector(p_modified)
-    return ImprovedOperatorSampler{3, T, typeof(pvec)}(max_mel_ops, pvec, op_log_weights, strides, shifts)
+    return ImprovedOperatorSampler{3, T, typeof(pvec)}(max_mel_ops, pvec, op_log_weights)
 end
 
-
-@inline getlogweight(os::ImprovedOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T} =
-    @inbounds os.op_log_weights[conv_op_to_idx(op, os.strides, os.shifts)]
+Base.@propagate_inbounds getlogweight(os::ImprovedOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T} =
+    get(os.op_log_weights, op)
 
 @inline rand(rng::AbstractRNG, os::ImprovedOperatorSampler{K}) where K =
     @inbounds os.operators[rand(rng, os.pvec)]
@@ -77,7 +65,7 @@ end
 function rand_with_logweight(rng::AbstractRNG, os::ImprovedOperatorSampler{K}) where K
     i = rand(rng, os.pvec)
     # can retrieve logweight straight from pvec since the indices line up
-    # in this case which would skip the index computation for op_sampler's getlogweight
+    # in this case; skips the index computation for op_sampler's getlogweight
     return @inbounds (os.operators[i], getlogweight(os.pvec, i))
 end
 
