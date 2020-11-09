@@ -1,4 +1,3 @@
-
 abstract type AbstractOperatorSampler{K, T, P <: AbstractProbabilityVector{T}} end
 firstindex(::AbstractOperatorSampler) = 1
 lastindex(os::AbstractOperatorSampler) = length(os)
@@ -8,10 +7,18 @@ function getlogweight(os::AbstractOperatorSampler{K, T}, op::NTuple{K, Int}) whe
     return @inbounds os.op_log_weights[conv_op_to_idx(op, os.strides, os.shifts)]
 end
 
+# Using HashTuple as dict keys seems to work fine, it's still slower than
+# the array scheme though
+struct HashTuple{K, T}
+    tup::NTuple{K, T}
+end
+Base.hash(op::HashTuple{K, Int}) where K = foldl((r,i) -> 31r + i, op.tup, init=1)
+
 
 struct OperatorSampler{K, T, P} <: AbstractOperatorSampler{K, T, P}
     operators::Vector{NTuple{K, Int}}
     pvec::P
+    # op_log_weights::Dict{HashTuple{K, Int}, T}
     op_log_weights::Vector{T}
     strides::NTuple{K, Int}
     shifts::NTuple{K, Int}
@@ -55,15 +62,29 @@ function OperatorSampler(operators::Vector{NTuple{K, Int}}, p::Vector{T}) where 
         idx = conv_op_to_idx(op, strides, shifts)
         op_log_weights[idx] = getlogweight(pvec, i)
     end
+    # op_log_weights = Dict(HashTuple(op) => log(p[i]) for (i, op) in enumerate(operators))
     return OperatorSampler{K, T, typeof(pvec)}(operators, pvec, op_log_weights, strides, shifts)
 end
 
 @inline rand(rng::AbstractRNG, os::OperatorSampler{K}) where K = @inbounds os.operators[rand(rng, os.pvec)]
 
+
+# function rand_with_logweight(rng::AbstractRNG, os::OperatorSampler{K}) where K
+#     i = rand(rng, os.pvec)
+#     # can retrieve logweight straight from pvec since the indices line up
+#     # in this case which would skip the index computation for op_sampler's getlogweight
+#     op = os.operators[i]
+#     return (op, getlogweight(os, op))
+# end
+
 function rand_with_logweight(rng::AbstractRNG, os::OperatorSampler{K}) where K
     i = rand(rng, os.pvec)
     return @inbounds (os.operators[i], os.op_log_weights[i])
 end
+
+
+# getlogweight(os::OperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T} = get(os.op_log_weights, HashTuple(op), T(-Inf))
+
 
 @inline length(os::OperatorSampler) = length(os.operators)
 
