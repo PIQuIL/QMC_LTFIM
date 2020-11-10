@@ -69,6 +69,14 @@ function rand_with_logweight(rng::AbstractRNG, os::ImprovedOperatorSampler{K}) w
     return @inbounds (os.operators[i], getlogweight(os.pvec, i))
 end
 
+
+function rand_with_weight(rng::AbstractRNG, os::ImprovedOperatorSampler{K}) where K
+    i = rand(rng, os.pvec)
+    # can retrieve logweight straight from pvec since the indices line up
+    # in this case; skips the index computation for op_sampler's getlogweight
+    return @inbounds (os.operators[i], getweight(os.pvec, i))
+end
+
 @inline length(os::ImprovedOperatorSampler) = length(os.operators)
 
 ##############################################################################

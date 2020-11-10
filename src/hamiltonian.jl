@@ -21,10 +21,12 @@ energy_density(qmc_state::BinaryQMCState, H::Hamiltonian, args...) = energy(qmc_
 
 
 function BinaryGroundState(H::Hamiltonian{2,O}, M::Int) where {K, O <: AbstractOperatorSampler{K}}
-    BinaryGroundState(zero(H), init_op_list(2*M, K))
+    z = zero(H)
+    BinaryGroundState(z, init_op_list(2*M, Val{K}()))::BinaryGroundState{K, typeof(z)}
 end
 
 
 function BinaryThermalState(H::Hamiltonian{2,O}, cutoff::Int) where {K, O <: AbstractOperatorSampler{K}}
-    BinaryThermalState(zero(H), init_op_list(cutoff, K))
+    z = zero(H)
+    BinaryThermalState(z, init_op_list(cutoff, Val{K}()))::BinaryThermalState{K, typeof(z)}
 end

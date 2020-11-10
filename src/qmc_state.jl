@@ -1,5 +1,5 @@
-function init_op_list(length, K=2)
-    operator_list::Vector{NTuple{K,Int}} = [ntuple(_->0, K) for _ in 1:length]
+function init_op_list(length, K=Val{3}())
+    operator_list = [ntuple(_->0, K) for _ in 1:length]
     return operator_list
 end
 

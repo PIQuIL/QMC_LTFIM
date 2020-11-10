@@ -79,7 +79,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
 
     Ns = length(hx)
     bond_spins = Set{NTuple{2,Int}}()
-    nbonds_per_site = Dict{Int,Int}(i => 0 for i in 1:Ns)
+    nbonds_per_site = OrderedDict{Int,Int}(i => 0 for i in 1:Ns)
     for j in axes(J, 2), i in axes(J, 1)
         if !iszero(J[i, j])
             site1, site2 = (i <= j) ? (i, j) : (j, i)
@@ -93,7 +93,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
     fictitious_bonds = Set{NTuple{2,Int}}()
     if !iszero(hz)
         max_nbonds = maximum(values(nbonds_per_site))
-        underfull = sort(
+        underfull = sort!(
             filter(pair -> pair[2] < max_nbonds, nbonds_per_site),
             byvalue = true,
             order = Base.Order.Reverse
@@ -117,7 +117,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
             nbonds_per_site[i] += 1
             nbonds_per_site[j] += 1
 
-            underfull = sort(
+            underfull = sort!(
                 filter(pair -> pair[2] < max_nbonds, nbonds_per_site),
                 byvalue = true,
                 order = Base.Order.Reverse
@@ -165,69 +165,13 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
     return ops, p, energy_shift, Nb
 end
 
-function make_prob_vector(dims::NTuple{D, Int}, J::T, hx::T, hz::T, pbc=true; epsilon=0.0) where {D, T}
-    bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
-    bond_spins = Set(bond_spins)
-    edge_bonds = Set{NTuple{2,Int}}()
-
-    if !pbc
-        pbc_s = Set(lattice_bond_spins(dims, true)[1])
-        edge_bonds = setdiff(pbc_s, bond_spins)
-    end
-
-    ops = Vector{NTuple{3, Int}}()
-    p = Vector{T}()
-    energy_shift = Ns*float(hx)
-
-    if !iszero(hx)
-        for i in 1:Ns
-            push!(ops, makediagonalsiteop(LTFIM, i))
-            push!(p, hx)
-        end
-    end
-
-    hzb = hz / (2 * D)  # using Nb from the PBC case
-    if !(iszero(J) && iszero(hz))
-        #   order:   DD,        DU,       UD,       UU
-        p_spins   = [J - 2*hzb, -J,       -J,       J + 2*hzb]
-        p_spins_e = [ -2*hzb, 0, 0, 2*hzb]
-        # p_spins_l = [J - 3*hzb, -J - hzb, -J + hzb, J + 3*hzb]
-        # p_spins_r = [J - 3*hzb, -J + hzb, -J - hzb, J + 3*hzb]
-        C   = abs(min(0, minimum(p_spins))) + epsilon
-        C_e = abs(min(0, minimum(p_spins_e))) + epsilon
-        p_spins   .+= C
-        p_spins_e .+= C_e
-
-        for t in eachindex(p_spins)
-            for (site1, site2) in bond_spins
-                p_t = p_spins[t]
-                energy_shift += C/4
-                site1, site2 = (site1 <= site2) ? (site1, site2) : (site2, site1)
-                if !iszero(p_t)
-                    push!(ops, (t, site1, site2))
-                    push!(p, p_t)
-                end
-            end
-
-            for (site1, site2) in edge_bonds
-                p_t = p_spins_e[t]
-                energy_shift += C_e/4
-                site1, site2 = (site1 <= site2) ? (site1, site2) : (site2, site1)
-                if !iszero(p_t)
-                    push!(ops, (t, site1, site2))
-                    push!(p, p_t)
-                end
-            end
-        end
-    end
-    return ops, p, Ns, Nb, energy_shift
-end
-
 
 ###############################################################################
 
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
-    ops, p, Ns, Nb, energy_shift = make_prob_vector(dims, J, hx, hz, pbc)
+    bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
+    J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
+    ops, p, energy_shift, _ = make_prob_vector(J_, hx_, hz)
     op_sampler = ImprovedOperatorSampler(ops, p)
     return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)
 end

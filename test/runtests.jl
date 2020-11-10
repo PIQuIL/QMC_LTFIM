@@ -38,6 +38,9 @@ using Statistics
     end
 end
 
+H = @inferred LTFIM((10,), 1.0, 1.0, 1.0)
+@inferred BinaryGroundState BinaryGroundState(H, 1000)
+@inferred BinaryThermalState BinaryThermalState(H, 1000)
 
 
 THRESHOLD = 2.576  # 99% Two-sided CI of the t-distribution with infinite dofs
