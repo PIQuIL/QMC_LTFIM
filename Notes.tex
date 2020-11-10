@@ -27,15 +27,21 @@
 
 \section{Introduction}
 
-This is motivated by our need to make an SSE QMC for the Rydberg hamiltonian.
+This is motivated by our need to make an SSE QMC for the Rydberg Hamiltonian.
 \begin{align}
-    H = & -h \sum_{i = 1}^N \sigma^x_i - \Omega \sum_{i=1}^n n_i - \sum_{\expval{i,j}} V_{ij} n_i n_j
+    H = & \sum_{i=1}^N \frac{\Omega}{2} \left(\ketbra{g}{r}_i + \ketbra{r}{g}_i\right) - \delta \sum_{i=1}^N \ketbra{r}{r}_i + \frac{1}{2} \sum_{\langle i,j \rangle} V_{ij} \ketbra{r}{r}_i \bigotimes \ketbra{r}{r}_j
 \end{align}
-Here, $n_i$ is simply an occupation number (i.e. either 0 or 1). We can therefore trivially map this to spin-$\frac{1}{2}$ with $n_i = \frac{1}{2}\left(\sigma_i^z + \mathbb{1} \right)$. The hamiltonian then becomes the following.
+Upon identifying $\ket{g},\ket{r}$ with eigenstates of $\sigma^z$ ($\ket{0},\ket{1}$), we can translate this Hamiltonian into spin language, where it becomes nearly analogous to a transverse field Ising model with a longitudinal field.
+%\begin{align}
+    %H = & \sum_{i=1}^N \frac{\Omega}{2} \left(\ketbra{0}{1}_i + \ketbra{1}{0}_i\right) - \delta \sum_{i=1}^N \ketbra{1}{1}_i + \frac{1}{2} \sum_{\langle i,j \rangle} V_{ij} \ketbra{1}{1}_i \bigotimes \ketbra{1}{1}_j \\
+    %=& \sum_{i=1}^N \frac{\Omega}{2} \sigma^x_i + \delta \sum_{i=1}^N \left(\sigma^z_i - \ketbra{0}{0}_i\right) + \frac{1}{2} \sum_{\langle i,j \rangle} V_{ij} \left(\sigma^z_i - \ketbra{0}{0}_i\right) \bigotimes \left(\sigma^z_j - \ketbra{0}{0}_j\right) \\
+    %=& 
+%\end{align}
+
+%Here, $n_i$ is simply an occupation number (i.e. either 0 or 1). We can therefore trivially map this to spin-$\frac{1}{2}$ with $n_i = \frac{1}{2}\left(\sigma_i^z + \mathbb{1} \right)$. The hamiltonian then becomes the following.
 \begin{subequations}
     \begin{align}
-        H = & - h \sum_{i = 1}^N \sigma^x_i - \frac{\Omega}{2} \sum_{i=1}^N \left(\sigma_i^z + \mathbb{1}\right) - \sum_{\expval{i,j}} V_{ij} \left(\sigma_i^z + \mathbb{1}\right) \left(\sigma_j^z + \mathbb{1}\right) \\
-        =   & - h \sum_{i = 1}^N \sigma^x_i - \frac{\Omega}{2} \sum_{i=1}^N \left(\sigma_i^z + \mathbb{1}\right) - \sum_{\expval{i,j}} V_{ij} \left(\sigma_i^z \sigma_j^z + \sigma_i^z + \sigma_j^z + \mathbb{1}\right)
+        H = & \Omega \sum_{i = 1}^N \prod_{\langle i,j \rangle}\left(1-\frac{1}{2}\left(\sigma_i^z + \mathbb{1} \right)\right) \sigma^x_i - \delta \sum_{i=1}^n n_i + \sum_{\expval{i,j}} V_{ij} n_i n_j
     \end{align}
 \end{subequations}
 
@@ -86,35 +92,59 @@ The non-zero matrix elements of all parts of the Hamiltonian (Eq.~\eqref{eq:deco
 \subsection{Diagonal Updates}
 
 We may have to toy around with the following procedures, but the general flow of things should be the same no matter what.
-Given that the matrix elements of the diagonal operators are not the same, we must keep track of the propagated spin state $\ket{\alpha_p}$ at every time-slice.
 For proposal modifications to the simulation cell, I will use primes.
-Traverse the operator list and,
+
+\subsubsection{Finite Temperature}
+
+Traverse the operator list and do the following.
 
 \begin{enumerate}
-    \item if $H_{1,a}$ or $H_{1,b}$ is encountered remove it ($n \rightarrow n - 1$) with probability
-          \begin{align*}
-              P_{[1,a]_p / [1,b]_p \rightarrow [0,0]_p} =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{ W(H_{[1,a]_p} \text{ or } H_{[1,b]_{p,\uparrow\uparrow}} \text{ or } H_{[1,b]_{p,\downarrow\downarrow}} \text{ or } H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}}) }, 1 \right) \\
-              =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{NW(H_{[1,a]_p}) + N_b(W(H_{[1,b]_{p,\uparrow\uparrow}}) + W(H_{[1,b]_{p,\downarrow\downarrow}}) + W(H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}})) }, 1 \right) \\
-              =& \mathrm{min}\left(\frac{M-n+1}{\beta \left(Nh + N_b\left(W_1 + W_2 + 2W_3\right)\right) },1\right).
-          \end{align*}
+    \item If $H_{1,a}$ or $H_{1,b}$ is encountered remove it ($n \rightarrow n - 1$) with probability
+    \begin{align*}
+        P_{[1,a]_p / [1,b]_p \rightarrow [0,0]_p} =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{ W(H_{[1,a]_p} \text{ or } H_{[1,b]_{p,\uparrow\uparrow}} \text{ or } H_{[1,b]_{p,\downarrow\downarrow}} \text{ or } H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}}) }, 1 \right) \\
+        =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{NW(H_{[1,a]_p}) + N_b(W(H_{[1,b]_{p,\uparrow\uparrow}}) + W(H_{[1,b]_{p,\downarrow\downarrow}}) + W(H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}})) }, 1 \right) \\
+        =& \mathrm{min}\left(\frac{M-n+1}{\beta \left(Nh + N_b\left(W_1 + W_2 + 2W_3\right)\right) },1\right).
+    \end{align*}
     The factor of $N$ or $N_b$ in the denominator is from the fact that where the operator $H_{1,a}$ or $H_{1,b}$ is when we remove it does not matter. 
-    \item if the unity operator $H_{0,0}$ is encountered, insert a diagonal operator with the following procedure.
-    First note that $W(A \text{ or } B \text{ or } C) = W(A) + W(B) + W(C)$. 
-          \begin{itemize}
-              \item Decide whether or not to accept inserting a diagonal operator with the probability ($n \rightarrow n + 1$)
-                    \begin{align}
-                        P_{H_{[0,0]_p} \rightarrow H_{[1,a]_p} / H_{[1,b]_p}} =& \mathrm{min}\left(\frac{\beta \left(Nh + N_b\left(W_1 + W_2 + 2W_3\right)\right) }{M-n},1\right)
-                    \end{align}
-              \item If it was decided to insert a diagonal operator, choose the operator to insert with probabilities
-                    \begin{align}
-                        P_{H_{[1,a]_p}} = & \frac{Nh}{Nh + N_b\left(W_1 + W_2 + 2W_3\right)}, \\
-                        P_{H_{[1,b]_p}} = & \frac{N_b\left(W_1 + W_2 + 2W_3\right)}{Nh + N_b\left(W_1 + W_2 + 2W_3\right)}.
-                    \end{align}
-                \item If it was decided to insert $H_{1,a}$, then choose a random site (probability $1 / N$) to put the operator.
+    \item If the unity operator $H_{0,0}$ is encountered, decide whether or not to accept inserting a diagonal operator ($n \rightarrow n + 1$) with the probability 
+    \begin{align}
+        P_{H_{[0,0]_p} \rightarrow H_{[1,a]_p} / H_{[1,b]_p}} =& \mathrm{min}\left(\frac{\beta \left(Nh + N_b\left(W_1 + W_2 + 2W_3\right)\right) }{M-n},1\right)
+    \end{align}
+    \item If it was decided to insert a diagonal operator, choose the operator to insert with probabilities
+    \begin{subequations} \label{eq:heat_bath_1}
+        \begin{align} 
+            P_{H_{[1,a]_p}} = & \frac{Nh}{Nh + N_b\left(W_1 + W_2 + 2W_3\right)}, \\
+            P_{H_{[1,b]_p}} = & \frac{N_b\left(W_1 + W_2 + 2W_3\right)}{Nh + N_b\left(W_1 + W_2 + 2W_3\right)}.
+        \end{align}
+    \end{subequations}
+    \item If it was decided to insert $H_{1,a}$, then choose a random site (probability $1 / N$) to put the operator.
+    \item If it was decided to insert $H_{1,b}$, first sample a bond, $b^\prime$, based on the matrix elements $W_1$, $W_2$, and $W_3$. \label{step:bond_insertion}
+    Specifically, 
+    \begin{align*}
+        P_{\uparrow \uparrow} =& \frac{W_1}{W_1 + W_2 + W_3} \\
+        P_{\downarrow \downarrow} =& \frac{W_2}{W_1 + W_2 + W_3} \\
+        P_{\uparrow \downarrow / \downarrow \uparrow} =& \frac{W_3}{W_1 + W_2 + W_3}. 
+    \end{align*}
+    Then, randomly select a bond $b^{\prime\prime}$ in the actual propagated spin state.
+    Accept the insertion of $H_{1,b}$ at the randomly chosen bond $b^{\prime\prime}$ with probability
+    \begin{align*}
+        \frac{W_{b^{\prime\prime}}}{W_{b^{\prime}}}.
+    \end{align*}
+                
+    {\color{red} {\bf THIS GIVES A WORSE ACCEPTANCE RATIO:}
+    If it was decided to insert $H_{1,b}$, choose a random bond to insert it.
+    In the case when one of $W_1$, $W_2$, or $W_3$ are zero and that corresponding bond is chosen as the insertion location, the insertion must be rejected in its entirety.}
+\end{enumerate}
 
-                If it was decided to insert $H_{1,b}$, choose a random bond to insert it.
-                In the case when one of $W_1$, $W_2$, or $W_3$ are zero and that corresponding bond is chosen as the insertion location, the insertion must be rejected in its entirety.
-          \end{itemize}
+\subsubsection{Zero Temperature}
+
+Since we want to maximize the expansion order here to project out the ground state of the Hamiltonian, we want to avoid using identity operators and force our simulation cell to be filled with local terms of our Hamiltonian.
+So, traverse the operator list and do the following.
+\begin{enumerate}
+    \item Remove the current operator $H_{1,a}$ or $H_{1,b}$.
+    \item A new operator type is selected corresponding to probabilities in Eq.~\eqref{eq:heat_bath_1}.
+    \item If $H_{1,a}$ is chosen, select a random site and place it there.
+    \item If $H_{1,b}$ is chosen, follow step~\ref{step:bond_insertion} as in the finite temperature case.
 \end{enumerate}
 
 \subsection{Loop Updates}
