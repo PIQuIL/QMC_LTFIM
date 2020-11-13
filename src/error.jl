@@ -13,24 +13,51 @@ mean_and_stderr(x::Vector) = mean_and_stderr(identity, x)
 
 
 # jackknife estimates the error of a function of a mean (or several means), f(<x>)
-function jackknife(f::Function, x::Vector...)
-    sum_x = [sum(x[i]) for i in 1:length(x)]
-    N = length(x[1])
+function jackknife(f::Function, xs::Vector...)
+    sum_xs = [sum(xs[i]) for i in 1:length(xs)]
+    N = length(xs[1])
 
     f_J = zeros(N)
-    @simd for i in 1:N
-        x_J = [(sum_x[j] - x[j][i]) / (N - 1) for j in 1:length(x)]
-        f_J[i] = f(x_J...)
+    @inbounds for i in 1:N
+        xs_J = [(sum_xs[j] - xs[j][i]) / (N - 1) for j in eachindex(xs)]
+        f_J[i] = f(xs_J...)
     end
 
     μ = mean(f_J)
-    σ = sqrt(N - 1) * std(f_J; mean=μ)
+    σ2 = (N - 1) * (mean(abs2, f_J) - μ^2)
+    σ = sqrt(σ2)
 
-    f_ = f((sum_x / N)...)
+    f_ = f((sum_xs / N)...)
     # bias = ((N - 1) * μ) - ((N - 1) * f_)
 
     μ′ = N*f_ - (N-1)*μ
 
     return μ′ ± σ
 end
-jackknife(x::Vector) = jackknife(identity, x)
+jackknife(xs::Vector...) = jackknife(identity, xs...)
+
+
+function bootstrap(f::Function, nboot::Int, xs::Vector...)
+    N = length(xs[1])
+
+    f_B = zeros(nboot)
+
+    for b in 1:nboot
+        idx = rand(1:N, N)
+        xs_b = [mean(x[idx]) for x in xs]
+        f_B[b] = f(xs_b...)
+    end
+
+    μ = mean(f_B)
+    σ2 = (N / (N - 1)) * (mean(abs2, f_B) - μ^2)
+    σ = sqrt(σ2)
+
+    f_ = f([mean(x) for x in xs]...)
+
+    μ′ = 2*f_ - μ
+
+    return μ′ ± σ
+end
+bootstrap(f::Function, xs::Vector...) = bootstrap(f, 500, xs...)
+bootstrap(nboot::Int, xs::Vector...) = bootstrap(identity, nboot, xs...)
+bootstrap(xs::Vector...) = bootstrap(identity, xs...)

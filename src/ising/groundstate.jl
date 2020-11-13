@@ -2,17 +2,14 @@ function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H
     if runstats isa Val{true}
         diag_update_fails = full_diagonal_update!(rng, qmc_state, H, runstats)
         lsize = link_list_update!(rng, qmc_state, H, runstats)
-
-        f(lsize, qmc_state, H)
-
         cluster_update_accept, num_clusters, cluster_sizes = cluster_update!(rng, lsize, qmc_state, H, runstats)
+        f(lsize, qmc_state, H)
         return diag_update_fails, cluster_update_accept, num_clusters, cluster_sizes
     else
         full_diagonal_update!(rng, qmc_state, H)
         lsize = link_list_update!(rng, qmc_state, H)
-
-        f(lsize, qmc_state, H)
         cluster_update!(rng, lsize, qmc_state, H)
+        f(lsize, qmc_state, H)
     end
 end
 mc_step!(f::Function, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!(f, Random.GLOBAL_RNG, qmc_state, H, runstats)
@@ -419,9 +416,8 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
         # Add a new leg onto the cluster
         if (!in_cluster[i] && Associates[i] === (0, 0, 0))
             if runstats isa Val{true}
-                cluster_size = 0
+                cluster_size = 1
                 ccount += 1
-                cluster_size += 1
             end
             push!(cstack, i)
             in_cluster[i] = true

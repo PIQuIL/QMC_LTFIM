@@ -79,14 +79,13 @@ function show(io::IO, p::ProbabilityAlias{T}) where T
     print(io, "ProbabilityAlias{$T}($r)")
 end
 
-function Base.rand(rng::AbstractRNG, pvec::ProbabilityAlias{T}) where T
-    u, i::Int = modf(muladd(length(pvec), rand(rng), 1.0))
-    return @inbounds (u < pvec.cutoffs[i]) ? i : pvec.alias[i]
-end
+# function Base.rand(rng::AbstractRNG, pvec::ProbabilityAlias{T}) where T
+#     u, i::Int = modf(muladd(length(pvec), rand(rng), 1.0))
+#     return @inbounds (u < pvec.cutoffs[i]) ? i : pvec.alias[i]
+# end
 
-using RandomNumbers.Xorshifts: AbstractXoroshiro128
-# xoroshiro128 seems to be noticably faster if you just sample from it twice
-function Base.rand(rng::AbstractXoroshiro128, pvec::ProbabilityAlias{T}) where T
+# xorshifts seem to be noticably faster if you just sample from it twice
+function Base.rand(rng::AbstractRNG, pvec::ProbabilityAlias{T}) where T
     u = rand(rng)
     i = rand(rng, 1:length(pvec))
     return @inbounds (u < pvec.cutoffs[i]) ? i : pvec.alias[i]

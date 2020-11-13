@@ -17,7 +17,7 @@ function energy(::BinaryThermalState, H::Hamiltonian, β::Float64, ns::Vector{T}
     return H.energy_shift + E
 end
 
-energy_density(qmc_state::BinaryQMCState, H::Hamiltonian, args...) = energy(qmc_state, H, args...) / nspins(H)
+energy_density(qmc_state::BinaryQMCState, H::Hamiltonian, args...; kwargs...) = energy(qmc_state, H, args...; kwargs...) / nspins(H)
 
 
 function BinaryGroundState(H::Hamiltonian{2,O}, M::Int) where {K, O <: AbstractOperatorSampler{K}}
