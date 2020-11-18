@@ -31,9 +31,9 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K
     site1, site2 = getbondsites(H, op)
     @inbounds if issiteoperator(H, op) || alignment_check(H, op, spin_prop[site1], spin_prop[site2])
         qmc_state.operator_list[n] = op
-        return true, zero(T)
+        return op, zero(T)
     else
-        return false, zero(T)
+        return nothing, zero(T)
     end
 end
 
@@ -42,13 +42,13 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K
 
     @inbounds if issiteoperator(H, op)
         qmc_state.operator_list[n] = op
-        return true, zero(lw1)
+        return op, zero(lw1)
     else
         t, site1, site2 = op
         real_t = getbondtype(H, spin_prop[site1], spin_prop[site2])
         if t == real_t
             qmc_state.operator_list[n] = op
-            return true, lw1
+            return op, lw1
         end
 
         op2 = (real_t, site1, site2)
@@ -56,9 +56,9 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K
 
         if rand(rng) < exp(lw2 - lw1)
             qmc_state.operator_list[n] = op2
-            return true, lw2
+            return op2, lw2
         else
-            return false, zero(lw1)
+            return nothing, zero(lw1)
         end
     end
 end
@@ -94,10 +94,10 @@ function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H
         if !isdiagonal(H, op)
             @inbounds spin_prop[op[2]] ⊻= 1  # spinflip
         else
-            success = false
+            op = nothing
             if runstats isa Val{true}; i = -1; end
-            while !success
-                success, _ = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
+            while op === nothing
+                op, _ = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
                 if runstats isa Val{true}; i += 1; end
             end
             if runstats isa Val{true}; push!(failures, i); end
@@ -151,15 +151,6 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::Abstr
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for (n, op) in enumerate(qmc_state.operator_list)
-        # if isdiagonal(H, op)
-        #     success = false
-        #     lw1 = 0.0  # need to define it outside the loop so it's available later
-        #     while !success
-        #         success, lw1 = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
-        #     end
-        #     op = qmc_state.operator_list[n]
-        # end
-
         if issiteoperator(H, op)
             site = op[2]
             # lower or left leg
