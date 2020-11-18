@@ -17,7 +17,7 @@ mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta; eq = false) = mc_step_beta!(
 mc_step_beta!(qmc_state, H, beta; eq = false) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
 
 function resize_op_list!(qmc_state::BinaryThermalState{K}, H::AbstractIsing, new_size::Int) where {K}
-    operator_list = filter!(op -> !isidentity(H, op), qmc_state.operator_list)
+    operator_list = filter!(!isidentity(H), qmc_state.operator_list)
     len = length(operator_list)
 
     if len < new_size
@@ -39,7 +39,7 @@ end
 function full_diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
     P_norm = beta * diag_update_normalization(H)
 
-    num_ids = count(op -> isidentity(H, op), qmc_state.operator_list)
+    num_ids = count(isidentity(H), qmc_state.operator_list)
 
     spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
