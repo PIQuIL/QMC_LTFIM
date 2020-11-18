@@ -117,7 +117,7 @@ full_diagonal_update!(qmc_state, H, runstats=Val{false}()) = full_diagonal_updat
 
 #############################################################################
 
-function link_list_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats=Val{false}())
+function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats=Val{false}())
     Ns = nspins(H)
     spin_left = qmc_state.left_config
 
@@ -130,18 +130,24 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Ab
 
     flipping_weights = qmc_state.flipping_weights
 
-    First = qmc_state.first
+    if qmc_state isa BinaryGroundState
+        First = qmc_state.first
 
-    # The first N elements of the linked list are the spins of the LHS basis state
-    @inbounds for i in 1:Ns
-        LegType[i] = spin_left[i]
-        First[i] = i
-        Associates[i] = (0, 0, 0)
-        flipping_weights[i] = 0.0
+        # The first N elements of the linked list are the spins of the LHS basis state
+        @inbounds for i in 1:Ns
+            LegType[i] = spin_left[i]
+            First[i] = i
+            Associates[i] = 0
+            flipping_weights[i] = 0.0
+        end
+        idx = Ns
+    else
+        First = fill!(qmc_state.first, 0)  #initialize the First list
+        Last = fill!(qmc_state.last, 0)   #initialize the Last list
+        idx = 0
     end
 
     spin_prop = copyto!(qmc_state.propagated_config, spin_left)  # the propagated spin state
-    idx = Ns
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for (n, op) in enumerate(qmc_state.operator_list)
@@ -158,94 +164,120 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Ab
             site = op[2]
             # lower or left leg
             idx += 1
-            LinkList[idx] = First[site]
+            F = First[site]
+            LinkList[idx] = F
+            if qmc_state isa BinaryGroundState || !iszero(F)
+                LinkList[F] = idx  # completes backwards link
+            else
+                Last[site] = idx
+            end
+
             LegType[idx] = spin_prop[site]
-            current_link = idx
+            Associates[idx] = 0
+            if H isa AbstractLTFIM
+                flipping_weights[idx] = 0.0
+            end
 
             if !isdiagonal(H, op)  # off-diagonal site operator
                 spin_prop[site] ⊻= 1  # spinflip
             end
 
-            LinkList[First[site]] = current_link  # completes backwards link
-            First[site] = current_link + 1
-            Associates[idx] = (0, 0, 0)
-            if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
-            end
-
             # upper or right leg
             idx += 1
+            First[site] = idx
             LegType[idx] = spin_prop[site]
-            Associates[idx] = (0, 0, 0)
+            Associates[idx] = 0
             if H isa AbstractLTFIM
                 flipping_weights[idx] = 0.0
             end
-        else  # diagonal bond operator
+        elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = getbondsites(H, op)
+            s1, s2 = spin_prop[site1], spin_prop[site2]
 
-            # lower left
-            idx += 1
-            LinkList[idx] = First[site1]
-            LegType[idx] = spin_prop[site1]
-            current_link = idx
+            # vertex leg indices
+            v1, v2, v3, v4 = idx + 1, idx + 2, idx + 3, idx + 4
 
-            LinkList[First[site1]] = current_link  # completes backwards link
-            First[site1] = current_link + 2
-            vertex1 = current_link
-            Associates[idx] = (vertex1 + 1, vertex1 + 2, vertex1 + 3)
+            # lower left (thinking of imaginary time as increasing vertically)
+            F = First[site1]
+            LinkList[v1] = F
+            if qmc_state isa BinaryGroundState || !iszero(F)
+                LinkList[F] = v1  # completes backwards link
+            else
+                Last[site1] = v1
+            end
+            LegType[v1] = s1
+            Associates[v1] = v2
 
             if H isa AbstractLTFIM
-                s1, s2 = spin_prop[site1], spin_prop[site2]
                 if xor(s1, s2)
                     # no weight change if spins are anti-parallel
                     # NOTE: this simplification does not apply in the
                     #       case of a non-uniform z-field
-                    @simd for l in 0:3
-                        flipping_weights[idx + l] = 0.0
-                    end
+                    flipping_weights[v1] = 0.0
                 else
                     lw1 = @inbounds getlogweight(H.op_sampler, op)
                     flip_t = getbondtype(H, !s1, !s2)
                     lw2 = @inbounds getlogweight(H.op_sampler, (flip_t, site1, site2))
-                    flipping_weights[idx] = lw2 - lw1
-                    @simd for l in 1:3
-                        flipping_weights[idx + l] = 0.0
-                    end
+                    flipping_weights[v1] = lw2 - lw1
                 end
             end
 
             # lower right
-            idx += 1
-            LinkList[idx] = First[site2]
-            LegType[idx] = spin_prop[site2]
-            current_link = idx
-
-            LinkList[First[site2]] = current_link  # completes backwards link
-            First[site2] = current_link + 2
-            Associates[idx] = (vertex1, vertex1 + 2, vertex1 + 3)
+            F = First[site2]
+            LinkList[v2] = F
+            if qmc_state isa BinaryGroundState || !iszero(F)
+                LinkList[F] = v2  # completes backwards link
+            else
+                Last[site2] = v2
+            end
+            LegType[v2] = s2
+            Associates[v2] = v3
+            if H isa AbstractLTFIM
+                flipping_weights[v2] = 0.0
+            end
 
             # upper left
-            idx += 1
-            LegType[idx] = spin_prop[site1]
-            Associates[idx] = (vertex1, vertex1 + 1, vertex1 + 3)
+            First[site1] = v3
+            LegType[v3] = s1
+            Associates[v3] = v4
+            if H isa AbstractLTFIM
+                flipping_weights[v3] = 0.0
+            end
 
             # upper right
-            idx += 1
-            LegType[idx] = spin_prop[site2]
-            Associates[idx] = (vertex1, vertex1 + 1, vertex1 + 2)
+            First[site2] = v4
+            LegType[v4] = s2
+            Associates[v4] = v1
+            if H isa AbstractLTFIM
+                flipping_weights[v4] = 0.0
+            end
+
+            idx = v4
         end
     end
 
-    # The last N elements of the linked list are the final spin state
-    @inbounds for i in 1:Ns
-        idx += 1
-        LinkList[idx] = First[i]
-        LegType[idx] = spin_prop[i]
-        LinkList[First[i]] = idx
-        Associates[idx] = (0, 0, 0)
-        flipping_weights[idx] = 0.0
+    if qmc_state isa BinaryGroundState
+        # The last N elements of the linked list are the final spin state
+        @inbounds for i in 1:Ns
+            idx += 1
+            F = First[i]
+            LinkList[idx] = F
+            LinkList[F] = idx
+            LegType[idx] = spin_prop[i]
+            Associates[idx] = 0
+            flipping_weights[idx] = 0.0
+        end
+    else
+        #Periodic boundary conditions for finite-beta
+        @inbounds for i in 1:Ns
+            F = First[i]
+            if !iszero(F)  #This might be encountered at high temperatures
+                L = Last[i]
+                LinkList[F] = L
+                LinkList[L] = F
+            end
+        end
     end
-
     # @debug statements are not run unless debug logging is enabled
     @debug("Link List basis state propagation status: $(spin_prop == qmc_state.right_config)",
            spin_prop,
@@ -278,7 +310,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
-        if (!in_cluster[i] && Associates[i] === (0, 0, 0))
+        if (!in_cluster[i] && Associates[i] == 0)
             if runstats isa Val{true}; ccount += 1; end
             push!(cstack, i)
             in_cluster[i] = true
@@ -296,15 +328,14 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
                     push!(current_cluster, leg)
                     lnA += flipping_weights[leg]
 
-                    # now check all associates and add to cluster
-                    assoc = Associates[leg]  # a 3-tuple
-                    if assoc !== (0, 0, 0)
-                        for a in assoc
-                            push!(cstack, a)
-                            in_cluster[a] = true
-                            push!(current_cluster, a)
-                            lnA += flipping_weights[a]
-                        end
+                    # now check all associates and add them to the cluster
+                    a = Associates[leg]
+                    while a != 0 && !in_cluster[a]
+                        push!(cstack, a)
+                        in_cluster[a] = true
+                        push!(current_cluster, a)
+                        lnA += flipping_weights[a]
+                        a = Associates[a]
                     end
                 end
             end
@@ -384,9 +415,10 @@ end
     First = qmc_state.first
     Last = qmc_state.last
     @inbounds for i in 1:Ns
-        if First[i] != 0
+        F = First[i]
+        if !iszero(F)
             spin_left[i] = LegType[Last[i]]  # left basis state
-            spin_right[i] = LegType[First[i]]  # right basis state
+            spin_right[i] = LegType[F]  # right basis state
         else
             #randomly flip spins not connected to operators
             spin_left[i] = spin_right[i] = rand(rng, Bool)
@@ -414,7 +446,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
-        if (!in_cluster[i] && Associates[i] === (0, 0, 0))
+        if (!in_cluster[i] && Associates[i] == 0)
             if runstats isa Val{true}
                 cluster_size = 1
                 ccount += 1
@@ -437,17 +469,16 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
                         LegType[leg] ⊻= 1
                     end
 
-                    # now check all associates and add to cluster
-                    assoc = Associates[leg]  # a 3-tuple
-                    if assoc !== (0, 0, 0)
-                        for a in assoc
-                            push!(cstack, a)
-                            in_cluster[a] = true
-                            if runstats isa Val{true}; cluster_size += 1; end
-                            if flip
-                                LegType[a] ⊻= 1
-                            end
+                    # now check all associates and add them to the cluster
+                    a = Associates[leg]
+                    while a != 0 && !in_cluster[a]
+                        push!(cstack, a)
+                        in_cluster[a] = true
+                        if runstats isa Val{true}; cluster_size += 1; end
+                        if flip
+                            LegType[a] ⊻= 1
                         end
+                        a = Associates[a]
                     end
                 end
             end

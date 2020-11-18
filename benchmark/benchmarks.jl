@@ -66,7 +66,7 @@ for M = 200:200:1000
                            setup=(thermalstate = BinaryThermalState($H, $M)))
 
         SUITE[ts][M]["linked_list_update"] =
-            @benchmarkable(QMC.link_list_update_beta!(thermalstate, $H),
+            @benchmarkable(QMC.link_list_update!(thermalstate, $H),
                            setup=(thermalstate = BinaryThermalState($H, $M);
                                   QMC.full_diagonal_update_beta!(thermalstate, $H, $beta)))
 
@@ -74,7 +74,7 @@ for M = 200:200:1000
             @benchmarkable(QMC.cluster_update!(lsize, thermalstate, $H),
                            setup=(thermalstate = BinaryThermalState($H, $M);
                                   QMC.full_diagonal_update_beta!(thermalstate, $H, $beta);
-                                  lsize = QMC.link_list_update_beta!(thermalstate, $H)))
+                                  lsize = QMC.link_list_update!(thermalstate, $H)))
 
         SUITE[ts][M]["mc_step"] =
             @benchmarkable(QMC.mc_step_beta!(thermalstate, $H, $beta),
