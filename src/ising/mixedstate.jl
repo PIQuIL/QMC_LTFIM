@@ -26,8 +26,8 @@ function resize_op_list!(qmc_state::BinaryThermalState{K}, H::AbstractIsing, new
     end
 
     len = 4*length(operator_list)
-    # these are going to be overwritten by link_list_update_beta!
-    # which will be called right after the diagonal update that called this function
+    # these are going to be overwritten by the cluster update which will be
+    # called right after the diagonal update that called this function
     resize!(qmc_state.linked_list, len)
     resize!(qmc_state.leg_types, len)
     resize!(qmc_state.associates, len)

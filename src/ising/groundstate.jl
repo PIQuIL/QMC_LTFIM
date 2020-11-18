@@ -63,22 +63,6 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K
     end
 end
 
-# function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{N}, H::TFIM{N}, spin_prop::BitArray{N}, n::Int) where N
-#     P_h = H.h*nspins(H) / (H.h*nspins(H) + 2*H.J*nbonds(H))
-
-#     if rand(rng) < P_h
-#         qmc_state.operator_list[n] = (-1, rand(rng, 1:nspins(H)))
-#         return true
-#     else
-#         site1, site2 = H.bonds[rand(rng, 1:nbonds(H))]
-#         if spin_prop[site1] == spin_prop[site2]
-#             qmc_state.operator_list[n] = (site1, site2)
-#             return true
-#         end
-#     end
-#     return false
-# end
-
 insert_diagonal_operator!(qmc_state, H, spin_prop, n) = insert_diagonal_operator!(Random.GLOBAL_RNG, qmc_state, H, spin_prop, n)
 
 #############################################################################
@@ -137,8 +121,6 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::Abstr
         @inbounds for i in 1:Ns
             LegType[i] = spin_left[i]
             First[i] = i
-            Associates[i] = 0
-            flipping_weights[i] = 0.0
         end
         idx = Ns
     else
@@ -183,7 +165,7 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::Abstr
             end
         elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = getbondsites(H, op)
-            s1, s2 = spin_prop[site1], spin_prop[site2]
+            spin1, spin2 = spin_prop[site1], spin_prop[site2]
 
             # vertex leg indices
             v1, v2, v3, v4 = idx + 1, idx + 2, idx + 3, idx + 4
@@ -196,21 +178,14 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::Abstr
             else
                 Last[site1] = v1
             end
-            LegType[v1] = s1
+            LegType[v1] = spin1
             Associates[v1] = v2
 
             if H isa AbstractLTFIM
-                if xor(s1, s2)
-                    # no weight change if spins are anti-parallel
-                    # NOTE: this simplification does not apply in the
-                    #       case of a non-uniform z-field
-                    flipping_weights[v1] = 0.0
-                else
-                    lw1 = @inbounds getlogweight(H.op_sampler, op)
-                    flip_t = getbondtype(H, !s1, !s2)
-                    lw2 = @inbounds getlogweight(H.op_sampler, (flip_t, site1, site2))
-                    flipping_weights[v1] = lw2 - lw1
-                end
+                lw1 = getlogweight(H.op_sampler, op)
+                flip_t = getbondtype(H, !spin1, !spin2)
+                lw2 = getlogweight(H.op_sampler, (flip_t, site1, site2))
+                flipping_weights[v1] = lw2 - lw1
             end
 
             # lower right
@@ -221,7 +196,7 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::Abstr
             else
                 Last[site2] = v2
             end
-            LegType[v2] = s2
+            LegType[v2] = spin2
             Associates[v2] = v3
             if H isa AbstractLTFIM
                 flipping_weights[v2] = 0.0
@@ -229,7 +204,7 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::Abstr
 
             # upper left
             First[site1] = v3
-            LegType[v3] = s1
+            LegType[v3] = spin1
             Associates[v3] = v4
             if H isa AbstractLTFIM
                 flipping_weights[v3] = 0.0
@@ -237,7 +212,7 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::Abstr
 
             # upper right
             First[site2] = v4
-            LegType[v4] = s2
+            LegType[v4] = spin2
             Associates[v4] = v1
             if H isa AbstractLTFIM
                 flipping_weights[v4] = 0.0
@@ -256,7 +231,9 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::Abstr
             LinkList[F] = idx
             LegType[idx] = spin_prop[i]
             Associates[idx] = 0
-            flipping_weights[idx] = 0.0
+            if H isa AbstractLTFIM
+                flipping_weights[idx] = 0.0
+            end
         end
     else
         #Periodic boundary conditions for finite-beta
