@@ -337,7 +337,19 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
     # map back basis states and operator list
     ocount = _map_back_basis_states!(rng, lsize, qmc_state, H)
+    _map_back_operator_list!(ocount, qmc_state, H)
 
+    if runstats isa Val{true}
+        return mean(acceptance), ccount, mean(cluster_sizes)
+    end
+end
+
+@inline function _map_back_operator_list!(ocount::Int, qmc_state::BinaryQMCState, H::AbstractIsing)
+    operator_list = qmc_state.operator_list
+    LegType = qmc_state.leg_types
+
+    # if we build an array that maps n to ocount, this loop will become
+    #   very easy to parallelize
     @inbounds for (n, op) in enumerate(operator_list)
         if isbondoperator(H, op)
             if H isa AbstractLTFIM
@@ -355,10 +367,6 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
             end
             ocount += 2
         end
-    end
-
-    if runstats isa Val{true}
-        return mean(acceptance), ccount, mean(cluster_sizes)
     end
 end
 
@@ -456,19 +464,7 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
     # map back basis states and operator list
     ocount = _map_back_basis_states!(rng, lsize, qmc_state, H)
-
-    @inbounds for (n, op) in enumerate(operator_list)
-        if isbondoperator(H, op)
-            ocount += 4
-        elseif issiteoperator(H, op)
-            if LegType[ocount] == LegType[ocount+1]  # diagonal
-                operator_list[n] = makediagonalsiteop(H, op[2])
-            else  # off-diagonal
-                operator_list[n] = makeoffdiagonalsiteop(H, op[2])
-            end
-            ocount += 2
-        end
-    end
+    _map_back_operator_list!(ocount, qmc_state, H)
 
     if runstats isa Val{true}
         return 1/2, ccount, mean(cluster_sizes)

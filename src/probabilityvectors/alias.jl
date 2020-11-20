@@ -71,7 +71,7 @@ struct ProbabilityAlias{T} <: AbstractProbabilityVector{T}
 end
 
 ProbabilityAlias(p::Vector{T}) where T = ProbabilityAlias{T}(p)
-@inline length(pvec::ProbabilityAlias) = length(pvec.weights)
+@inline length(pvec::ProbabilityAlias) = length(pvec.cutoffs)
 @inline normalization(pvec::ProbabilityAlias) = pvec.normalization
 
 function show(io::IO, p::ProbabilityAlias{T}) where T
