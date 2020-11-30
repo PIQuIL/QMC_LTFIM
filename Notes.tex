@@ -31,19 +31,17 @@ This is motivated by our need to make an SSE QMC for the Rydberg Hamiltonian.
 \begin{align}
     H = & \sum_{i=1}^N \frac{\Omega}{2} \left(\ketbra{g}{r}_i + \ketbra{r}{g}_i\right) - \delta \sum_{i=1}^N \ketbra{r}{r}_i + \frac{1}{2} \sum_{\langle i,j \rangle} V_{ij} \ketbra{r}{r}_i \bigotimes \ketbra{r}{r}_j
 \end{align}
-Upon identifying $\ket{g},\ket{r}$ with eigenstates of $\sigma^z$ ($\ket{0},\ket{1}$), we can translate this Hamiltonian into spin language, where it becomes nearly analogous to a transverse field Ising model with a longitudinal field.
+Upon identifying $\ket{g},\ket{r}$ with eigenstates of $\sigma^z$ ($\ket{0},\ket{1}$), we can translate this Hamiltonian into spin language.
 %\begin{align}
     %H = & \sum_{i=1}^N \frac{\Omega}{2} \left(\ketbra{0}{1}_i + \ketbra{1}{0}_i\right) - \delta \sum_{i=1}^N \ketbra{1}{1}_i + \frac{1}{2} \sum_{\langle i,j \rangle} V_{ij} \ketbra{1}{1}_i \bigotimes \ketbra{1}{1}_j \\
     %=& \sum_{i=1}^N \frac{\Omega}{2} \sigma^x_i + \delta \sum_{i=1}^N \left(\sigma^z_i - \ketbra{0}{0}_i\right) + \frac{1}{2} \sum_{\langle i,j \rangle} V_{ij} \left(\sigma^z_i - \ketbra{0}{0}_i\right) \bigotimes \left(\sigma^z_j - \ketbra{0}{0}_j\right) \\
     %=& 
 %\end{align}
-
 %Here, $n_i$ is simply an occupation number (i.e. either 0 or 1). We can therefore trivially map this to spin-$\frac{1}{2}$ with $n_i = \frac{1}{2}\left(\sigma_i^z + \mathbb{1} \right)$. The hamiltonian then becomes the following.
-\begin{subequations}
-    \begin{align}
-        H = & \Omega \sum_{i = 1}^N \prod_{\langle i,j \rangle}\left(1-\frac{1}{2}\left(\sigma_i^z + \mathbb{1} \right)\right) \sigma^x_i - \delta \sum_{i=1}^n n_i + \sum_{\expval{i,j}} V_{ij} n_i n_j
-    \end{align}
-\end{subequations}
+\begin{align}
+    H = \frac{\Omega}{2} \sum_{i=1}^N \left( \ketbra{0}{1}_i + \ketbra{1}{0}_i \right) - \delta \sum_{i=1}^N \ketbra{1}{1}_i + \frac{1}{2} \sum_{(i,j)} V_{ij} \ketbra{1_i 1_j}{1_i 1_j}
+\end{align}
+This is very similar to a transverse-field Ising model with an additional longitudinal field.
 
 \section{Longitudinal Field TFIM (LTFIM)}
 
@@ -121,9 +119,10 @@ Traverse the operator list and do the following.
     \item If it was decided to insert $H_{1,b}$, first sample a bond, $b^\prime$, based on the matrix elements $W_1$, $W_2$, and $W_3$. \label{step:bond_insertion}
     Specifically, 
     \begin{align*}
-        P_{\uparrow \uparrow} =& \frac{W_1}{W_1 + W_2 + W_3} \\
-        P_{\downarrow \downarrow} =& \frac{W_2}{W_1 + W_2 + W_3} \\
-        P_{\uparrow \downarrow / \downarrow \uparrow} =& \frac{W_3}{W_1 + W_2 + W_3}. 
+        P_{\uparrow \uparrow} =& \frac{W_1}{W_1 + W_2 + 2W_3} \\
+        P_{\downarrow \downarrow} =& \frac{W_2}{W_1 + W_2 + 2W_3} \\
+        P_{\uparrow \downarrow} =& \frac{W_3}{W_1 + W_2 + 2W_3} \\
+        P_{\downarrow \uparrow} =& \frac{W_3}{W_1 + W_2 + 2W_3}
     \end{align*}
     Then, randomly select a bond $b^{\prime\prime}$ in the actual propagated spin state.
     Accept the insertion of $H_{1,b}$ at the randomly chosen bond $b^{\prime\prime}$ with probability
@@ -131,7 +130,7 @@ Traverse the operator list and do the following.
         \frac{W_{b^{\prime\prime}}}{W_{b^{\prime}}}.
     \end{align*}
                 
-    {\color{red} {\bf THIS GIVES A WORSE ACCEPTANCE RATIO:}
+    {\color{red} {\bf This doesn't work:}
     If it was decided to insert $H_{1,b}$, choose a random bond to insert it.
     In the case when one of $W_1$, $W_2$, or $W_3$ are zero and that corresponding bond is chosen as the insertion location, the insertion must be rejected in its entirety.}
 \end{enumerate}
@@ -551,5 +550,102 @@ However, the difference here is that instead of flipping with probability 1/2, w
 \end{align}
 Here, $W_c$ primed (unprimed) denotes the weight of the local cluster $c$ being flipped (unflipped).
 Specifically, $W_c$ (primed or unprimed) is the product of all matrix element weights ($W_1$, $W_2$, $W_3$, or $h$) present in the local cluster $c$. 
+
+\section{Rydberg Hamiltonian}
+
+\begin{align*}
+    H =& \frac{\Omega}{2} \sum_{i=1}^N \left( \ketbra{0}{1}_i + \ketbra{1}{0}_i \right) - \delta \sum_{i=1}^N \ketbra{1}{1}_i + \frac{1}{2} \sum_{(i,j)} V_{ij} \ketbra{1_i 1_j}{1_i 1_j} \\
+    =& \frac{\Omega}{2} \sum_{i=1}^N \sigma_i^x + \sum_{(i,j)} \frac{V_{ij}}{2} \ketbra{1_i 1_j}{1_i 1_j} - \delta_b \left(\ketbra{1}{1}_i + \ketbra{1}{1}_j\right)
+\end{align*}
+Here, $\delta_b$ is a modified version of $\delta$ that accounts for over-counting when moving the original sum over sites into the sum over all-to-all bonds.
+Let's decompose this Hamiltonian into local operators in a similar spirit to that of the LTFIM. 
+\begin{subequations} \label{eq:decomposition_ryd}
+    \begin{align}
+        H_{0,0} =& \mathbb{1} \\
+        H_{-1,a} =& \frac{\Omega}{2} \sigma_i^x \\
+        H_{1,a} =& \frac{\Omega}{2} \\
+        H_{1,b} =& V_{ij} \ketbra{1_i 1_j}{1_i 1_j} - \delta_b \left(\ketbra{1}{1}_i + \ketbra{1}{1}_j\right) + C
+    \end{align}
+\end{subequations}
+$C = 2\delta_b$ is a constant shift that is needed in order to alleviate sign problems.
+The relevant matrix elements of this local decomposition are (taking $1 (0) = \uparrow (\downarrow)$)
+\begin{subequations} \label{eq:mat_elems_ryd}
+    \begin{align}
+        \matrixel{\uparrow}{H_{-1,a}}{\downarrow} = \matrixel{\downarrow}{H_{-1,a}}{\uparrow} =& \frac{\Omega}{2} \\
+        \matrixel{\uparrow}{H_{1,a}}{\uparrow} = \matrixel{\downarrow}{H_{1,a}}{\downarrow} =& \frac{\Omega}{2} \\
+        W_1 \equiv \matrixel{\uparrow \uparrow}{H_{1,b}}{\uparrow \uparrow} =& V_{ij} - 2\delta_b + C = V_{ij}\\
+        W_2 \equiv \matrixel{\downarrow \downarrow}{H_{1,b}}{\downarrow \downarrow} =& C = 2\delta_b \\
+        W_3 \equiv \matrixel{\downarrow \uparrow}{H_{1,b}}{\downarrow \uparrow} = \matrixel{\uparrow \downarrow}{H_{1,b}}{\uparrow \downarrow} =& -\delta_b + C = \delta_b
+    \end{align}
+\end{subequations}
+
+\subsection{Diagonal Updates}
+
+We may have to toy around with the following procedures, but the general flow of things should be the same no matter what.
+For proposal modifications to the simulation cell, I will use primes as before.
+
+\subsubsection{Finite Temperature}
+
+Traverse the operator list and do the following.
+
+\begin{enumerate}
+    \item If $H_{1,a}$ or $H_{1,b}$ is encountered remove it ($n \rightarrow n - 1$) with probability
+    \begin{align*}
+        P_{[1,a]_p / [1,b]_p \rightarrow [0,0]_p} =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{ W(H_{[1,a]_p} \text{ or } H_{[1,b]_{p,\uparrow\uparrow}} \text{ or } H_{[1,b]_{p,\downarrow\downarrow}} \text{ or } H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}}) }, 1 \right) \\
+        =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{NW(H_{[1,a]_p}) + \sum_{ij} V_{ij} + N_b(W(H_{[1,b]_{p,\downarrow\downarrow}}) + W(H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}})) }, 1 \right) \\
+        =& \mathrm{min}\left(\frac{M-n+1}{\beta \left(Nh + \sum_{ij} V_{ij} + 4N_b\delta_b\right) },1\right).
+    \end{align*}
+    The factor of $N$ or $N_b$ in the denominator is from the fact that where the operator $H_{1,a}$ or $H_{1,b}$ is when we remove it does not matter. 
+    \item If the unity operator $H_{0,0}$ is encountered, decide whether or not to accept inserting a diagonal operator ($n \rightarrow n + 1$) with the probability 
+    \begin{align}
+        P_{H_{[0,0]_p} \rightarrow H_{[1,a]_p} / H_{[1,b]_p}} =& \mathrm{min}\left(\frac{\beta \left(Nh + \sum_{ij} V_{ij} + 4N_b\delta_b\right) }{M-n},1\right)
+    \end{align}
+    \item If it was decided to insert a diagonal operator, choose the operator to insert with probabilities
+    \begin{subequations} \label{eq:heat_bath_1_ryd}
+        \begin{align} 
+            P_{H_{[1,a]_p}} = & \frac{N\frac{\Omega}{2}}{N\frac{\Omega}{2} + \sum_{ij} V_{ij} + 4N_b\delta_b}, \\
+            P_{H_{[1,b]_p}} = & \frac{\sum_{ij} V_{ij} + 4N_b\delta_b}{N\frac{\Omega}{2} + N_b\left(W_1 + W_2 + 2W_3\right)}.
+        \end{align}
+    \end{subequations}
+    \item To choose which type of diagonal operator (site or bond), we follow the algorithm outlined in Sandvik's paper on an SSE framework for the TFIM with arbitrary interactions. 
+    We wish to insert an operator at bond $(i,j)$ (note that a site operator is a bond operator when $i=j$). 
+    Let the matrix $M$ have elements $M_{ij}$ such that
+    \begin{align} \label{eq:choices}
+        M_{ij} = \begin{cases}
+            \frac{\Omega}{2} & \text{ for } i = j \\
+             W^{(i,j)}_{1,2,3} & \text{ for } i \neq j
+        \end{cases}
+    \end{align}
+    We then store the cumulative probabilities
+    \begin{align}
+        P_c(k=1,...,N) =& \frac{\sum_{i=1}^k P(i)}{\sum_{i=1}^N P(i)}
+    \end{align}
+    where $P(i) = \sum_j M_{ij}$.
+    Select the index $i$ in $(i,j)$ by choosing a random number $R$ between 0 and 1 and search $P_c$ for the smallest $k$ such that $P(k) = \sum_j M_{kj} \geq R$. 
+    Then, the first index of $(i,j)$ is $i = k$.
+    The index $j$ is then chosen probabilistically by noting that the relative probability for $j$ given $i=k$ is $M_{kj}$.
+    So, given this choice of $(i,j)$, if $i = j$ we insert $H_{1,a}$. 
+    If $i \neq j$, we insert $H_{1,b}$.
+\end{enumerate}
+
+\subsubsection{Zero Temperature}
+
+Since we want to maximize the expansion order here to project out the ground state of the Hamiltonian, we want to avoid using identity operators and force our simulation cell to be filled with local terms of our Hamiltonian.
+The steps for the diagonal update here are therefore the exact same as with the diagonal updates for finite-temperature with the only difference being that we {\it always} remove the current diagonal operator and keep attempting to replace it with a new one.
+
+\subsubsection{Deterministic loops}
+
+Instead of the forseeably inefficient non-deterministic directed loops, we may instead form deterministic clusters in the same exact way as is outlined in the well-known SSE formalism for TFIM.
+\begin{itemize}
+    \item Clusters terminate on site operators.
+    \item When a bond operator is encountered, the cluster branches from every possible leg of the bond vertex.
+\end{itemize}
+However, the difference here is that instead of flipping with probability 1/2, we now flip each cluster, labelled by an index $c$, in the simulation cell with the following Metropolis probability.
+\begin{align}
+    P_{\text{flip},c} =& \min\left(\frac{W_c^\prime}{W_c}, 1\right)
+\end{align}
+Here, $W_c$ primed (unprimed) denotes the weight of the local cluster $c$ being flipped (unflipped).
+Specifically, $W_c$ (primed or unprimed) is the product of all matrix element weights ($W_1$, $W_2$, $W_3$) present in the local cluster $c$. 
+Note that the site operators' matrix elements do not factor into $P_{\text{flip},c}$ since they are symmetric upon flipping (there is no weight change). 
 
 \end{document}
