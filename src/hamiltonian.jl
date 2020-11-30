@@ -10,6 +10,11 @@ one(H::Hamiltonian) = ones(Int, nspins(H))
 nspins(H::Hamiltonian) = H.Ns
 nbonds(H::Hamiltonian) = H.Nb
 
+@inline isdiagonal(H) = op -> isdiagonal(typeof(H), op)
+@inline isidentity(H) = op -> isidentity(typeof(H), op)
+@inline issiteoperator(H) = op -> issiteoperator(typeof(H), op)
+@inline isbondoperator(H) = op -> isbondoperator(typeof(H), op)
+
 @inline diag_update_normalization(H::Hamiltonian) = normalization(H.op_sampler)
 
 function energy(::BinaryThermalState, H::Hamiltonian, β::Float64, ns::Vector{T}) where {T <: Real}
@@ -17,7 +22,7 @@ function energy(::BinaryThermalState, H::Hamiltonian, β::Float64, ns::Vector{T}
     return H.energy_shift + E
 end
 
-energy_density(qmc_state::BinaryQMCState, H::Hamiltonian, args...) = energy(qmc_state, H, args...) / nspins(H)
+energy_density(qmc_state::BinaryQMCState, H::Hamiltonian, args...; kwargs...) = energy(qmc_state, H, args...; kwargs...) / nspins(H)
 
 
 function BinaryGroundState(H::Hamiltonian{2,O}, M::Int) where {K, O <: AbstractOperatorSampler{K}}

@@ -39,12 +39,12 @@ simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState) = simulation_cell(H
 
 # 1 -> spin-up (+1)
 # 0 -> spin-down (-1)
-magnetization(spin_prop) = mean(x -> 2x - 1, spin_prop)
+magnetization(spin_prop) = 2*mean(spin_prop) - 1
 
 num_single_site_diag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && isdiagonal(H, x), operator_list)
 num_single_site_offdiag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && !isdiagonal(H, x), operator_list)
-num_single_site(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x), operator_list)
-num_two_site_diag(H::AbstractIsing, operator_list) = mean(x -> isbondoperator(H, x), operator_list)
+num_single_site(H::AbstractIsing, operator_list) = mean(issiteoperator(H), operator_list)
+num_two_site_diag(H::AbstractIsing, operator_list) = mean(isbondoperator(H), operator_list)
 
 
 function autocorrelation(m::Vector)

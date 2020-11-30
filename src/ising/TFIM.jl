@@ -130,11 +130,11 @@ Base.@propagate_inbounds isferromagnetic(H::TFIM, (site1, site2)::NTuple{2, Int}
 ###############################################################################
 
 
-function energy(::BinaryGroundState, H::AbstractIsing, ns::Vector{<:Real})
+function energy(::BinaryGroundState, H::AbstractIsing, ns::Vector{<:Real}; resampler::Function=jackknife)
     hx = total_hx(H)
 
     if !iszero(hx)
-        E = -hx * jackknife(inv, ns)
+        E = -hx * resampler(inv, ns)
     else
         E = zero(H.energy_shift)
     end
