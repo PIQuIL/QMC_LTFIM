@@ -25,8 +25,11 @@ An SSE QMC implementation of the quantum Ising model with transverse and/or long
   - many places need this: Hamiltonian structs (use banded matrices for 1D for some savings), operator samplers, probability vectors
     - a "Hierarchical" Improved Operator Sampler probably isn't very helpful since it already stores O(N_b) data (the bonds themselves)
     - maybe the Operator Sampler could just sample a number, and then we'd use the inverse of the OperatorDict's "hash" to reconstruct the operator tuple, that way it won't have to store all the operator tuples.
+  - not sure if reducing memory usage is really necessary anymore (besides for extremely sparse interaction graphs like nearest-neighbour/next-nearest-neighbour Hamiltonians) since:
+    - the operator list length will scale as (in the worst case) approximately the number of possible bond operators
+    - we're going to be calculating 2-point correlators, which will require O(N^2) memory, this'll cost us much more memory than what the OperatorSampler will use
 
-- getweight/getlogweight should be the Hamiltonian's responsibility; may defer to op_sampler for complicated interactions but short circuiting for simple systems would be beneficial
+- getweight/getlogweight should be the Hamiltonian's responsibility; defer to op_sampler for complicated interactions but short circuiting for simple systems would be beneficial (for speed reasons)
   - probability vectors and op samplers should *optionally* store the weights
 
 - Hamiltonian constructor given a Lattice
