@@ -554,12 +554,12 @@ Specifically, $W_c$ (primed or unprimed) is the product of all matrix element we
 \section{Rydberg Hamiltonian}
 
 \begin{align*}
-    H =& \frac{\Omega}{2} \sum_{i=1}^N \left( \ketbra{0}{1}_i + \ketbra{1}{0}_i \right) - \delta \sum_{i=1}^N \ketbra{1}{1}_i + \frac{1}{2} \sum_{(i,j)} V_{ij} \ketbra{1_i 1_j}{1_i 1_j} \\
-    =& \frac{\Omega}{2} \sum_{i=1}^N \sigma_i^x + \sum_{(i,j)} \frac{V_{ij}}{2} \ketbra{1_i 1_j}{1_i 1_j} - \delta_b \left(\ketbra{1}{1}_i + \ketbra{1}{1}_j\right)
+    H =& \frac{\Omega}{2} \sum_{i=1}^N \left( \ketbra{0}{1}_i + \ketbra{1}{0}_i \right) - \delta \sum_{i=1}^N \ketbra{1}{1}_i + \sum_{(i,j)} V_{ij} \ketbra{1_i 1_j}{1_i 1_j} \\
+    =& \Omega \sum_{i=1}^N \sigma_i^x + \sum_{(i,j)} V_{ij} \ketbra{1_i 1_j}{1_i 1_j} - \delta_b \left(\ketbra{1}{1}_i + \ketbra{1}{1}_j\right)
 \end{align*}
 Here, $\delta_b$ is a modified version of $\delta$ that accounts for over-counting when moving the original sum over sites into the sum over all-to-all bonds.
 Let's decompose this Hamiltonian into local operators in a similar spirit to that of the LTFIM. 
-Also, for simplicity, let's redefine $\Omega$ as $2\Omega$ just to get rid of pesky factors of 1/2.
+Also, for simplicity, we redefined $\Omega$ as $2\Omega$ and $V$ as $2V$ just to get rid of pesky factors of 1/2.
 This gives us the following local operator decomposition.
 \begin{subequations} \label{eq:decomposition_ryd}
     \begin{align}
