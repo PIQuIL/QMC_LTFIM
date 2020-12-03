@@ -145,8 +145,11 @@ function Rydberg(lattice::Lattice, δ, Ω, C; β=Nothing)
         # bond term
         for i in 0:N-2
             for j in (i+1):N-1
-                Spin1 = 2*((Ket>>i)&1) - 1
-                Spin2 = 2*((Ket>>j)&1) - 1
+                # NOT the following since the Vij term only has the |1> projector.
+                # So, just keep in 0,1 basis so that |0> doesn't contribute
+                # Spin = 2*((Ket>>SpinIndex)&1) - 1 << NOT THIS
+                Spin1 = (Ket>>i)&1
+                Spin2 = (Ket>>j)&1
                 diag += V[i+1][j+1]*Spin1*Spin2 
             end
         end
