@@ -559,11 +559,13 @@ Specifically, $W_c$ (primed or unprimed) is the product of all matrix element we
 \end{align*}
 Here, $\delta_b$ is a modified version of $\delta$ that accounts for over-counting when moving the original sum over sites into the sum over all-to-all bonds.
 Let's decompose this Hamiltonian into local operators in a similar spirit to that of the LTFIM. 
+Also, for simplicity, let's redefine $\Omega$ as $2\Omega$ just to get rid of pesky factors of 1/2.
+This gives us the following local operator decomposition.
 \begin{subequations} \label{eq:decomposition_ryd}
     \begin{align}
         H_{0,0} =& \mathbb{1} \\
-        H_{-1,a} =& \frac{\Omega}{2} \sigma_i^x \\
-        H_{1,a} =& \frac{\Omega}{2} \\
+        H_{-1,a} =& \Omega \sigma_i^x \\
+        H_{1,a} =& \Omega \\
         H_{1,b} =& V_{ij} \ketbra{1_i 1_j}{1_i 1_j} - \delta_b \left(\ketbra{1}{1}_i + \ketbra{1}{1}_j\right) + C_{ij}
     \end{align}
 \end{subequations}
@@ -571,8 +573,8 @@ $C_{ij} = \max(2\delta_b - V_{ij}, \delta_b)$ is a constant shift that is needed
 The relevant matrix elements of this local decomposition are (taking $1 (0) = \uparrow (\downarrow)$)
 \begin{subequations} \label{eq:mat_elems_ryd}
     \begin{align}
-        \matrixel{\uparrow}{H_{-1,a}}{\downarrow} = \matrixel{\downarrow}{H_{-1,a}}{\uparrow} =& \frac{\Omega}{2} \\
-        \matrixel{\uparrow}{H_{1,a}}{\uparrow} = \matrixel{\downarrow}{H_{1,a}}{\downarrow} =& \frac{\Omega}{2} \\
+        \matrixel{\uparrow}{H_{-1,a}}{\downarrow} = \matrixel{\downarrow}{H_{-1,a}}{\uparrow} =& \Omega \\
+        \matrixel{\uparrow}{H_{1,a}}{\uparrow} = \matrixel{\downarrow}{H_{1,a}}{\downarrow} =& \Omega \\
         W_{ij}^{(1)} \equiv \matrixel{\uparrow \uparrow}{H_{1,b}}{\uparrow \uparrow} =& V_{ij} - 2\delta_b + C_{ij} \\
         W_{ij}^{(2)} \equiv \matrixel{\downarrow \downarrow}{H_{1,b}}{\downarrow \downarrow} =& C_{ij}\\
         W_{ij}^{(3)} \equiv \matrixel{\downarrow \uparrow}{H_{1,b}}{\downarrow \uparrow} = \matrixel{\uparrow \downarrow}{H_{1,b}}{\uparrow \downarrow} =& -\delta_b + C_{ij}
@@ -592,18 +594,18 @@ Traverse the operator list and do the following.
     \item If $H_{1,a}$ or $H_{1,b}$ is encountered remove it ($n \rightarrow n - 1$) with probability
     \begin{align*}
         P_{[1,a]_p / [1,b]_p \rightarrow [0,0]_p} =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{ W(H_{[1,a]_p} \text{ or } H_{[1,b]_{p,\uparrow\uparrow}} \text{ or } H_{[1,b]_{p,\downarrow\downarrow}} \text{ or } H_{[1,b]_{p,\uparrow\downarrow / \downarrow\uparrow}}) }, 1 \right) \\
-        =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{NW(H_{[1,a]_p}) + \sum_{ij} W_{ij}^{(1)} + W_{ij}^{(2)} + W_{ij}^{(3)} }, 1 \right) \\
-        =& \mathrm{min}\left(\frac{M-n+1}{\beta \left(N\frac{\Omega}{2} - 3N_b\delta_b + \sum_{ij} V_{ij} + 3C_{ij}\right) },1\right).
+        =& \mathrm{min}\left( \frac{W^\prime(\alpha(p), S_M)}{NW(H_{[1,a]_p}) + \sum_{ij} W_{ij}^{(1)} + W_{ij}^{(2)} + 2W_{ij}^{(3)} }, 1 \right) \\
+        =& \mathrm{min}\left(\frac{M-n+1}{\beta \left(N\Omega - 4N_b\delta_b + \sum_{ij} V_{ij} + 4C_{ij}\right) },1\right).
     \end{align*}
     \item If the unity operator $H_{0,0}$ is encountered, decide whether or not to accept inserting a diagonal operator ($n \rightarrow n + 1$) with the probability 
     \begin{align}
-        P_{H_{[0,0]_p} \rightarrow H_{[1,a]_p} / H_{[1,b]_p}} =& \mathrm{min}\left(\frac{\beta \left(N\frac{\Omega}{2} - 3N_b\delta_b + \sum_{ij} V_{ij} + 3C_{ij}\right) }{M-n},1\right)
+        P_{H_{[0,0]_p} \rightarrow H_{[1,a]_p} / H_{[1,b]_p}} =& \mathrm{min}\left(\frac{\beta \left(N\Omega - 4N_b\delta_b + \sum_{ij} V_{ij} + 4C_{ij}\right) }{M-n},1\right)
     \end{align}
     \item If it was decided to insert a diagonal operator, choose the operator to insert with probabilities
     \begin{subequations} \label{eq:heat_bath_1_ryd}
         \begin{align} 
-            P_{H_{[1,a]_p}} = & \frac{N\frac{\Omega}{2}}{N\frac{\Omega}{2} - 3N_b\delta_b + \sum_{ij} V_{ij} + 3C_{ij}}, \\
-            P_{H_{[1,b]_p}} = & \frac{ - 3N_b\delta_b + \sum_{ij} V_{ij} + 3C_{ij}}{N\frac{\Omega}{2} - 3N_b\delta_b + \sum_{ij} V_{ij} + 3C_{ij}}.
+            P_{H_{[1,a]_p}} = & \frac{N\Omega}{N\Omega - 4N_b\delta_b + \sum_{ij} V_{ij} + 4C_{ij}}, \\
+            P_{H_{[1,b]_p}} = & \frac{ - 4N_b\delta_b + \sum_{ij} V_{ij} + 4C_{ij}}{N\Omega - 4N_b\delta_b + \sum_{ij} V_{ij} + 4C_{ij}}.
         \end{align}
     \end{subequations}
     \item To choose which type of diagonal operator (site or bond), we follow the algorithm outlined in Sandvik's paper on an SSE framework for the TFIM with arbitrary interactions. 
@@ -611,7 +613,7 @@ Traverse the operator list and do the following.
     Let the matrix $M$ have elements $M_{ij}$ such that
     \begin{align} \label{eq:choices}
         M_{ij} = \begin{cases}
-            \frac{\Omega}{2} & \text{ for } i = j \\
+            \Omega & \text{ for } i = j \\
              W^{(1,2,3)}_{ij} & \text{ for } i \neq j
         \end{cases}
     \end{align}
