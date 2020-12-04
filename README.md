@@ -7,7 +7,7 @@ An SSE QMC implementation of the quantum Ising model with transverse and/or long
 - 2-point ZZ correlators
   - structure factors
   - Need Lattices package:
-    - 2-point correlators need access to the lattice struct in order to reduce redundant calculations
+    - 2-point correlators need access to the lattice struct in order to reduce redundant calculations (may not need this during the actual run if it doesn't speed things up a ton)
     - structure factors need to be able to do Fourier transforms over the lattice
     - we need to be able to translate site indices into site coordinates and take boundary conditions into account
 
@@ -20,6 +20,7 @@ An SSE QMC implementation of the quantum Ising model with transverse and/or long
     - could be bad if the sigterm happens in the middle of a cluster flip though...
       - maybe instead of "flipping" we "set" the legtype to a value that was sampled, that way we can just re-run the cluster_update! fn after loading up the checkpoint to make sure everything's consistent
       - wait but how do we know if it was interrupted during link list construction or the cluster update?
+      - possible solution: keep track of which update step we're currently performing, if job is interrupted, we know which step to redo
 
 - Reduce Memory Usage
   - many places need this: Hamiltonian structs (use banded matrices for 1D for some savings), operator samplers, probability vectors
@@ -46,3 +47,4 @@ An SSE QMC implementation of the quantum Ising model with transverse and/or long
     - There may be a way to turn one of these into a "streaming" bootstrap
   - Autocorrelation time we're computing seems to be larger than what's computed by other packages. Should try calculating autocorrelation time using a binning analysis instead as it may be more "stable" than the FFT based method we're using.
   - Should compute autocorrelation time for *all* observables in order to get accurate error bars.
+  - https://arxiv.org/abs/1210.3781
