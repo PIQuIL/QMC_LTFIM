@@ -164,61 +164,47 @@ function link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::Abstr
                 flipping_weights[idx] = 0.0
             end
         elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
-            site1, site2 = getbondsites(H, op)
-            spin1, spin2 = spin_prop[site1], spin_prop[site2]
+            site1, site2 = bond = getbondsites(H, op)
+            spin1, spin2 = spins = spin_prop[site1], spin_prop[site2]
+            num_sites = 2  # length(bond)
+            num_legs = 4   # 2*num_sites
 
             # vertex leg indices
-            v1, v2, v3, v4 = idx + 1, idx + 2, idx + 3, idx + 4
+            # thinking of imaginary time as increasing as we move upward,
+            # these indices refer to the
+            # lower left, lower right, upper left, upper right legs respectively
+            # v1, v2, v3, v4 = idx + 1, idx + 2, idx + 3, idx + 4
 
-            # lower left (thinking of imaginary time as increasing vertically)
-            F = First[site1]
-            LinkList[v1] = F
-            if qmc_state isa BinaryGroundState || !iszero(F)
-                LinkList[F] = v1  # completes backwards link
-            else
-                Last[site1] = v1
+            @simd for i in 1:num_sites
+                v = idx + i
+                st = bond[i]
+                F = First[st]
+                LinkList[v] = F
+                if qmc_state isa BinaryGroundState || !iszero(F)
+                    LinkList[F] = v  # completes backwards link
+                else
+                    Last[st] = v
+                end
+                First[st] = v + num_sites
             end
-            LegType[v1] = spin1
-            Associates[v1] = v2
+
+            @simd for i in 1:num_legs
+                v = idx + i
+                LegType[v] = spins[mod(i, 1:num_sites)]
+                Associates[v] = idx + mod(i+1, 1:num_legs)
+                if H isa AbstractLTFIM
+                    flipping_weights[v] = 0.0
+                end
+            end
 
             if H isa AbstractLTFIM
                 lw1 = getlogweight(H.op_sampler, op)
                 flip_t = getbondtype(H, !spin1, !spin2)
                 lw2 = getlogweight(H.op_sampler, (flip_t, site1, site2))
-                flipping_weights[v1] = lw2 - lw1
+                flipping_weights[idx + 1] = lw2 - lw1
             end
 
-            # lower right
-            F = First[site2]
-            LinkList[v2] = F
-            if qmc_state isa BinaryGroundState || !iszero(F)
-                LinkList[F] = v2  # completes backwards link
-            else
-                Last[site2] = v2
-            end
-            LegType[v2] = spin2
-            Associates[v2] = v3
-            if H isa AbstractLTFIM
-                flipping_weights[v2] = 0.0
-            end
-
-            # upper left
-            First[site1] = v3
-            LegType[v3] = spin1
-            Associates[v3] = v4
-            if H isa AbstractLTFIM
-                flipping_weights[v3] = 0.0
-            end
-
-            # upper right
-            First[site2] = v4
-            LegType[v4] = spin2
-            Associates[v4] = v1
-            if H isa AbstractLTFIM
-                flipping_weights[v4] = 0.0
-            end
-
-            idx = v4
+            idx += num_legs
         end
     end
 
