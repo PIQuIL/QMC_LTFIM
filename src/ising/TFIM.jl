@@ -1,5 +1,5 @@
-abstract type AbstractIsing{O} <: Hamiltonian{2,O} end
-abstract type AbstractTFIM{O} <: AbstractIsing{O} end
+abstract type AbstractIsing{O <: AbstractOperatorSampler} <: Hamiltonian{2,O} end
+abstract type AbstractTFIM{O <: AbstractOperatorSampler} <: AbstractIsing{O} end
 
 # H = -J ∑_{⟨ij⟩} σ_i σ_j - h ∑_i σ^x_i
 struct NearestNeighbourTFIM{O} <: AbstractTFIM{O}
@@ -39,7 +39,8 @@ end
 @inline issiteoperator(H::AbstractTFIM, op::NTuple{3,Int}) = issiteoperator(typeof(H), op)
 @inline isbondoperator(H::AbstractTFIM, op::NTuple{3,Int}) = isbondoperator(typeof(H), op)
 
-@inline getbondsites(::AbstractTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
+@inline getbondsites(::Type{<:AbstractTFIM}, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
+@inline getbondsites(H::AbstractTFIM, op::NTuple{3, Int}) = getbondsites(typeof(H), op)
 @inline getbondtype(::AbstractTFIM, s1::Bool, s2::Bool) = 1
 
 @inline makeidentity(::Type{<:AbstractTFIM}) = (0, 0, 0)
@@ -60,7 +61,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}) where T
 
     for i in eachindex(hx)
         if !iszero(hx[i])
-            push!(ops, makediagonalsiteop(TFIM, i))
+            push!(ops, makediagonalsiteop(AbstractTFIM, i))
             push!(p, hx[i])
             energy_shift += hx[i]
         end

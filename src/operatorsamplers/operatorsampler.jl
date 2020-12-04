@@ -46,4 +46,3 @@ Base.@propagate_inbounds getlogweight(os::OperatorSampler{K, T}, op::NTuple{K, I
 ##############################################################################
 
 include("hierarchical_op_sampler.jl")
-include("improved_op_sampler.jl")

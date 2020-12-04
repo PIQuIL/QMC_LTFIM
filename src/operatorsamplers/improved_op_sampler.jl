@@ -7,7 +7,7 @@ struct ImprovedOperatorSampler{K, T, P} <: AbstractImprovedOperatorSampler{K, T,
 end
 
 # only supports the LTFIM case for now
-function ImprovedOperatorSampler(operators::Vector{NTuple{3, Int}}, p::Vector{T}) where {T <: AbstractFloat}
+function ImprovedOperatorSampler(H::Type{<:Hamiltonian{2, <:AbstractOperatorSampler}}, operators::Vector{NTuple{3, Int}}, p::Vector{T}) where {T <: AbstractFloat}
     @assert length(operators) == length(p) "Given vectors must have the same length!"
 
     op_log_weights = OperatorDict(operators, log.(p), default=T(-Inf))
@@ -17,16 +17,16 @@ function ImprovedOperatorSampler(operators::Vector{NTuple{3, Int}}, p::Vector{T}
 
     # fill with all the site operators first
     for (i, op) in enumerate(operators)
-        if op[1] < 0
+        if issiteoperator(H, op) && isdiagonal(H, op)
             push!(max_mel_ops, op)
             push!(p_modified, @inbounds p[i])
         end
     end
-    idx = findall(op -> op[1] > 0, operators)
+    idx = findall(isbondoperator(H), operators)
     ops = operators[idx]
     p_mod = p[idx]
 
-    perm = sortperm(ops, by=op -> (op[2], op[3]))
+    perm = sortperm(ops, by=getbondsites(H))
     ops = ops[perm]
     p_mod = p_mod[perm]
 

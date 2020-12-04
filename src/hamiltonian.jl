@@ -10,10 +10,11 @@ one(H::Hamiltonian) = ones(Int, nspins(H))
 nspins(H::Hamiltonian) = H.Ns
 nbonds(H::Hamiltonian) = H.Nb
 
-@inline isdiagonal(H) = op -> isdiagonal(typeof(H), op)
-@inline isidentity(H) = op -> isidentity(typeof(H), op)
-@inline issiteoperator(H) = op -> issiteoperator(typeof(H), op)
-@inline isbondoperator(H) = op -> isbondoperator(typeof(H), op)
+@inline isdiagonal(H) = op -> isdiagonal(H, op)
+@inline isidentity(H) = op -> isidentity(H, op)
+@inline issiteoperator(H) = op -> issiteoperator(H, op)
+@inline isbondoperator(H) = op -> isbondoperator(H, op)
+@inline getbondsites(H) = op -> getbondsites(H, op)
 
 @inline diag_update_normalization(H::Hamiltonian) = normalization(H.op_sampler)
 

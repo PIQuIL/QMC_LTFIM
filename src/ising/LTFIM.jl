@@ -1,7 +1,7 @@
 using Base.Iterators
 
 
-abstract type AbstractLTFIM{O} <: AbstractIsing{O} end
+abstract type AbstractLTFIM{O <: AbstractOperatorSampler} <: AbstractIsing{O} end
 
 struct GeneralLTFIM{O,M <: UpperTriangular{Float64},V <: AbstractVector{Float64}} <: AbstractLTFIM{O}
     op_sampler::O
@@ -46,8 +46,8 @@ end
 @inline issiteoperator(H::AbstractLTFIM, op::NTuple{3,Int}) = issiteoperator(typeof(H), op)
 @inline isbondoperator(H::AbstractLTFIM, op::NTuple{3,Int}) = isbondoperator(typeof(H), op)
 
-
-@inline getbondsites(::AbstractLTFIM, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
+@inline getbondsites(::Type{<:AbstractLTFIM}, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
+@inline getbondsites(H::AbstractLTFIM, op::NTuple{3, Int}) = getbondsites(typeof(H), op)
 @inline getbondtype(::AbstractLTFIM, s1::Bool, s2::Bool) = (s1<<1 | s2) + 1
 
 @inline makeidentity(::Type{<:AbstractLTFIM}) = (0, 0, 0)
@@ -71,7 +71,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
 
     for i in eachindex(hx)
         if !iszero(hx[i])
-            push!(ops, makediagonalsiteop(LTFIM, i))
+            push!(ops, makediagonalsiteop(AbstractLTFIM, i))
             push!(p, hx[i])
             energy_shift += hx[i]
         end
@@ -172,7 +172,7 @@ function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=t
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
     ops, p, energy_shift, _ = make_prob_vector(J_, hx_, hz)
-    op_sampler = ImprovedOperatorSampler(ops, p)
+    op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
     return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)
 end
 
@@ -180,7 +180,7 @@ function GeneralLTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
     ops, p, energy_shift, _ = make_prob_vector(J_, hx_, hz)
-    op_sampler = ImprovedOperatorSampler(ops, p)
+    op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
     return GeneralLTFIM{typeof(op_sampler),typeof(J_),typeof(hx_)}(op_sampler, J_, hx_, hz, Ns, Nb, energy_shift)
 end
 
