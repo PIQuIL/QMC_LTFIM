@@ -1,5 +1,7 @@
 using Test, QMC
 using Statistics
+using Aqua
+Aqua.test_all(QMC, ambiguities=false, stale_deps=false)
 
 @testset "Probability Vectors" begin
     @testset "Small Vector of size $n" for n in 1:10
