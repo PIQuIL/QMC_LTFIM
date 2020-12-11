@@ -649,4 +649,23 @@ Here, $W_c$ primed (unprimed) denotes the weight of the local cluster $c$ being 
 Specifically, $W_c$ (primed or unprimed) is the product of all matrix element weights ($W_1$, $W_2$, $W_3$) present in the local cluster $c$. 
 Note that the site operators' matrix elements do not factor into $P_{\text{flip},c}$ since they are symmetric upon flipping (there is no weight change). 
 
+\section{Lattices}
+
+Here, I will just give a quick description of the lattice types that can be found in \texttt{src/lattice\_types.jl}.
+Currently we have 1D chains, rectangular, triangular, and ruby lattices available, all of which contain periodic boundary condition options except for the ruby lattice. 
+I've taken the site enumeration convention for the lattice types as follows (see Fig.~\ref{fig:2Dlattices}).
+
+\begin{enumerate}
+    \item 1D chains: site labels increase from left to right.
+    \item 2D lattices with one site per unit cell: site labels increase like periodic boundaries in the x-direction.
+    \item 2D lattices with a multisite basis: site labels within a unit cell increase left to right, then top to bottom. 
+\end{enumerate}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.3\linewidth]{2Dsimple.png}
+    \includegraphics[width=0.5\linewidth]{2Dmulti.png}
+    \caption{The site enumeration convention for 2D simple lattices (left) and 2D lattices with a many-site basis (right).}
+    \label{fig:2Dlattices}
+\end{figure}
 \end{document}
