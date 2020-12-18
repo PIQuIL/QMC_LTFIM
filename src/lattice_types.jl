@@ -4,6 +4,78 @@
 abstract type Lattice end
 
 
+struct Custom <: Lattice
+    a1::Tuple{Float64,Float64}
+    a2::Tuple{Float64,Float64}
+    num_cells::Int
+    r::Array{Tuple{Float64,Float64},1}
+    distance_matrix::Array{Array{Float64,1},1}
+end
+
+
+function Custom(a1::Tuple{Float64,Float64}, a2::Tuple{Float64,Float64}, nX::Int, nY::Int, r::Array{Tuple{Float64,Float64},1})
+    # TODO: Periodic boundaries
+    N = nX*nY*length(r)
+    distance_matrix = [zeros(Float64, N) for _ in 1:N]
+    num_cells = nX*nY # number of repitions of the unit cell
+
+    a2_length = sqrt(a2[1]^2 + a2[2]^2)
+    θ = acos(a2[1] / a2_length)
+
+    # for plotting
+    sites_x = zeros(Float64, N)
+    sites_y = zeros(Float64, N)
+
+    # NOT ENDING ON num_cells-1 BECAUSE WE NEED INTER-CELL BONDS
+    for i in 1:num_cells
+        cellp1_x = rem(i, nX) > 0 ? rem(i, nX) - 1 : nX - 1
+        cellp1_y = rem(i, nX) > 0 ? div(i, nX) : div(i, nX) - 1
+
+        cell1_x = cellp1_x*a1[1] + cellp1_y*a2_length*cos(θ)
+        cell1_y = cellp1_y*a2_length*sin(θ)
+        cell1   = (cell1_x, cell1_y)
+        
+        # NOT STARTING FROM i+1 BECAUSE WE NEED INTER-CELL BONDS
+        for j in i:num_cells
+            cellp2_x = rem(j, nX) > 0 ? rem(j, nX) - 1 : nX - 1
+            cellp2_y = rem(j, nX) > 0 ? div(j, nX) : div(j, nX) - 1
+        
+            cell2_x = cellp2_x*a1[1] + cellp2_y*a2_length*cos(θ)
+            cell2_y = cellp2_y*a2_length*sin(θ)
+            cell2   = (cell2_x, cell2_y)
+        
+            for site_i in 1:length(r)
+                site_num_i = site_i + length(r)*(i-1) 
+                ri = r[site_i] .+ cell1
+    
+                # for plotting the ruby lattice as a scatter plot
+                sites_x[site_num_i] = ri[1]
+                sites_y[site_num_i] = ri[2]
+
+                for site_j in 1:length(r)
+                    # ensure that there are no diagonal entries 
+                    if i == j & site_i == site_j
+                        continue
+                    end
+                
+                    site_num_j = site_j + length(r)*(j-1) 
+                    rj = r[site_j] .+ cell2
+
+                    Δ = ri .- rj
+                    Δx, Δy = Δ[1], Δ[2]
+
+                    distance_matrix[site_num_i][site_num_j] = sqrt(Δx^2 + Δy^2)
+                end
+            end
+        end
+    end
+    #scatter(sites_x, sites_y, color="blue")
+    #savefig("custom_lattice.png", format="png", dpi=500)
+    return Custom(a1, a2, num_cells, r, distance_matrix)
+end
+
+    
+
 struct Ruby <: Lattice
     ρ::Float64
     num_cells::Int
@@ -183,6 +255,7 @@ end
 
 
 function Rectangle(nX::Int, nY::Int, aX::Float64, aY::Float64, PBC::Bool)
+    # TODO: PBCs in just x/y. See triangular lattice
     N = nX*nY
     distance_matrix = [zeros(Float64, N) for _ in 1:N]
 
@@ -242,7 +315,7 @@ function Chain(nX::Int, aX::Float64, PBC::Bool)
     return Chain(nX, aX, distance_matrix)
 end
 
-
+nspins(lattice::Custom) = lattice.num_cells*length(lattice.r)
 nspins(lattice::Ruby) = lattice.num_cells*6
 nspins(lattice::Rectangle) = lattice.nX * lattice.nY
 nspins(lattice::Triangle) = lattice.nX * lattice.nY
