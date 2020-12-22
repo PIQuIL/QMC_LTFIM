@@ -301,13 +301,8 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
 
             # in the TFIM case, acceptance rate is exactly 1
             #   so we set it to 1/2 to ensure ergodicity
-            if H isa AbstractLTFIM
-                A = iszero(H.hz) ? 0.5 : exp(min(lnA, zero(lnA)))
-                flip = rand(rng) < A
-            else
-                A = 0.5
-                flip = rand(rng, Bool)
-            end
+            A = haslongitudinalfield(H) ? exp(min(lnA, zero(lnA))) : 0.5
+            flip = rand(rng) < A
 
             if runstats isa Val{true}; push!(acceptance, A); end
 

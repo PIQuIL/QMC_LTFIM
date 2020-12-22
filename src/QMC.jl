@@ -24,7 +24,9 @@ import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex, r
 
 
 export BinaryQMCState, BinaryGroundState, BinaryThermalState,
-        Hamiltonian, TFIM, LTFIM, GeneralLTFIM, nspins, nbonds, energy, energy_density, mc_step!, mc_step_beta!,
+        Hamiltonian, AbstractIsing, AbstractTFIM, TFIM, AbstractLTFIM, LTFIM, GeneralLTFIM, Rydberg,
+        haslongitudinalfield,
+        nspins, nbonds, energy, energy_density, mc_step!, mc_step_beta!,
         resize_op_list!,
         sample, simulation_cell, magnetization, num_single_site_diag, num_single_site_offdiag,
         num_single_site, num_two_site_diag, autocorrelation, correlation_time, jackknife, bootstrap, mean_and_stderr,

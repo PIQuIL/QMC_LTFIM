@@ -9,7 +9,6 @@ struct GeneralLTFIM{O,M <: UpperTriangular{Float64},V <: AbstractVector{Float64}
     hx::V
     hz::Float64
     Ns::Int
-    Nb::Int
     energy_shift::Float64
 end
 
@@ -20,14 +19,13 @@ struct LTFIM{O} <: AbstractLTFIM{O}
     hx::Float64
     hz::Float64
     Ns::Int
-    Nb::Int
     energy_shift::Float64
 end
 ###############################################################################
 
 # LTFIM ops:
-#  (-2,i,0) is an off-diagonal site operator h(sigma^+_i + sigma^-_i)
-#  (-1,i,0) is a diagonal site operator h
+#  (-2,i,i) is an off-diagonal site operator h(sigma^+_i + sigma^-_i)
+#  (-1,i,i) is a diagonal site operator h
 #  (0,0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
 #  (t,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j) + hzb(sigma^z_i + sigma^z_j)
 #    t denotes the spin config at sites i,j, subtract 1 then convert to binary
@@ -36,27 +34,7 @@ end
 #    t = 3 -> 10 -> up-down
 #    t = 4 -> 11 -> up-up
 #    spin_config(t) = divrem(t - 1, 2)
-#
-@inline isdiagonal(::Type{<:AbstractLTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(::Type{<:AbstractLTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(::Type{<:AbstractLTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(::Type{<:AbstractLTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
-@inline isdiagonal(H::AbstractLTFIM, op::NTuple{3,Int}) = isdiagonal(typeof(H), op)
-@inline isidentity(H::AbstractLTFIM, op::NTuple{3,Int}) = isidentity(typeof(H), op)
-@inline issiteoperator(H::AbstractLTFIM, op::NTuple{3,Int}) = issiteoperator(typeof(H), op)
-@inline isbondoperator(H::AbstractLTFIM, op::NTuple{3,Int}) = isbondoperator(typeof(H), op)
-
-@inline getbondsites(::Type{<:AbstractLTFIM}, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
-@inline getbondsites(H::AbstractLTFIM, op::NTuple{3, Int}) = getbondsites(typeof(H), op)
 @inline getbondtype(::AbstractLTFIM, s1::Bool, s2::Bool) = (s1<<1 | s2) + 1
-
-@inline makeidentity(::Type{<:AbstractLTFIM}) = (0, 0, 0)
-@inline makediagonalsiteop(::Type{<:AbstractLTFIM}, i::Int) = (-1, i, i)
-@inline makeoffdiagonalsiteop(::Type{<:AbstractLTFIM}, i::Int) = (-2, i, i)
-@inline makeidentity(H::AbstractLTFIM) = makeidentity(typeof(H))
-@inline makediagonalsiteop(H::AbstractLTFIM, i::Int) = makediagonalsiteop(typeof(H), i)
-@inline makeoffdiagonalsiteop(H::AbstractLTFIM, i::Int) = makeoffdiagonalsiteop(typeof(H), i)
-
 @inline spin_config(::AbstractLTFIM, t::Int)::NTuple{2,Int} = divrem(t - 1, 2)
 @inline spin_config(H::AbstractLTFIM, op::NTuple{3, Int}) = @inbounds spin_config(H, op[1])
 
@@ -81,14 +59,13 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
     bond_spins = Set{NTuple{2,Int}}()
     nbonds_per_site = OrderedDict{Int,Int}(i => 0 for i in 1:Ns)
     for j in axes(J, 2), i in axes(J, 1)
-        if !iszero(J[i, j])
-            site1, site2 = (i <= j) ? (i, j) : (j, i)
+        if i < j && !iszero(J[i, j])
+            site1, site2 = (i, j)
             push!(bond_spins, (site1, site2))
             nbonds_per_site[i] += 1
             nbonds_per_site[j] += 1
         end
     end
-    Nb = length(bond_spins)
 
     fictitious_bonds = Set{NTuple{2,Int}}()
     if !iszero(hz)
@@ -131,7 +108,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
         J_ = -J[site1, site2]
         #   order:   DD,          DU,  UD, UU
         p_spins   = [J_ - 2*hzb, -J_, -J_, J_ + 2*hzb]
-        C   = abs(min(0, minimum(p_spins))) + epsilon
+        C = abs(min(0, minimum(p_spins))) + epsilon
         p_spins .+= C
 
         for (t, p_t) in enumerate(p_spins)
@@ -162,7 +139,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
         end
     end
 
-    return ops, p, energy_shift, Nb
+    return ops, p, energy_shift
 end
 
 
@@ -171,7 +148,7 @@ end
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
-    ops, p, energy_shift, _ = make_prob_vector(J_, hx_, hz)
+    ops, p, energy_shift = make_prob_vector(J_, hx_, hz)
     op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
     return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)
 end
@@ -179,10 +156,11 @@ end
 function GeneralLTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
-    ops, p, energy_shift, _ = make_prob_vector(J_, hx_, hz)
+    ops, p, energy_shift = make_prob_vector(J_, hx_, hz)
     op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
     return GeneralLTFIM{typeof(op_sampler),typeof(J_),typeof(hx_)}(op_sampler, J_, hx_, hz, Ns, Nb, energy_shift)
 end
 
 total_hx(H::GeneralLTFIM)::Float64 = sum(H.hx)
 total_hx(H::LTFIM)::Float64 = H.hx * nspins(H)
+haslongitudinalfield(H::AbstractLTFIM) = !iszero(H.hz)

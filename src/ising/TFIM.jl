@@ -7,7 +7,6 @@ struct NearestNeighbourTFIM{O} <: AbstractTFIM{O}
     J::Float64
     hx::Float64
     Ns::Int
-    Nb::Int
     energy_shift::Float64
 end
 
@@ -18,7 +17,6 @@ struct TFIM{O,M <: UpperTriangular{Float64},V <: AbstractVector{Float64}} <: Abs
     J::M
     hx::V
     Ns::Int
-    Nb::Int
     energy_shift::Float64
 end
 
@@ -30,25 +28,26 @@ end
 #  (-1,i,i) is a diagonal site operator h
 #  (0,0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
 #  (1,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
-@inline isdiagonal(::Type{<:AbstractTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(::Type{<:AbstractTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(::Type{<:AbstractTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(::Type{<:AbstractTFIM}, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
-@inline isdiagonal(H::AbstractTFIM, op::NTuple{3,Int}) = isdiagonal(typeof(H), op)
-@inline isidentity(H::AbstractTFIM, op::NTuple{3,Int}) = isidentity(typeof(H), op)
-@inline issiteoperator(H::AbstractTFIM, op::NTuple{3,Int}) = issiteoperator(typeof(H), op)
-@inline isbondoperator(H::AbstractTFIM, op::NTuple{3,Int}) = isbondoperator(typeof(H), op)
+@inline isdiagonal(::Type{<:AbstractIsing}, op::NTuple{3,Int}) = @inbounds (op[1] != -2)
+@inline isidentity(::Type{<:AbstractIsing}, op::NTuple{3,Int}) = @inbounds (op[1] == 0)
+@inline issiteoperator(::Type{<:AbstractIsing}, op::NTuple{3,Int}) = @inbounds (op[1] < 0)
+@inline isbondoperator(::Type{<:AbstractIsing}, op::NTuple{3,Int}) = @inbounds (op[1] > 0)
+@inline isdiagonal(H::AbstractIsing, op::NTuple{3,Int}) = isdiagonal(typeof(H), op)
+@inline isidentity(H::AbstractIsing, op::NTuple{3,Int}) = isidentity(typeof(H), op)
+@inline issiteoperator(H::AbstractIsing, op::NTuple{3,Int}) = issiteoperator(typeof(H), op)
+@inline isbondoperator(H::AbstractIsing, op::NTuple{3,Int}) = isbondoperator(typeof(H), op)
 
-@inline getbondsites(::Type{<:AbstractTFIM}, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
-@inline getbondsites(H::AbstractTFIM, op::NTuple{3, Int}) = getbondsites(typeof(H), op)
+@inline getbondsites(::Type{<:AbstractIsing}, op::NTuple{3, Int}) = @inbounds (op[2], op[3])
+@inline getbondsites(H::AbstractIsing, op::NTuple{3, Int}) = getbondsites(typeof(H), op)
+
+@inline makeidentity(::Type{<:AbstractIsing}) = (0, 0, 0)
+@inline makediagonalsiteop(::Type{<:AbstractIsing}, i::Int) = (-1, i, i)
+@inline makeoffdiagonalsiteop(::Type{<:AbstractIsing}, i::Int) = (-2, i, i)
+@inline makeidentity(H::AbstractIsing) = makeidentity(typeof(H))
+@inline makediagonalsiteop(H::AbstractIsing, i::Int) = makediagonalsiteop(typeof(H), i)
+@inline makeoffdiagonalsiteop(H::AbstractIsing, i::Int) = makeoffdiagonalsiteop(typeof(H), i)
+
 @inline getbondtype(::AbstractTFIM, s1::Bool, s2::Bool) = 1
-
-@inline makeidentity(::Type{<:AbstractTFIM}) = (0, 0, 0)
-@inline makediagonalsiteop(::Type{<:AbstractTFIM}, i::Int) = (-1, i, i)
-@inline makeoffdiagonalsiteop(::Type{<:AbstractTFIM}, i::Int) = (-2, i, i)
-@inline makeidentity(H::AbstractTFIM) = makeidentity(typeof(H))
-@inline makediagonalsiteop(H::AbstractTFIM, i::Int) = makediagonalsiteop(typeof(H), i)
-@inline makeoffdiagonalsiteop(H::AbstractTFIM, i::Int) = makeoffdiagonalsiteop(typeof(H), i)
 
 ###############################################################################
 
@@ -69,7 +68,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}) where T
 
     # only take J_ij terms from upper triangle
     for j in axes(J, 2), i in axes(J, 1)
-        if i <= j
+        if i < j  # i != j: we don't want self-interactions
             if J[i, j] != 0
                 push!(ops, (1, i, j))
                 push!(p, 2*abs(J[i, j]))
@@ -89,7 +88,7 @@ function make_uniform_tfim(bond_spins::Vector{NTuple{2,Int}}, Ns::Int, J::T, hx:
         J_[i, j] = -J
     end
 
-    return UpperTriangular(J_), hx_
+    return UpperTriangular(triu!(J_, 1)), hx_
 end
 
 ###############################################################################
@@ -99,11 +98,10 @@ function TFIM(J::UpperTriangular{Float64}, hx::AbstractVector{Float64})
 
     ops, p, energy_shift = make_prob_vector(J, hx)
     Ns = length(hx)
-    Nb = count(!iszero, UpperTriangular(J))
     op_sampler = OperatorSampler(ops, p)
 
     return TFIM{typeof(op_sampler), typeof(J), typeof(hx)}(
-        op_sampler, J, hx, Ns, Nb, energy_shift
+        op_sampler, J, hx, Ns, energy_shift
     )
 end
 
@@ -125,7 +123,7 @@ total_hx(::VaryingHX, H::AbstractIsing) = sum(H.hx)
 total_hx(H::AbstractIsing) = total_hx(hxfield(H), H)
 
 Base.@propagate_inbounds isferromagnetic(H::TFIM, (site1, site2)::NTuple{2, Int}) = signbit(H.J[site1, site2])
-
+haslongitudinalfield(::AbstractTFIM) = false
 
 
 ###############################################################################
@@ -137,7 +135,7 @@ function energy(::BinaryGroundState, H::AbstractIsing, ns::Vector{<:Real}; resam
     if !iszero(hx)
         E = -hx * resampler(inv, ns)
     else
-        E = zero(H.energy_shift)
+        E = measurement(zero(H.energy_shift))
     end
 
     return H.energy_shift + E
