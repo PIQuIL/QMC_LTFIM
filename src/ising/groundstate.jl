@@ -296,12 +296,12 @@ function cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState
             # heat bath: inv(1 + inv(A))) = W2/(W1 + W2) not good
             # metropolis: A (equiv to min(A, 1)) pretty good
             # scaled metropolis: min(A, 1)/2 also good
-            # |M| and M^2 only seem to converge to 99% CIs
+            # |M| and M^2 seem to converge better to 99% CIs
             #  when using metropolis (not the scaled variant)
 
             # in the TFIM case, acceptance rate is exactly 1
             #   so we set it to 1/2 to ensure ergodicity
-            A = haslongitudinalfield(H) ? exp(min(lnA, zero(lnA))) : 0.5
+            A = (H isa AbstractRydberg || haslongitudinalfield(H)) ? exp(min(lnA, zero(lnA))) : 0.5
             flip = rand(rng) < A
 
             if runstats isa Val{true}; push!(acceptance, A); end

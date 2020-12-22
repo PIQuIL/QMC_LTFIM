@@ -1,4 +1,5 @@
 include("TFIM.jl")
 include("LTFIM.jl")
+include("Rydberg.jl")
 include("groundstate.jl")
 include("mixedstate.jl")

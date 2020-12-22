@@ -9,6 +9,7 @@ struct GeneralLTFIM{O,M <: UpperTriangular{Float64},V <: AbstractVector{Float64}
     hx::V
     hz::Float64
     Ns::Int
+    Nb::Int
     energy_shift::Float64
 end
 
@@ -19,6 +20,7 @@ struct LTFIM{O} <: AbstractLTFIM{O}
     hx::Float64
     hz::Float64
     Ns::Int
+    Nb::Int
     energy_shift::Float64
 end
 ###############################################################################
@@ -70,7 +72,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
     fictitious_bonds = Set{NTuple{2,Int}}()
     if !iszero(hz)
         max_nbonds = maximum(values(nbonds_per_site))
-        underfull = sort!(
+        underfull = sort(
             filter(pair -> pair[2] < max_nbonds, nbonds_per_site),
             byvalue = true,
             order = Base.Order.Reverse
@@ -94,7 +96,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
             nbonds_per_site[i] += 1
             nbonds_per_site[j] += 1
 
-            underfull = sort!(
+            underfull = sort(
                 filter(pair -> pair[2] < max_nbonds, nbonds_per_site),
                 byvalue = true,
                 order = Base.Order.Reverse
@@ -105,9 +107,9 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
     hzb = (hz * Ns) / (2 * (length(bond_spins) + length(fictitious_bonds)))
     for (site1, site2) in bond_spins
         # by this point we can assume site1 <= site2
-        J_ = -J[site1, site2]
-        #   order:   DD,          DU,  UD, UU
-        p_spins   = [J_ - 2*hzb, -J_, -J_, J_ + 2*hzb]
+        J_ = J[site1, site2]
+        #   order:    DD,          DU,  UD, UU
+        p_spins   = -[J_ + 2*hzb, -J_, -J_, J_ - 2*hzb]
         C = abs(min(0, minimum(p_spins))) + epsilon
         p_spins .+= C
 
@@ -123,8 +125,8 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
 
     if !iszero(hz)
         for (site1, site2) in fictitious_bonds
-            #   order:   DD,      DU,  UD, UU
-            p_spins_e = [-2*hzb, 0.0, 0.0, 2*hzb]
+            #   order:    DD,     DU,  UD, UU
+            p_spins_e = -[2*hzb, 0.0, 0.0, -2*hzb]
             C_e = abs(min(0, minimum(p_spins_e))) + epsilon
             p_spins_e .+= C_e
 

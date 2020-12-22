@@ -122,6 +122,7 @@ total_hx(::ConstantHX, H::AbstractIsing) = nspins(H) * H.hx
 total_hx(::VaryingHX, H::AbstractIsing) = sum(H.hx)
 total_hx(H::AbstractIsing) = total_hx(hxfield(H), H)
 
+# returns true if H.J[site1, site2] is negative
 Base.@propagate_inbounds isferromagnetic(H::TFIM, (site1, site2)::NTuple{2, Int}) = signbit(H.J[site1, site2])
 haslongitudinalfield(::AbstractTFIM) = false
 

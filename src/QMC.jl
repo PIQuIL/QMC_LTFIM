@@ -24,7 +24,7 @@ import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex, r
 
 
 export BinaryQMCState, BinaryGroundState, BinaryThermalState,
-        Hamiltonian, AbstractIsing, AbstractTFIM, TFIM, AbstractLTFIM, LTFIM, GeneralLTFIM, Rydberg,
+        Hamiltonian, AbstractIsing, AbstractTFIM, TFIM, AbstractLTFIM, LTFIM, GeneralLTFIM, AbstractRydberg, Rydberg,
         haslongitudinalfield,
         nspins, nbonds, energy, energy_density, mc_step!, mc_step_beta!,
         resize_op_list!,
