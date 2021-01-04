@@ -31,7 +31,7 @@ function conv_op_to_idx(op::NTuple{K, Int}, strides::NTuple{K, Int}, shifts::NTu
 end
 
 
-struct OperatorDict{K, NT <: NTuple{K, Int}, V} #where {K, O <: NTuple{K, Int}, V}
+struct OperatorDict{K, V}
     values::Vector{V}
     strides::NTuple{K, Int}
     shifts::NTuple{K, Int}
@@ -40,10 +40,10 @@ struct OperatorDict{K, NT <: NTuple{K, Int}, V} #where {K, O <: NTuple{K, Int}, 
     function OperatorDict(operators::Vector{NTuple{K, Int}}, values::Vector{T}; default=zero(T)) where {K, T}
         axs = ntuple(i -> extrema(x->x[i], operators), K)
         axes_ = ntuple(i -> UnitRange(axs[i]...), K)
-        strides = tuple(1, [max - min + 1 for (min, max) in axs[1:end-1]]...)
-        shifts = tuple([min for (min, _) in axs]...)
+        strides = tuple(1, length.(axes_[1:end-1])...)
+        shifts = first.(axes_)
 
-        l = conv_op_to_idx(tuple([max for (_, max) in axs]...), strides, shifts)
+        l = conv_op_to_idx(last.(axes_), strides, shifts)
 
         vals = fill!(zeros(T, l), default)
         for (i, op) in enumerate(operators)
@@ -51,15 +51,15 @@ struct OperatorDict{K, NT <: NTuple{K, Int}, V} #where {K, O <: NTuple{K, Int}, 
             vals[idx] = values[i]
         end
 
-        new{K, NTuple{K, Int}, T}(vals, strides, shifts, axes_)
+        new{K, T}(vals, strides, shifts, axes_)
     end
 end
 
-@inline function Base.haskey(op_dict::OperatorDict{K, NTuple{K, Int}}, op::NTuple{K, Int}) where K
+@inline function Base.haskey(op_dict::OperatorDict{K}, op::NTuple{K, Int}) where K
     @inbounds all(i -> op[i] in op_dict.axes[i], 1:K)
 end
 
-@inline function Base.get(op_dict::OperatorDict{K, NTuple{K, Int}}, op::NTuple{K, Int}) where K
+@inline function Base.get(op_dict::OperatorDict{K}, op::NTuple{K, Int}) where K
     @boundscheck haskey(op_dict, op)
     strides, shifts = op_dict.strides, op_dict.shifts
     idx = conv_op_to_idx(op, strides, shifts)

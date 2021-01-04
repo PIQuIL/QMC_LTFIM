@@ -3,10 +3,10 @@ abstract type AbstractImprovedOperatorSampler{K, T, P} <: AbstractOperatorSample
 struct ImprovedOperatorSampler{K, T, P} <: AbstractImprovedOperatorSampler{K, T, P}
     operators::Vector{NTuple{K, Int}}
     pvec::P
-    op_log_weights::OperatorDict{K, NTuple{K, Int}, T}
+    op_log_weights::OperatorDict{K, T}
 end
 
-# only supports the LTFIM case for now
+# only supports the LTFIM/Rydberg cases for now
 function ImprovedOperatorSampler(H::Type{<:Hamiltonian{2, <:AbstractOperatorSampler}}, operators::Vector{NTuple{3, Int}}, p::Vector{T}) where {T <: AbstractFloat}
     @assert length(operators) == length(p) "Given vectors must have the same length!"
 
