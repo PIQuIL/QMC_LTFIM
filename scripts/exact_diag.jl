@@ -102,10 +102,37 @@ magnetization = SumSz' * abs2.(Diag.vectors)
 abs_mag = AbsSumSz' * abs2.(Diag.vectors)
 mag_squared = SumSzSq' * abs2.(Diag.vectors)
 
+
+################################## Renyi ######################################
+using QuantumInformation
+
+
+function renyi(ρ::AbstractMatrix, region::AbstractVector{Int}; α=2)
+    N = Int(log2(size(ρ, 1)))
+    ρ_B = ptrace(ρ, repeat([2], N), collect(region))
+    if α > 1
+        trace = sum(λ -> λ^α, eigvals(ρ_B))
+        return log(trace) / (1 - α)
+    elseif α == 1
+        trace = sum(eigvals(ρ_B)) do λ
+            (iszero(λ) || isone(λ)) ? zero(λ) : -λ * log(λ)
+        end
+        return trace
+    else
+        throw(ArgumentError("α must be at least 1!"))
+    end
+end
+
+###############################################################################
+
+ρ = GroundState * GroundState'
+S2 = OrderedDict(["S2_$i" => renyi(ρ, 1:i; α=2) for i in 1:(N-1)])
+
 gs_statistics = OrderedDict{String, Float64}("M" => magnetization[1] / N,
                                              "|M|" => abs_mag[1] / N,
                                              "M^2" => mag_squared[1] / (N*N),
-                                             "H" => Diag.values[1] / N)
+                                             "H" => Diag.values[1] / N,
+                                             S2...)
 
 if !parsed_args["json"]
     println("Ground State Properties: \n")
@@ -116,6 +143,8 @@ if !parsed_args["json"]
     println()
     println("-"^70)
 end
+
+
 
 
 if parsed_args["thermal"]

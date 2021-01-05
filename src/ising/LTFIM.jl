@@ -3,11 +3,11 @@ using Base.Iterators
 
 abstract type AbstractLTFIM{O <: AbstractOperatorSampler} <: AbstractIsing{O} end
 
-struct GeneralLTFIM{O,M <: UpperTriangular{Float64},V <: AbstractVector{Float64}} <: AbstractLTFIM{O}
+struct GeneralLTFIM{O,M <: UpperTriangular{Float64},Vx <: AbstractVector{Float64},Vz <: AbstractVector{Float64}} <: AbstractLTFIM{O}
     op_sampler::O
     J::M
-    hx::V
-    hz::Float64
+    hx::Vx
+    hz::Vz
     Ns::Int
     Nb::Int
     energy_shift::Float64
@@ -42,8 +42,8 @@ end
 
 ###############################################################################
 
-function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; epsilon=0.0) where T
-    @assert length(hx) == size(J, 1) == size(J, 2)
+function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::AbstractVector{T}; epsilon=0.0) where T
+    @assert length(hx) == length(hz) == size(J, 1) == size(J, 2)
 
     ops = Vector{NTuple{3, Int}}()
     p = Vector{T}()
@@ -59,85 +59,54 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::T; e
 
     Ns = length(hx)
     bond_spins = Set{NTuple{2,Int}}()
-    nbonds_per_site = OrderedDict{Int,Int}(i => 0 for i in 1:Ns)
+    coordination_numbers = zeros(Int, Ns)
     for j in axes(J, 2), i in axes(J, 1)
         if i < j && !iszero(J[i, j])
-            site1, site2 = (i, j)
-            push!(bond_spins, (site1, site2))
-            nbonds_per_site[i] += 1
-            nbonds_per_site[j] += 1
+            push!(bond_spins, (i, j))
+            coordination_numbers[i] += 1
+            coordination_numbers[j] += 1
         end
     end
 
-    fictitious_bonds = Set{NTuple{2,Int}}()
-    if !iszero(hz)
-        max_nbonds = maximum(values(nbonds_per_site))
-        underfull = sort(
-            filter(pair -> pair[2] < max_nbonds, nbonds_per_site),
-            byvalue = true,
-            order = Base.Order.Reverse
-        )
-        while !isempty(underfull)
-            k = collect(keys(underfull))
-            i = k[1]
+    Z = [-1 0; 0 1]  # since 0 maps to spin down
+    I = [1 0; 0 1]
 
-            l = 2
-            j = k[l]
-            while true
-                j = k[l]
-                i, j = (i < j) ? (i, j) : (j, i)
-                if !((i, j) in fictitious_bonds)
-                    break
-                end
-                l += 1
-            end
+    # add fictitious bonds if there's a z-field on an "unbonded" site
+    while any(i -> iszero(coordination_numbers[i]) && !iszero(hz[i]), 1:Ns)
+        # TODO: test this
+        f = findfirst(i -> iszero(coordination_numbers[i]) && !iszero(hz[i]), 1:Ns)
+        l = findlast(i -> iszero(coordination_numbers[i]) && !iszero(hz[i]), 1:Ns)
 
-            push!(fictitious_bonds, (i, j))
-            nbonds_per_site[i] += 1
-            nbonds_per_site[j] += 1
-
-            underfull = sort(
-                filter(pair -> pair[2] < max_nbonds, nbonds_per_site),
-                byvalue = true,
-                order = Base.Order.Reverse
-            )
+        if f == l
+            # if there's only one unbonded site,
+            # pick some other site to bond it to
+            i, _ = first(bond_spins)
+            site1, site2 = (f < i) ? (f, i) : (i, f)
+        else
+            site1, site2 = (f < l) ? (f, l) : (l, f)
         end
+
+        push!(bond_spins, (site1, site2))
+        coordination_numbers[site1] += 1
+        coordination_numbers[site2] += 1
     end
 
-    hzb = (hz * Ns) / (2 * (length(bond_spins) + length(fictitious_bonds)))
     for (site1, site2) in bond_spins
-        # by this point we can assume site1 <= site2
-        J_ = J[site1, site2]
-        #   order:    DD,          DU,  UD, UU
-        p_spins   = -[J_ + 2*hzb, -J_, -J_, J_ - 2*hzb]
+        # by this point we can assume site1 < site2
+        hzb1 = hz[site1] / coordination_numbers[site1]
+        hzb2 = hz[site2] / coordination_numbers[site2]
+        local_H = J[site1, site2]*kron(Z, Z) - hzb1*kron(Z, I) - hzb2*kron(I, Z)
+
+        p_spins = -diag(local_H)
         C = abs(min(0, minimum(p_spins))) + epsilon
         p_spins .+= C
+        energy_shift += C
 
         for (t, p_t) in enumerate(p_spins)
             if !iszero(p_t)
                 push!(ops, (t, site1, site2))
                 push!(p, p_t)
             end
-        end
-
-        energy_shift += C
-    end
-
-    if !iszero(hz)
-        for (site1, site2) in fictitious_bonds
-            #   order:    DD,     DU,  UD, UU
-            p_spins_e = -[2*hzb, 0.0, 0.0, -2*hzb]
-            C_e = abs(min(0, minimum(p_spins_e))) + epsilon
-            p_spins_e .+= C_e
-
-            for (t, p_t) in enumerate(p_spins_e)
-                if !iszero(p_t)
-                    push!(ops, (t, site1, site2))
-                    push!(p, p_t)
-                end
-            end
-
-            energy_shift += C_e
         end
     end
 
@@ -150,7 +119,7 @@ end
 function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
-    ops, p, energy_shift = make_prob_vector(J_, hx_, hz)
+    ops, p, energy_shift = make_prob_vector(J_, hx_, hz*ones(Ns))
     op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
     return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)
 end
@@ -158,9 +127,10 @@ end
 function GeneralLTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
-    ops, p, energy_shift = make_prob_vector(J_, hx_, hz)
+    hz_ = hz*ones(Ns)
+    ops, p, energy_shift = make_prob_vector(J_, hx_, hz_)
     op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
-    return GeneralLTFIM{typeof(op_sampler),typeof(J_),typeof(hx_)}(op_sampler, J_, hx_, hz, Ns, Nb, energy_shift)
+    return GeneralLTFIM{typeof(op_sampler),typeof(J_),typeof(hx_),typeof(hz_)}(op_sampler, J_, hx_, hz_, Ns, Nb, energy_shift)
 end
 
 total_hx(H::GeneralLTFIM)::Float64 = sum(H.hx)
