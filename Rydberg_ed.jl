@@ -133,7 +133,7 @@ function Rydberg(lattice::Lattice, δ, Ω, C; β=Nothing)
     
     for i in 1:(N-1)
         for j in (i+1):N
-            V[i][j] = C / lattice.distance_matrix[i][j]^2
+            V[i][j] = C / lattice.distance_matrix[i][j]^6
         end
     end
 
