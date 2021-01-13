@@ -1,0 +1,14 @@
+[
+  RydAtom(2, 1),
+  RydAtom(3, 1),
+  RydAtom(1, 3),
+  RydAtom(3, 3),
+  RydAtom(2, 4),
+  RydAtom(3, 4),
+  RydAtom(4, 4),
+  RydAtom(3, 2),
+  RydAtom(2, 2),
+  RydAtom(4, 2),
+  RydAtom(1, 4),
+  RydAtom(4, 1),
+]
