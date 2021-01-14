@@ -93,10 +93,7 @@ function save_data(path, mc_opts, qmc_state, measurements, observables, corr_tim
     make_info_file(info_file, samples_file, mc_opts, M, observables, corr_time)
 end
 
-function mis()
-    Ω = 1.0
-    δ = 1.0
-    C = 1.0
+function mis(C, Ω, δ)
     runstats = false
     Dim = 2
 
@@ -178,4 +175,5 @@ function mis()
     save_data(path, mc_opts, qmc_state, measurements, observables, corr_time)
 end
 
-mis()
+mis(1.0, 1.0, -1.0)
+
