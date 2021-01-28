@@ -37,14 +37,14 @@ end
 jackknife(xs::Vector...) = jackknife(identity, xs...)
 
 
-function bootstrap(f::Function, nboot::Int, xs::Vector...)
+function bootstrap(f::Function, xs::Vector...; nboot::Int=500)
     N = length(xs[1])
 
     f_B = zeros(nboot)
 
     for b in 1:nboot
         idx = rand(1:N, N)
-        xs_b = [mean(x[idx]) for x in xs]
+        xs_b = [mean(@views x[idx]) for x in xs]
         f_B[b] = f(xs_b...)
     end
 
@@ -58,6 +58,4 @@ function bootstrap(f::Function, nboot::Int, xs::Vector...)
 
     return μ′ ± σ
 end
-bootstrap(f::Function, xs::Vector...) = bootstrap(f, 500, xs...)
-bootstrap(nboot::Int, xs::Vector...) = bootstrap(identity, nboot, xs...)
-bootstrap(xs::Vector...) = bootstrap(identity, xs...)
+bootstrap(xs::Vector...; nboot::Int=500) = bootstrap(identity, xs...; nboot=nboot)

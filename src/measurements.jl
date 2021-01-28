@@ -41,6 +41,24 @@ simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState) = simulation_cell(H
 # 0 -> spin-down (-1)
 magnetization(spin_prop) = 2*mean(spin_prop) - 1
 
+function staggered_magnetization(H::AbstractRydberg, spin_prop)
+    M = 0.0
+
+    if H.lattice isa Rectangle
+        spin_prop = reshape(spin_prop, H.lattice.nX, H.lattice.nY)
+
+        for j in axes(spin_prop, 2), i in axes(spin_prop, 1)
+            M += ((-1)^(i + j)) * (spin_prop[i, j] - 0.5)
+        end
+    else
+        for i in eachindex(spin_prop)
+            M += ((-1) ^ i) * (spin_prop[i] - 0.5)
+        end
+    end
+
+    return M / nspins(H)
+end
+
 num_single_site_diag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && isdiagonal(H, x), operator_list)
 num_single_site_offdiag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && !isdiagonal(H, x), operator_list)
 num_single_site(H::AbstractIsing, operator_list) = mean(issiteoperator(H), operator_list)

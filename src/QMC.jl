@@ -28,7 +28,8 @@ export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         haslongitudinalfield,
         nspins, nbonds, energy, energy_density, mc_step!, mc_step_beta!,
         resize_op_list!,
-        sample, simulation_cell, magnetization, num_single_site_diag, num_single_site_offdiag,
+        sample, simulation_cell, magnetization, staggered_magnetization,
+        num_single_site_diag, num_single_site_offdiag,
         num_single_site, num_two_site_diag, autocorrelation, correlation_time, jackknife, bootstrap, mean_and_stderr,
         lattice_bond_spins, ProbabilityAlias, ProbabilityHeap, ProbabilityVector, probability_vector
 

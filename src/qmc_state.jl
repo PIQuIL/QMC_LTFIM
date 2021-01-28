@@ -123,6 +123,10 @@ function convert(::Type{QMCState{S′}}, state::QMCState{S, T, K, V}) where {S, 
         len = 4*length(state.operator_list)
         last = copy(state.first)
     else
+        # make the operator list length even by adding one identity operator
+        if isodd(length(state.operator_list))
+            push!(state.operator_list, ntuple(_ -> 0, K))
+        end
         len = 2*length(state.left_config) + 4*length(state.operator_list)
         last = nothing
     end

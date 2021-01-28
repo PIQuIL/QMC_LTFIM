@@ -48,6 +48,7 @@ struct OperatorDict{K, V}
         vals = fill!(zeros(T, l), default)
         for (i, op) in enumerate(operators)
             idx = conv_op_to_idx(op, strides, shifts)
+            @assert !iszero(vals[idx]) "Collision in operator dictionary! $(op => idx)"
             vals[idx] = values[i]
         end
 

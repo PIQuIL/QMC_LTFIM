@@ -1,19 +1,5 @@
 using Base.Iterators
 
-
-abstract type AbstractRydberg{O <: AbstractOperatorSampler} <: AbstractLTFIM{O} end
-
-
-struct Rydberg{O,M <: UpperTriangular{Float64},UΩ <: AbstractVector{Float64}, Uδ <: AbstractVector{Float64}} <: AbstractRydberg{O}
-    op_sampler::O
-    V::M
-    Ω::UΩ
-    δ::Uδ
-    Ns::Int
-    energy_shift::Float64
-end
-
-
 ###############################################################################
 
 abstract type Lattice end
@@ -26,7 +12,7 @@ struct Rectangle <: Lattice
     distance_matrix::Array{Float64, 2}
 end
 
-function Rectangle(nX::Int, nY::Int, aX::Float64, aY::Float64, PBC::Bool)
+function Rectangle(nX::Int, nY::Int, aX::Float64, aY::Float64, PBC::NTuple{2, Bool})
     N = nX*nY
     distance_matrix = zeros(Float64, N, N)
 
@@ -38,12 +24,16 @@ function Rectangle(nX::Int, nY::Int, aX::Float64, aY::Float64, PBC::Bool)
             x2 = rem(j, nX) > 0 ? rem(j, nX) : nX
             y2 = rem(j, nX) > 0 ? div(j, nX) + 1 : div(j, nX)
 
-            if PBC
-                dy = abs(y1 - y2) > 0.5*nY ? 0.5*nY - rem(abs(y1-y2), 0.5*nY) : abs(y1-y2)
+            if PBC[1]
                 dx = abs(x1 - x2) > 0.5*nX ? 0.5*nX - rem(abs(x1-x2), 0.5*nX) : abs(x1-x2)
             else
-                dy = abs(y1 - y2)
                 dx = abs(x1 - x2)
+            end
+
+            if PBC[2]
+                dy = abs(y1 - y2) > 0.5*nY ? 0.5*nY - rem(abs(y1-y2), 0.5*nY) : abs(y1-y2)
+            else
+                dy = abs(y1 - y2)
             end
 
             dx *= aX
@@ -55,6 +45,7 @@ function Rectangle(nX::Int, nY::Int, aX::Float64, aY::Float64, PBC::Bool)
     end
     return Rectangle(nX, nY, aX, aY, distance_matrix)
 end
+Rectangle(nX, nY, aX, aY, PBC::Bool) = Rectangle(nX, nY, aX, aY, (PBC, PBC))
 
 
 struct Chain <: Lattice
@@ -93,6 +84,19 @@ nspins(lattice::Chain) = lattice.nX
 ###############################################################################
 
 
+abstract type AbstractRydberg{O <: AbstractOperatorSampler} <: AbstractLTFIM{O} end
+
+struct Rydberg{O,M <: UpperTriangular{Float64},UΩ <: AbstractVector{Float64}, Uδ <: AbstractVector{Float64}, L <: Lattice} <: AbstractRydberg{O}
+    op_sampler::O
+    V::M
+    Ω::UΩ
+    δ::Uδ
+    lattice::L
+    energy_shift::Float64
+end
+nspins(H::Rydberg) = nspins(H.lattice)
+
+
 function make_prob_vector(::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω::AbstractVector{T}, δ::AbstractVector{T}; epsilon=0.0) where T
     @assert length(Ω) == length(δ) == size(V, 1) == size(V, 2)
 
@@ -103,8 +107,8 @@ function make_prob_vector(::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω::
     for i in eachindex(Ω)
         if !iszero(Ω[i])
             push!(ops, makediagonalsiteop(AbstractLTFIM, i))
-            push!(p, Ω[i])
-            energy_shift += Ω[i]
+            push!(p, Ω[i] / 2)
+            energy_shift += Ω[i] / 2
         end
     end
 
@@ -151,33 +155,37 @@ end
 # function BlockadeRydberg(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
 # end
 
-function Rydberg(dims::NTuple{N, Int}, C::Float64, Ω::Float64, δ::Float64, pbc=true) where N
-    if N == 1
+function Rydberg(dims::NTuple{D, Int}, R_b, Ω, δ, pbc=true) where D
+    if D == 1
         lat = Chain(dims[1], 1.0, pbc)
-    elseif N == 2
+    elseif D == 2
         lat = Rectangle(dims[1], dims[2], 1.0, 1.0, pbc)
     else
         error("Unsupported number of dimensions")
     end
+    return Rydberg(lat, R_b, Ω, δ)
+end
 
+
+function Rydberg(lat::Lattice, R_b::Float64, Ω::Float64, δ::Float64)
     Ns = nspins(lat)
     V = zeros(Float64, Ns, Ns)
 
     @inbounds for i in 1:(Ns-1)
         for j in (i+1):Ns
-            V[i, j] = C / lat.distance_matrix[i, j]^6
+            V[i, j] = Ω * (R_b / lat.distance_matrix[i, j])^6
         end
     end
     V = UpperTriangular(triu!(V, 1))
 
-    return Rydberg(V, Ω*ones(Ns), δ*ones(Ns))
+    return Rydberg(V, Ω*ones(Ns), δ*ones(Ns), lat)
 end
 
-function Rydberg(V::AbstractMatrix{T}, Ω::AbstractVector{T}, δ::AbstractVector{T}; epsilon=zero(T)) where T
+function Rydberg(V::AbstractMatrix{T}, Ω::AbstractVector{T}, δ::AbstractVector{T}, lattice::Lattice; epsilon=zero(T)) where T
     ops, p, energy_shift = make_prob_vector(AbstractRydberg, V, Ω, δ, epsilon=epsilon)
     op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
-    return Rydberg{typeof(op_sampler), typeof(V), typeof(Ω), typeof(δ)}(op_sampler, V, Ω, δ, length(Ω), energy_shift)
+    return Rydberg{typeof(op_sampler), typeof(V), typeof(Ω), typeof(δ), typeof(lattice)}(op_sampler, V, Ω, δ, lattice, energy_shift)
 end
 
-total_hx(H::Rydberg)::Float64 = sum(H.Ω)
+total_hx(H::Rydberg)::Float64 = sum(H.Ω) / 2
 haslongitudinalfield(H::AbstractRydberg) = !iszero(H.δ)

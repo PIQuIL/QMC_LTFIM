@@ -31,7 +31,7 @@ function init_mc_cli(parsed_args)
     PBC = parsed_args["periodic"]
     Ω = parsed_args["omega"]
     δ = parsed_args["delta"]
-    C = parsed_args["interaction"]
+    R_b = parsed_args["radius"]
     runstats = parsed_args["runstats"]
 
     Dim = length(parsed_args["dims"])
@@ -47,15 +47,14 @@ function init_mc_cli(parsed_args)
     EQ_MCS = div(MCS, 10)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
-    println("Running Rydberg(C=$C, Ω=$Ω, δ=$δ)")
-    H = Rydberg(nX, C, Ω, δ, PBC)
-    d = @ntuple Dim nX BC_name C Ω δ skip M
+    println("Running Rydberg(R_b=$R_b, Ω=$Ω, δ=$δ)")
+    H = Rydberg(nX, R_b, Ω, δ, isone(Dim) ? PBC : (false, true))
+    d = @ntuple Dim nX BC_name R_b Ω δ skip M
 
     mc_opts = @ntuple M MCS EQ_MCS skip
 
-    # NOTE: why is this 2M?
     if haskey(parsed_args, "beta")
-        qmc_state = BinaryThermalState(H, 2M)
+        qmc_state = BinaryThermalState(H, M)
     else
         qmc_state = BinaryGroundState(H, M)
     end
@@ -70,10 +69,10 @@ end
 
 function make_info_file(info_file, samples_file, mc_opts, op_list_length, observables, corr_time)
     M, MCS, EQ_MCS, skip = mc_opts
-    if length(observables) == 5
-        mag, abs_mag, mag_sqr, energy, heat_capacity = observables
+    if length(observables) == 6
+        mag, abs_mag, mag_sqr, binder, energy, heat_capacity = observables
     else
-        mag, abs_mag, mag_sqr, energy = observables
+        mag, abs_mag, mag_sqr, binder, energy = observables
         heat_capacity = nothing
     end
 
@@ -84,6 +83,7 @@ function make_info_file(info_file, samples_file, mc_opts, op_list_length, observ
             @printf(io, "⟨M⟩   = % .16f +/- %.16f\n", mag.val, mag.err)
             @printf(io, "⟨|M|⟩ = % .16f +/- %.16f\n", abs_mag.val, abs_mag.err)
             @printf(io, "⟨M^2⟩ = % .16f +/- %.16f\n", mag_sqr.val, mag_sqr.err)
+            @printf(io, "U_4   = % .16f +/- %.16f\n", binder.val, binder.err)
             @printf(io, "⟨H⟩   = % .16f +/- %.16f\n", energy.val, energy.err)
             if heat_capacity !== nothing
                 @printf(io, "C     = % .16f +/- %.16f\n", heat_capacity.val, heat_capacity.err)
@@ -132,6 +132,7 @@ function mixedstate(parsed_args)
 
     measurements = zeros(Int, MCS, nspins(H))
     mags = zeros(MCS)
+    smags = zeros(MCS)
     ns = zeros(MCS)
 
     max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
@@ -145,6 +146,7 @@ function mixedstate(parsed_args)
             spin_prop = qmc_state.left_config
             measurements[i, :] = spin_prop
             mags[i] = magnetization(spin_prop)
+            smags[i] = staggered_magnetization(H, spin_prop)
         end
 
         for _ in 1:skip
@@ -152,16 +154,21 @@ function mixedstate(parsed_args)
         end
     end
 
-    mag = mean_and_stderr(mags)
-    abs_mag = mean_and_stderr(abs, mags)
-    mag_sqr = mean_and_stderr(abs2, mags)
+    mag = mean_and_stderr(smags)
+    abs_mag = mean_and_stderr(abs, smags)
+    mag_sqr = mean_and_stderr(abs2, smags)
 
     energy = energy_density(qmc_state, H, beta, ns)
 
-    observables = (mag, abs_mag, mag_sqr, energy)
+    binder_cumulant = jackknife(smags .^ 4, smags .^ 2) do M4, M2
+        3 - (M4 / (M2 ^ 2))
+    end
+    binder_cumulant /= 2
+
+    observables = (mag, abs_mag, mag_sqr, binder_cumulant, energy)
 
     # measure correlation time from equilibriation samples
-    @time corr_time = correlation_time(mags .^ 2)
+    corr_time = correlation_time(smags .^ 2)
 
     save_data(path, mc_opts, qmc_state, measurements, observables, corr_time)
 end
@@ -178,6 +185,7 @@ function groundstate(parsed_args)
 
     measurements = zeros(Int, MCS, nspins(H))
     mags = zeros(MCS)
+    smags = zeros(MCS)
     ns = zeros(MCS)
     if runstats isa Val{true}
         diag_update_fails = zeros(MCS)
@@ -197,6 +205,7 @@ function groundstate(parsed_args)
 
             ns[i] = num_single_site_diag(H, qmc_state.operator_list)
             mags[i] = magnetization(spin_prop)
+            smags[i] = staggered_magnetization(H, spin_prop)
         end
 
         if runstats isa Val{true}
@@ -216,15 +225,25 @@ function groundstate(parsed_args)
     end
 
     mag = mean_and_stderr(mags)
+    mag = mag.val ± (mag.err * 2 * correlation_time(mags))
+
     abs_mag = mean_and_stderr(abs, mags)
+    abs_mag = abs_mag.val ± (abs_mag.err * 2 * correlation_time(abs.(mags)))
+
     mag_sqr = mean_and_stderr(abs2, mags)
+    mag_sqr = mag_sqr.val ± (mag_sqr.err * 2 * correlation_time(abs2.(mags)))
 
-    @time energy = energy_density(qmc_state, H, ns)
+    binder_cumulant = jackknife(smags .^ 4, smags .^ 2) do M4, M2
+        3 - (M4 / (M2 ^ 2))
+    end
+    binder_cumulant /= 2
 
-    observables = (mag, abs_mag, mag_sqr, energy)
+    energy = energy_density(qmc_state, H, ns)
+
+    observables = (mag, abs_mag, mag_sqr, binder_cumulant, energy)
 
     # measure correlation time from equilibriation samples
-    @time corr_time = correlation_time(mags .^ 2)
+    corr_time = correlation_time(smags .^ 2)
 
     save_data(path, mc_opts, qmc_state, measurements, observables, corr_time)
 end
@@ -263,8 +282,8 @@ end
         help = "Strength of the longitudinal field"
         arg_type = Float64
         default = 1.0
-    "--interaction", "-C"
-        help = "Strength of the interaction"
+    "--radius", "-R"
+        help = "Rydberg blockade radius (in units of the lattice spacing). Control the strength of the interaction"
         arg_type = Float64
         default = 1.0
 

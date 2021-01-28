@@ -17,7 +17,7 @@ for n in 10:10:100
         @benchmarkable rand(rng, p_alias) setup=(rng = MersenneTwister(1234); p_alias = ProbabilityAlias(rand(rng, 1:10, $n)))
 end
 
-
+#=
 SUITE["TFIM_groundstate"] = BenchmarkGroup()
 SUITE["TFIM_thermalstate"] = BenchmarkGroup()
 SUITE["LTFIM_groundstate"] = BenchmarkGroup()
@@ -88,3 +88,4 @@ for M = 200:200:1000
                                   thermalstate = BinaryThermalState($H, $M)))
     end
 end
+=#

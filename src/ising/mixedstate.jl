@@ -76,5 +76,3 @@ function full_diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalSt
     return num_ops
 end
 full_diagonal_update_beta!(qmc_state, H, beta; eq = false) = full_diagonal_update_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
-
-#############################################################################
