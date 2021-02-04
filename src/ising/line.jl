@@ -165,6 +165,7 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
         ccount = 0  # cluster number counter
         cluster_sizes = PushVector{Int}()
         acceptance = PushVector{Float64}()
+        num_aborts = 0
     end
 
     @inbounds for i in rand(rng, 1:lsize, lsize ÷ 4)  # tune denominator until abort ratio < 10%
@@ -213,12 +214,10 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
             # |M| and M^2 seem to converge better to 99% CIs
             #  when using metropolis (not the scaled variant)
             if abort
-                # TODO: count number of aborts
+                if runstats isa Val{true}; num_aborts += 1; end
                 continue
             end
 
-            # in the TFIM case, acceptance rate is exactly 1
-            #   so we set it to 1/2 to ensure ergodicity
             A = exp(min(lnA, zero(lnA)))
             flip = rand(rng) < A
 
@@ -239,7 +238,8 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
     _map_back_operator_list!(ocount, qmc_state, H)
 
     if runstats isa Val{true}
-        return lsize, mean(acceptance), ccount, mean(cluster_sizes)
+        abort_rate = num_aborts / ccount
+        return lsize, mean(acceptance), ccount, mean(cluster_sizes), abort_rate
     else
         return lsize
     end

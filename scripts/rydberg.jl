@@ -192,6 +192,7 @@ function groundstate(parsed_args)
         cluster_update_accep = zeros(MCS)
         num_clusters = zeros(Int, MCS)
         cluster_sizes = zeros(MCS)
+        abort_rates = zeros(MCS)
     end
 
     @showprogress "Warm up..." for i in 1:EQ_MCS
@@ -209,7 +210,7 @@ function groundstate(parsed_args)
         end
 
         if runstats isa Val{true}
-            diag_update_fails[i], cluster_update_accep[i], num_clusters[i], cluster_sizes[i] = output
+            diag_update_fails[i], cluster_update_accep[i], num_clusters[i], cluster_sizes[i], abort_rates[i] = output
         end
 
         for _ in 1:skip
@@ -222,6 +223,7 @@ function groundstate(parsed_args)
         println("Cluster update acceptance rate: ", mean_and_stderr(cluster_update_accep))
         println("Average number of clusters: ", mean_and_stderr(num_clusters))
         println("Average cluster size: ", mean_and_stderr(cluster_sizes))
+        println("Average abort rate: ", mean_and_stderr(abort_rates))
     end
 
     mag = mean_and_stderr(mags)

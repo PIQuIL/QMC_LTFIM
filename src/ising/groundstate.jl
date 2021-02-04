@@ -1,16 +1,29 @@
 function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}())
     if runstats isa Val{true}
         diag_update_fails = full_diagonal_update!(rng, qmc_state, H, runstats)
-        lsize, cluster_update_accept, num_clusters, cluster_sizes = line_update!(rng, qmc_state, H, runstats)
+        lsize, cluster_update_accept, num_clusters, cluster_sizes = multibranch_update!(rng, qmc_state, H, runstats)
         f(lsize, qmc_state, H)
         return diag_update_fails, cluster_update_accept, num_clusters, cluster_sizes
     else
         full_diagonal_update!(rng, qmc_state, H)
-        lsize = line_update!(rng, qmc_state, H)
-        # lsize = multibranch_update!(rng, qmc_state, H)
+        lsize = multibranch_update!(rng, qmc_state, H)
         f(lsize, qmc_state, H)
     end
 end
+
+function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractRydberg, runstats=Val{false}())
+    if runstats isa Val{true}
+        diag_update_fails = full_diagonal_update!(rng, qmc_state, H, runstats)
+        lsize, cluster_update_accept, num_clusters, cluster_sizes, abort_rate = line_update!(rng, qmc_state, H, runstats)
+        f(lsize, qmc_state, H)
+        return diag_update_fails, cluster_update_accept, num_clusters, cluster_sizes, abort_rate
+    else
+        full_diagonal_update!(rng, qmc_state, H)
+        lsize = line_update!(rng, qmc_state, H)
+        f(lsize, qmc_state, H)
+    end
+end
+
 mc_step!(f::Function, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!(f, Random.GLOBAL_RNG, qmc_state, H, runstats)
 mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!((args...) -> nothing, rng, qmc_state, H, runstats)
 mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats)
