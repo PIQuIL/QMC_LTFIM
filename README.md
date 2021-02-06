@@ -22,6 +22,9 @@ julia rydberg.jl groundstate 8 4 -M 4000 -n 100000 -R 1.2 --omega 1.0, --delta 1
 Currently, for Rydberg on a 2D lattice boundary conditions are (open, periodic) and the `-p` flag is ignored.
 
 
+Both scripts allow passing the flag `--runstats` which computes simulation statistics such as diagonal/cluster update acceptance rates, cluster sizes, cluster abortion rates (only for the line update), etc. This flag is currently only supported for groundstate simulations.
+
+
 - Misc Papers:
   - https://journals.aps.org/prb/abstract/10.1103/PhysRevB.88.165138
   - https://link.aps.org/doi/10.1103/PhysRevLett.101.210602
