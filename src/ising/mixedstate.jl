@@ -3,15 +3,18 @@
 
 function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
     num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
-
-    lsize = link_list_update!(rng, qmc_state, H)
-
+    lsize = multibranch_update!(rng, qmc_state, H)
     f(lsize, qmc_state, H)
-
-    cluster_update!(rng, lsize, qmc_state, H)
-
     return num_ops
 end
+
+function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractRydberg, beta::Real; eq::Bool = false)
+    num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
+    lsize = line_update!(rng, qmc_state, H)
+    f(lsize, qmc_state, H)
+    return num_ops
+end
+
 mc_step_beta!(f::Function, qmc_state, H, beta; eq = false) = mc_step_beta!(f, Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
 mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta; eq = false) = mc_step_beta!((args...) -> nothing, rng, qmc_state, H, beta; eq = eq)
 mc_step_beta!(qmc_state, H, beta; eq = false) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
