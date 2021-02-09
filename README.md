@@ -2,55 +2,28 @@
 
 An SSE QMC implementation of the quantum Ising model with transverse and/or longitudinal field
 
-## TODOs
+How to run TFIM/LTFIM (using multibranch cluster update):
 
-- 2-point ZZ correlators
-  - structure factors
-  - Need Lattices package:
-    - 2-point correlators need access to the lattice struct in order to reduce redundant calculations (may not need this during the actual run if it doesn't speed things up a ton)
-    - structure factors need to be able to do Fourier transforms over the lattice
-    - we need to be able to translate site indices into site coordinates and take boundary conditions into account
+```bash
+cd scripts
+# groundstate 10site periodic chain, projector length 1000, 100_000 samples
+julia main.jl groundstate 10 -p -M 1000 -n 100000 -J 1.0 --hx 1.0 --hz 1.0
 
-- Revamp run script
-  - Add "bin" option: kinda like "skip" but averages over K measurements to produce a single measurement
-  - consider just making a separate script for ML data gen, since we don't need things like "skip" or saving of spin-configs
-  - SIGTERM handling:
-    - catch sigterm and checkpoint immediately
-    - doesn't matter if we're in the middle of cluster construction, when we load the chain back up again we'll start with a full diagonal update anyway
-    - could be bad if the sigterm happens in the middle of a cluster flip though...
-      - maybe instead of "flipping" we "set" the legtype to a value that was sampled, that way we can just re-run the cluster_update! fn after loading up the checkpoint to make sure everything's consistent
-      - wait but how do we know if it was interrupted during link list construction or the cluster update?
-      - possible solution: keep track of which update step we're currently performing, if job is interrupted, we know which step to redo
+# thermalstate 8x4 square lattice PBC, projector length 2000, 100_000 samples, beta=20
+julia main.jl mixedstate 8 4 -p -M 2000 -n 100000 -J 1.0 --hx 1.0 --hz 1.0 --beta 20.0
+```
+Currently (L)TFIM CLI only supports 2D square or 1D chain lattices with nearest-neighbor interactions
 
-- Reduce Memory Usage
-  - many places need this: Hamiltonian structs (use banded matrices for 1D for some savings), operator samplers, probability vectors
-    - a "Hierarchical" Improved Operator Sampler probably isn't very helpful since it already stores O(N_b) data (the bonds themselves)
-    - maybe the Operator Sampler could just sample a number, and then we'd use the inverse of the OperatorDict's "hash" to reconstruct the operator tuple, that way it won't have to store all the operator tuples.
-  - not sure if reducing memory usage is really necessary anymore (besides for extremely sparse interaction graphs like nearest-neighbour/next-nearest-neighbour Hamiltonians) since:
-    - the operator list length will scale as (in the worst case) approximately the number of possible bond operators
-    - we're going to be calculating 2-point correlators, which will require O(N^2) memory, this'll cost us much more memory than what the OperatorSampler will use
+How to run r^-6 Rydberg (using line cluster update):
+```bash
+cd scripts
+julia rydberg.jl groundstate 8 4 -M 4000 -n 100000 -R 1.2 --omega 1.0, --delta 1.0
+```
+Currently, for Rydberg on a 2D lattice boundary conditions are (open, periodic) and the `-p` flag is ignored.
 
-- getweight/getlogweight should be the Hamiltonian's responsibility; defer to op_sampler for complicated interactions but short circuiting for simple systems would be beneficial (for speed reasons)
-  - probability vectors and op samplers should *optionally* store the weights
 
-- Hamiltonian constructor given a Lattice
-  - should be able to do Ewald summation over periodic boundaries (option)
-  - Rydberg constructor
+Both scripts allow passing the flag `--runstats` which computes simulation statistics such as diagonal/cluster update acceptance rates, cluster sizes, cluster abortion rates (only for the line update), etc. This flag is currently only supported for groundstate simulations.
 
-- Config files (draft idea, may not do all of this):
-  - Base config will just state the Hamiltonian, and the lattice along with any relevant parameters
-  - Config will be appended to by a utility script and will now contain a list of all (non-zero weight) operators
-    - Bonds will have info on the two site they're acting on (both the site IDs and the coords) as well as the interaction strength
-    - Site operators will have the site ID, site coords, site op type (sigma_x or sigma_z), and field strength
-    - The coordinates and interaction strengths may ofc be modified by hand (though re-running the aforementioned utility script will overwrite those changes)
-  - Config file will be read by the run script which will then take simulation parameters (temperature, initial operator list length, number of EQ/MC steps, what observables to record, etc.) before starting the run(s).
-
-- Error Analysis:
-  - Vanilla Jackknife/Bootstrap assume IID samples, and thus underestimate standard errors (this is true even for simple estimators which are just means). There are Bootstrap methods specifically for time-series data which could be useful.
-    - There may be a way to turn one of these into a "streaming" bootstrap
-  - Autocorrelation time we're computing seems to be larger than what's computed by other packages. Should try calculating autocorrelation time using a binning analysis instead as it may be more "stable" than the FFT based method we're using.
-  - Should compute autocorrelation time for *all* observables in order to get accurate error bars.
-  - https://arxiv.org/abs/1210.3781
 
 - Misc Papers:
   - https://journals.aps.org/prb/abstract/10.1103/PhysRevB.88.165138
