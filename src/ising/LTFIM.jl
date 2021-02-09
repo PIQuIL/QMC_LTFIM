@@ -124,13 +124,16 @@ function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=t
     return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)
 end
 
+function GeneralLTFIM(J::UpperTriangular{Float64}, hx::AbstractVector{Float64}, hz::AbstractVector{Float64}) where N
+    ops, p, energy_shift = make_prob_vector(J, hx, hz)
+    op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
+    return GeneralLTFIM{typeof(op_sampler),typeof(J),typeof(hx),typeof(hz)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)
+end
+
 function GeneralLTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
     bond_spins, Ns, Nb = lattice_bond_spins(dims, pbc)
     J_, hx_ = make_uniform_tfim(bond_spins, Ns, J, hx)
-    hz_ = hz*ones(Ns)
-    ops, p, energy_shift = make_prob_vector(J_, hx_, hz_)
-    op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
-    return GeneralLTFIM{typeof(op_sampler),typeof(J_),typeof(hx_),typeof(hz_)}(op_sampler, J_, hx_, hz_, Ns, Nb, energy_shift)
+    return GeneralLTFIM(J_, hx_, hz*ones(Ns))
 end
 
 total_hx(H::GeneralLTFIM)::Float64 = sum(H.hx)

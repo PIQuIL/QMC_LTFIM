@@ -6,6 +6,7 @@ using QMC
 # main.jl
 #
 # A projector QMC program for the TFIM
+using LinearAlgebra
 
 using Random
 using RandomNumbers
@@ -19,6 +20,7 @@ using FFTW
 using DelimitedFiles
 using JLD2
 using Printf
+
 using Lattices
 
 using DataStructures
@@ -34,42 +36,48 @@ function init_mc_cli(parsed_args)
     J = parsed_args["interaction"]
     runstats = parsed_args["runstats"]
 
-    Dim = length(parsed_args["dims"])
-    # NOTE: nX saved as list: ([nX]), so output file name doesn't have nX
-    # parsed_args["dims"][1] fixes it but needs a better solution for >1D
-    nX = parsed_args["dims"][1]
-
-    BC_name = PBC ? "PBC" : "OBC"
-
     # MC parameters
     M = parsed_args["M"] # length of the operator_list is 2M
     MCS = parsed_args["measurements"] # the number of samples to record
     EQ_MCS = div(MCS, 10)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
-    if hz === "nothing"
-        println("Running TFIM(J=$J, hx=$hx)")
-        if Dim == 1
-            nX = nX[1]
-            bond_spin, Ns, Nb = lattice_bond_spins(nX, PBC)
-        elseif Dim == 2
-            bond_spin, Ns, Nb = lattice_bond_spins(nX, PBC)
-            nX = nX[1]
+    if J isa Number || tryparse(Float64, J) !== nothing
+        J = J isa Number ? J : parse(Float64, J)
+        Dim = length(parsed_args["dims"])
+        Dim > 2 && error("Unsupported number of dimensions")
+
+        nX = tuple(parsed_args["dims"]...)
+        BC_name = PBC ? "PBC" : "OBC"
+
+        if hz == "nothing"
+            println("Running TFIM(J=$J, hx=$hx)")
+            H = TFIM(lattice_bond_spins(nX, PBC)..., hx, J)
         else
-            error("Unsupported number of dimensions")
+            hz = parse(Float64, hz)
+            println("Running LTFIM(J=$J, hx=$hx, hz=$hz)")
+            H = LTFIM(nX, J, hx, hz, PBC)
         end
-        H = TFIM(bond_spin, Ns, Nb, hx, J)
-        d = @ntuple Dim nX BC_name J hx hz skip M
+        nX, nY = (Dim == 2) ? nX : (nX[1], nothing)
+        d = (Dim = Dim, nX = nX, nY = nY, BC = BC_name, J = J, hx = hx, hz = hz, skip = skip, M = M)
     else
-        hz = parse(Float64, hz)
-        println("Running LTFIM(J=$J, hx=$hx, hz=$hz)")
-        H = LTFIM(tuple(nX...), J, hx, hz, PBC)
-        d = @ntuple Dim nX BC_name J hx hz skip M
+        J = readdlm(J)
+        @assert size(J, 1) == size(J, 2) "interaction matrix must be square!"
+        J = UpperTriangular(replace!(triu(J, 1), Inf => 0.0))
+        nX = size(J, 1)
+
+        if hz == "nothing"
+            println("Running TFIM(J=custom, hx=$hx)")
+            H = TFIM(J, hx*ones(nX))
+        else
+            hz = parse(Float64, hz)
+            println("Running LTFIM(J=custom, hx=$hx, hz=$hz)")
+            H = LTFIM(J, hx*ones(nX), hz*ones(nX))
+        end
+        d = (J = "custom", hx = hx, hz = hz, skip = skip, M = M)
     end
 
-    # path = "$(Dim)D/$(nX)/$(BC_name)/J$(J)/h$(h)/skip$(skip)/"
-
-    mc_opts = @ntuple M MCS EQ_MCS skip
+    mc_opts = (M, MCS, EQ_MCS, skip)
 
     # NOTE: why is this 2M?
     if haskey(parsed_args, "beta")
@@ -264,7 +272,7 @@ end
 
 @add_arg_table! s["groundstate"] begin
     "dims"
-        help = "The dimensions of the square lattice"
+        help = "The dimensions of the square lattice; overridden for custom interaction matrices"
         required = true
         arg_type = Int
         nargs = '+'
@@ -280,8 +288,8 @@ end
         arg_type = Union{Float64, String}
         default = "nothing"
     "--interaction", "-J"
-        help = "Strength of the interaction"
-        arg_type = Float64
+        help = "Strength of the interaction or the path of a text file containing an interaction matrix"
+        arg_type = Union{Float64, String}
         default = 1.0
 
     "-M"
