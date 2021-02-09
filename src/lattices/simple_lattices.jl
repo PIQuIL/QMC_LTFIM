@@ -1,11 +1,11 @@
 abstract type SimpleLattice end
 
 # TODO: make more intuitive
-# currently, triangle vs rectangle doesn't change anything 
+# currently, triangle vs rectangle doesn't change anything
 
 struct Triangle <: SimpleLattice
-    a1::Array{Float64,1} 
-    a2::Array{Float64,1} 
+    a1::Array{Float64,1}
+    a2::Array{Float64,1}
     n1::Int
     n2::Int
     PBC::Tuple{Bool, Bool}
@@ -18,8 +18,8 @@ end
 
 
 struct Rectangle <: SimpleLattice
-    a1::Array{Float64,1} 
-    a2::Array{Float64,1} 
+    a1::Array{Float64,1}
+    a2::Array{Float64,1}
     n1::Int
     n2::Int
     PBC::Tuple{Bool, Bool}
@@ -39,10 +39,10 @@ function distance_matrix(lattice::SimpleLattice)
 
     a2_length = sqrt(a2[1]^2 + a2[2]^2) # length of a2 vector
     θ = acos(a2[1] / a2_length) # a2 angle from horizontal
-    
+
     # total number of sites
     N = n1*n2
-    dij = [zeros(Float64, N) for _ in 1:N]
+    dij = zeros(Float64, N, N)
 
     # (xpi, ypi) are lattice index coordinates
     # need to keep track of these for PBC enforcement
@@ -64,7 +64,7 @@ function distance_matrix(lattice::SimpleLattice)
             # check x and y directions to enforce PBCs
             if PBC1 & PBC2
                 # calculate minimum distance
-                
+
                 # non-periodic
                 d_np = sqrt( (y1 - y2)^2 + (x1 - x2)^2 )
 
@@ -79,7 +79,7 @@ function distance_matrix(lattice::SimpleLattice)
 
                 # periodic in y only
                 # undo the x2 periodicity
-                x2 += a1[1]*n1*cos(θ) 
+                x2 += a1[1]*n1*cos(θ)
                 d_py = sqrt( (y1 - y2)^2 + (x1 - x2)^2 )
 
                 d = min(d_py, d_px, d_pxy, d_np)
@@ -90,26 +90,26 @@ function distance_matrix(lattice::SimpleLattice)
                 end
 
                 d = sqrt( (y1 - y2)^2 + (x1 - x2)^2 )
-            
+
             elseif PBC2 & !PBC1
                 yi = x1*cos(θ) + y1*sin(θ)
                 yj = x2*cos(θ) + y2*sin(θ)
-                
+
                 if abs(yi - yj) > 0.5*n2*a2_length
                     x2 -= a2_length*n2*cos(θ)
                     y2 -= a2_length*n2*sin(θ)
                 end
 
                 d = sqrt( (y1 - y2)^2 + (x1 - x2)^2 )
-            
+
             else # no PBCs anywhere
                 d = sqrt( (y1 - y2)^2 + (x1 - x2)^2 )
-            
+
             end
 
-            dij[i][j] = d
+            dij[i, j] = d
         end
     end
 
-    return dij 
+    return dij
 end

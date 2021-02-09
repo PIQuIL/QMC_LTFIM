@@ -33,7 +33,7 @@ dij2 = distance_matrix(ruby2)
 
 @show dij1 == dij2
 
-@show dij1[4][52]
+@show dij1[4, 52]
 
 a = 1.
 a2 = [2., 1.]

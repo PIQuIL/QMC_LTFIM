@@ -6,7 +6,7 @@ using DelimitedFiles
 a = 4*ρ / sqrt(3)
 
 # a1 must be along x direction
-a1 = [a, 0.] 
+a1 = [a, 0.]
 a2 = [a*0.5, a*sqrt(3)*0.5]
 
 # define unit cell basis
