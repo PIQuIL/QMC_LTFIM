@@ -63,7 +63,7 @@ function init_mc_cli(parsed_args)
     else
         J = readdlm(J)
         @assert size(J, 1) == size(J, 2) "interaction matrix must be square!"
-        J = UpperTriangular(replace!(triu(J, 1), Inf => 0.0))
+        J = UpperTriangular(triu(J, 1))
         nX = size(J, 1)
 
         if hz == "nothing"
