@@ -1,4 +1,4 @@
-LIBRARY_DIR = $(HOME)/itensor
+LIBRARY_DIR = $(HOME)/ITensor
 
 APP = main
 

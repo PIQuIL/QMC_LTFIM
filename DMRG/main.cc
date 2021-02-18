@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
     dmrg_.InitializeState("random");
     dmrg_.Run();
     auto energy = dmrg_.GetEnergy();
-    auto magnetization = dmrg_.GetAbsM();
+    auto magnetization = dmrg_.GetM();
 
     // sample the DMRG wavefunction
     MPS psi;
@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
     DMRG_path << "observables/DMRG_observables_N=" << N << "_Rb=" << Rb << "_delta=" << delta << "_Omega=" << Omega << "_trunc=" << trunc << ends;
     ofstream DMRG_file(DMRG_path.str());
 
-    DMRG_file << "E0/N\t" << "|M|/N" << endl;
+    DMRG_file << "E0/N\t" << "M/N" << endl;
     DMRG_file << energy << "\t" << magnetization << endl;
 
 }

@@ -17,7 +17,7 @@ class DMRG
     SiteSet sites_;
     MPS psi_;
     double energy_;
-    double abs_magnetization_;
+    double magnetization_;
     MPS psi0_;
 
 public:
@@ -33,9 +33,9 @@ public:
         return energy_;
     }
 
-    inline double GetAbsM()
+    inline double GetM()
     {
-        return abs_magnetization_;
+        return magnetization_;
     }
 
     inline SiteSet GetSiteSet()
@@ -192,24 +192,22 @@ public:
         psi_ = psi;
         
         // measure magnetization
-        //double Sz;
-        //double Szj;
+        double Sz;
+        double Szj;
+
+        Sz = 0.0;
         for (int j = 1; j <= N_; ++j) 
         {
             psi.position(j);
-            //cout << elt(psi.A(j)
-            //      * sites_.op("Sz", j)
-            //      * dag(prime(psi.A(j), "Site"))) << endl;
-            
-            //Sz += Szj;
+            Szj = elt(psi.A(j) * sites_.op("Sz", j) * dag(prime(psi.A(j), "Site")));
+            Sz += Szj;
         }
 
-        //abs_magnetization_ = Sz*2 / float(N_);
-        auto abs_magnetization_ = 0;
+        magnetization_ = Sz / float(N_);
         // mult by 2 since itensor works with +/- 1/2 and not +/- 1
         energy_ = energy / float(N_);
         printfln("\nGround State E = %.10f", energy_);
-        printfln("\nGround State |M| = %.10f", abs_magnetization_);
+        printfln("\nGround State M = %.10f", magnetization_);
     }
 };
 
