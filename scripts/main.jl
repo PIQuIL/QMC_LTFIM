@@ -1,5 +1,5 @@
 using DrWatson
-@quickactivate "QMC"
+# @quickactivate "QMC"
 
 using QMC
 
@@ -15,9 +15,10 @@ using ProgressMeter
 
 using Measurements
 using Statistics
-using FFTW
+using BinningAnalysis
 
 using DelimitedFiles
+using JSON
 using JLD2
 using Printf
 
@@ -92,61 +93,69 @@ function init_mc_cli(parsed_args)
 end
 
 
-function make_info_file(info_file, samples_file, mc_opts, op_list_length, observables, corr_time)
+function make_info_file(info_file, mc_opts, op_list_length, observables, runtime_stats)
     M, MCS, EQ_MCS, skip = mc_opts
-    if length(observables) == 5
-        mag, abs_mag, mag_sqr, energy, heat_capacity = observables
-    else
-        mag, abs_mag, mag_sqr, energy = observables
-        heat_capacity = nothing
+
+    info = Dict(
+        "observables" => observables,
+        "qmc_params" => Dict(
+            "num_samples" => MCS,
+            "equilibration_steps" => EQ_MCS,
+            "skips" => skip,
+            "initial_operator_list_length" => 2*M,
+            "final_operator_list_length" => op_list_length
+        ),
+        "runtime_stats" => runtime_stats
+    )
+
+    open(info_file, "w") do io
+        JSON.print(io, info, 2)
     end
 
-    open(info_file, "w") do file_io
-        streams = [Base.stdout, file_io]
+    mag = observables["magnetization"]
+    abs_mag = observables["absolute magnetization"]
+    mag_sqr = observables["squared magnetization"]
+    energy = observables["energy"]
 
-        for io in streams
-            @printf(io, "⟨M⟩   = % .16f +/- %.16f\n", mag.val, mag.err)
-            @printf(io, "⟨|M|⟩ = % .16f +/- %.16f\n", abs_mag.val, abs_mag.err)
-            @printf(io, "⟨M^2⟩ = % .16f +/- %.16f\n", mag_sqr.val, mag_sqr.err)
-            @printf(io, "⟨H⟩   = % .16f +/- %.16f\n", energy.val, energy.err)
-            if heat_capacity !== nothing
-                @printf(io, "C     = % .16f +/- %.16f\n", heat_capacity.val, heat_capacity.err)
-            end
-            println(io)
+    @printf(Base.stdout, "⟨M⟩   = % .16f +/- %.16f\n", mag["value"], mag["error"])
+    @printf(Base.stdout, "⟨|M|⟩ = % .16f +/- %.16f\n", abs_mag["value"], abs_mag["error"])
+    @printf(Base.stdout, "⟨M^2⟩ = % .16f +/- %.16f\n", mag_sqr["value"], mag_sqr["error"])
+    @printf(Base.stdout, "⟨H⟩   = % .16f +/- %.16f\n", energy["value"], energy["error"])
 
-            println(io, "Correlation time: $(corr_time)\n")
-
-            println(io, "Initial Operator list length: $(2*M)")
-            println(io, "Final Operator list length: $(op_list_length)")
-            println(io, "Number of MC measurements: $(MCS)")
-            println(io, "Number of equilibration steps: $(EQ_MCS)")
-            println(io, "Number of skips between measurements: $(skip)\n")
-
-            println(io, "Samples outputted to file: $(samples_file)")
-        end
-    end
+    println("\nInitial Operator list length: $(2*M)")
+    println("Final Operator list length: $(op_list_length)")
+    println("Number of MC measurements: $(MCS)")
+    println("Number of equilibration steps: $(EQ_MCS)")
+    println("Number of skips between measurements: $(skip)")
 end
 
 
-function save_data(path, mc_opts, qmc_state, measurements, observables, corr_time)
-    info_file = path * "_info.txt"
-    samples_file = path * "_samples.txt"
+function save_data(path, mc_opts, qmc_state, observables, runtime_stats)
+    info_file = path * "_info.json"
     qmc_state_file = path * "_state.jld2"
-
-    open(samples_file, "w") do io
-        writedlm(samples_file, measurements, " ")
-    end
 
     @time @save qmc_state_file qmc_state
 
     M = length(qmc_state.operator_list)
-
-    make_info_file(info_file, samples_file, mc_opts, M, observables, corr_time)
+    make_info_file(info_file, mc_opts, M, observables, runtime_stats)
 end
 
 
+measurementtodict(M::Measurement) = Dict("value" => M.val, "error" => M.err)
+measurementtodict(B::LogBinner, convergence_threshold::Float64 = 0.05) = Dict(
+    "value" => mean(B),
+    "error" => std_error(B),
+    "tau" => tau(B),
+    "has_converged" => has_converged(B,
+                                     BinningAnalysis._reliable_level(B),
+                                     convergence_threshold),
+    "convergence" => convergence(B),
+    "convergence_threshold" => convergence_threshold,
+)
+
+
 function mixedstate(parsed_args)
-    H, qmc_state, sname, mc_opts, rng, _ = init_mc_cli(parsed_args)
+    H, qmc_state, sname, mc_opts, rng, runstats = init_mc_cli(parsed_args)
     beta = parsed_args["beta"]
 
     M, MCS, EQ_MCS, skip = mc_opts
@@ -154,43 +163,68 @@ function mixedstate(parsed_args)
     mkpath(datadir("sims", "mixedstate"))
     path = datadir("sims", "mixedstate", savename((@ntuple beta), sname; digits = 4))
 
-    measurements = zeros(Int, MCS, nspins(H))
-    mags = zeros(MCS)
-    ns = zeros(MCS)
+    binner_capacity = nextpow(2, MCS) - 1
+    mags = LogBinner(capacity=binner_capacity)
+    abs_mags = LogBinner(capacity=binner_capacity)
+    sqr_mags = LogBinner(capacity=binner_capacity)
+    energy = LogBinner(capacity=binner_capacity)
+
+    if runstats isa Val{true}
+        cluster_stats = Vector{NamedTuple}(undef, MCS)
+    end
 
     max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
 
-    # TODO: bug with 3//2. Using 1.5 instead
-    #resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
     resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
-        ns[i] = mc_step_beta!(rng, qmc_state, H, beta) do lsize, qmc_state, H
-            spin_prop = qmc_state.left_config
-            measurements[i, :] = spin_prop
-            mags[i] = magnetization(spin_prop)
+        output = mc_step_beta!(rng, qmc_state, H, beta, runstats) do lsize, qmc_state, H
+            m = magnetization(qmc_state.left_config)
+            push!(mags, m)
+            push!(abs_mags, abs(m))
+            push!(sqr_mags, m ^ 2)
         end
+
+        if runstats isa Val{true}
+            n, cluster_stats[i] = output
+        else
+            n = output
+        end
+
+        push!(energy, energy_density(qmc_state, H, beta, n))
 
         for _ in 1:skip
             mc_step_beta!(rng, qmc_state, H, beta)
         end
     end
 
-    mag = mean_and_stderr(mags)
-    abs_mag = mean_and_stderr(abs, mags)
-    mag_sqr = mean_and_stderr(abs2, mags)
 
-    energy = energy_density(qmc_state, H, beta, ns)
+    if runstats isa Val{true}
+        # don't worry about std_errors for these right now
+        #  if we decide we need them we'll add them back in
+        total_cluster_count = sum(x -> x.cluster_count, cluster_stats)
 
-    observables = (mag, abs_mag, mag_sqr, energy)
+        runtime_stats = Dict(
+            "average_cluster_count" => total_cluster_count / length(cluster_stats),
+            "average_cluster_acceptance" => sum(x -> x.num_accepts, cluster_stats) / total_cluster_count,
+            "average_cluster_size" => sum(x -> x.cluster_size, cluster_stats) / total_cluster_count
+        )
+    else
+        runtime_stats = Dict()
+    end
 
-    # measure correlation time from equilibriation samples
-    @time corr_time = correlation_time(mags .^ 2)
+    observables = Dict{String, Dict{String, Number}}(
+        "magnetization" => measurementtodict(mags),
+        "absolute magnetization" => measurementtodict(abs_mags),
+        "squared magnetization" => measurementtodict(sqr_mags),
+        "energy" => measurementtodict(energy)
+    )
 
-    save_data(path, mc_opts, qmc_state, measurements, observables, corr_time)
+    save_data(path, mc_opts, qmc_state, observables, runtime_stats)
 end
 
 
+using DependentBootstrap
 
 function groundstate(parsed_args)
     H, qmc_state, sname, mc_opts, rng, runstats = init_mc_cli(parsed_args)
@@ -200,14 +234,15 @@ function groundstate(parsed_args)
     mkpath(datadir("sims", "groundstate"))
     path = datadir("sims", "groundstate", sname)
 
-    measurements = zeros(Int, MCS, nspins(H))
-    mags = zeros(MCS)
+    binner_capacity = nextpow(2, MCS) - 1
+    mags = LogBinner(capacity=binner_capacity)
+    abs_mags = LogBinner(capacity=binner_capacity)
+    sqr_mags = LogBinner(capacity=binner_capacity)
     ns = zeros(MCS)
+
     if runstats isa Val{true}
         diag_update_fails = zeros(MCS)
-        cluster_update_accep = zeros(MCS)
-        num_clusters = zeros(Int, MCS)
-        cluster_sizes = zeros(MCS)
+        cluster_stats = Vector{NamedTuple}(undef, MCS)
     end
 
     @showprogress "Warm up..." for i in 1:EQ_MCS
@@ -216,15 +251,16 @@ function groundstate(parsed_args)
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
         output = mc_step!(rng, qmc_state, H, runstats) do lsize, qmc_state, H
-            spin_prop = sample(H, qmc_state)
-            measurements[i, :] = spin_prop
+            m = magnetization(sample(H, qmc_state))
+            push!(mags, m)
+            push!(abs_mags, abs(m))
+            push!(sqr_mags, m ^ 2)
 
             ns[i] = num_single_site_diag(H, qmc_state.operator_list)
-            mags[i] = magnetization(spin_prop)
         end
 
         if runstats isa Val{true}
-            diag_update_fails[i], cluster_update_accep[i], num_clusters[i], cluster_sizes[i] = output
+            diag_update_fails[i], cluster_stats[i] = output
         end
 
         for _ in 1:skip
@@ -233,24 +269,38 @@ function groundstate(parsed_args)
     end
 
     if runstats isa Val{true}
-        println("Diag update acceptance rate:    ", 1 - mean_and_stderr(diag_update_fails))
-        println("Cluster update acceptance rate: ", mean_and_stderr(cluster_update_accep))
-        println("Average number of clusters: ", mean_and_stderr(num_clusters))
-        println("Average cluster size: ", mean_and_stderr(cluster_sizes))
+        # don't worry about std_errors for these right now
+        #  if we decide we need them we'll add them back in
+        total_cluster_count = sum(x -> x.cluster_count, cluster_stats)
+
+        runtime_stats = Dict(
+            "diag_update_acceptance" => 1 - mean(diag_update_fails),
+            "average_cluster_count" => total_cluster_count / length(cluster_stats),
+            "average_cluster_acceptance" => sum(x -> x.num_accepts, cluster_stats) / total_cluster_count,
+            "average_cluster_size" => sum(x -> x.cluster_size, cluster_stats) / total_cluster_count
+        )
+    else
+        runtime_stats = Dict()
     end
 
-    mag = mean_and_stderr(mags)
-    abs_mag = mean_and_stderr(abs, mags)
-    mag_sqr = mean_and_stderr(abs2, mags)
+    observables = Dict{String, Dict{String, Number}}(
+        "magnetization" => measurementtodict(mags),
+        "absolute magnetization" => measurementtodict(abs_mags),
+        "squared magnetization" => measurementtodict(sqr_mags),
+        "energy" => measurementtodict(energy_density(qmc_state, H, ns))
+    )
 
-    @time energy = energy_density(qmc_state, H, ns)
+    @show dbootvar(
+        ns;
+        flevel1 = n -> (H.energy_shift - (QMC.total_hx(H) / mean(n))) / nspins(H)
+    )
 
-    observables = (mag, abs_mag, mag_sqr, energy)
+    @show optblocklength(ns, DependentBootstrap.BLPPW2009(), DependentBootstrap.BootStationary())
 
-    # measure correlation time from equilibriation samples
-    @time corr_time = correlation_time(mags .^ 2)
+    l = LogBinner(ns)
+    println("$(mean(l)) $(std_error(l)) $(tau(l)) $(convergence(l))")
 
-    save_data(path, mc_opts, qmc_state, measurements, observables, corr_time)
+    save_data(path, mc_opts, qmc_state, observables, runtime_stats)
 end
 
 

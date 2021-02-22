@@ -116,7 +116,7 @@ const BinaryGroundState{K,V <: AbstractVector{Bool}} = GroundState{Bool, K, V}
 const BinaryThermalState{K,V <: AbstractVector{Bool}} = ThermalState{Bool, K, V}
 
 
-function convert(::Type{QMCState{S′}}, state::QMCState{S, T, K, V}) where {S, S′,T, K, V}
+function convert(::Type{QMCState{S′, T, K, V}}, state::QMCState{S, T, K, V}) where {S, S′,T, K, V}
     if S′ == S
         return state
     elseif S′ isa Type{<:Thermal}
@@ -131,14 +131,13 @@ function convert(::Type{QMCState{S′}}, state::QMCState{S, T, K, V}) where {S, 
         last = nothing
     end
 
-    resize!(state.link_list, len)
+    resize!(state.linked_list, len)
     resize!(state.leg_types, len)
     resize!(state.associates, len)
     resize!(state.flipping_weights, len)
     resize!(state.in_cluster, len)
 
     args = [getfield(state, field) for field in fieldnames(typeof(state))]
-    args[end] = last
 
-    return QMCState{S′, T, K, V}(args...)
+    return QMCState{S′, T, K, V}(args[1:end-1]..., last)
 end

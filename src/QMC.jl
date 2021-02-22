@@ -18,7 +18,7 @@ using LinearAlgebra
 
 using Random
 
-import Base: zero, one
+import Base: zero, one, convert
 import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex, rand, show, pop!
 
 

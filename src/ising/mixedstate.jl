@@ -1,18 +1,18 @@
 
 ########################## finite-beta #######################################
 
-function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
-    num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
-    lsize = multibranch_update!(rng, qmc_state, H)
-    f(lsize, qmc_state, H)
-    return num_ops
-end
-
-function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractRydberg, beta::Real; eq::Bool = false)
-    num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq = eq)
-    lsize = line_update!(rng, qmc_state, H)
-    f(lsize, qmc_state, H)
-    return num_ops
+function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real, runstats=Val{false}(); eq::Bool = false)
+    if runstats isa Val{true}
+        num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq=eq)
+        lsize, cluster_stats = cluster_update!(rng, qmc_state, H, runstats)
+        f(lsize, qmc_state, H)
+        return num_ops, cluster_stats
+    else
+        num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq=eq)
+        lsize = cluster_update!(rng, qmc_state, H, runstats)
+        f(lsize, qmc_state, H)
+        return num_ops
+    end
 end
 
 mc_step_beta!(f::Function, qmc_state, H, beta; eq = false) = mc_step_beta!(f, Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)

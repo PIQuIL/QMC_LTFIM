@@ -18,12 +18,14 @@ nbonds(H::Hamiltonian) = H.Nb
 
 @inline diag_update_normalization(H::Hamiltonian) = normalization(H.op_sampler)
 
+energy(::BinaryThermalState, H::Hamiltonian, β::Float64, n::Int) = H.energy_shift - (n / β)
 function energy(::BinaryThermalState, H::Hamiltonian, β::Float64, ns::Vector{T}) where {T <: Real}
     E = -mean_and_stderr(ns) / β
     return H.energy_shift + E
 end
 
-energy_density(qmc_state::BinaryQMCState, H::Hamiltonian, args...; kwargs...) = energy(qmc_state, H, args...; kwargs...) / nspins(H)
+energy_density(qmc_state::BinaryQMCState, H::Hamiltonian, args...; kwargs...) =
+    energy(qmc_state, H, args...; kwargs...) / nspins(H)
 
 
 function BinaryGroundState(H::Hamiltonian{2,O}, M::Int) where {K, O <: AbstractOperatorSampler{K}}

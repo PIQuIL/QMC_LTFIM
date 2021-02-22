@@ -2,13 +2,11 @@
 #
 # Defines estimators and provides measurements
 
-function sample(H::AbstractIsing, qmc_state::BinaryQMCState)
+function sample(H::AbstractIsing, qmc_state::BinaryQMCState, M::Int=length(qmc_state.operator_list) ÷ 2)
     operator_list = qmc_state.operator_list
-
-    M = length(operator_list) ÷ 2
     spin_prop = copy(qmc_state.left_config)
 
-    @inbounds for i in 1:M #propagate half the list only (to the middle)
+    @inbounds for i in 1:M
         op = operator_list[i]
         if !isdiagonal(H, op)
             spin_prop[op[2]] ⊻= 1 #spinflip

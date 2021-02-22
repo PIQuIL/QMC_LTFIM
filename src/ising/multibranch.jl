@@ -234,7 +234,8 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
 
             empty!(current_cluster)
             push!(current_cluster, i)
-            lnA = 0.0 # flipping_weights[i]
+            # flipping_weights[i] = 0 since we start clusters on a site op
+            lnA = 0.0
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
@@ -284,7 +285,12 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
     _map_back_operator_list!(ocount, qmc_state, H)
 
     if runstats isa Val{true}
-        return lsize, mean(acceptance), ccount, mean(cluster_sizes)
+        return lsize, (
+            # we'll divide by the total cluster count later
+            num_accepts = sum(acceptance),
+            cluster_count = ccount,
+            cluster_size = sum(cluster_sizes)
+        )
     else
         return lsize
     end
@@ -354,7 +360,12 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
     _map_back_operator_list!(ocount, qmc_state, H)
 
     if runstats isa Val{true}
-        return lsize, 1/2, ccount, mean(cluster_sizes)
+        return lsize, (
+            # we'll divide by the total cluster count later
+            num_accepts = ccount / 2,
+            cluster_count = ccount,
+            cluster_size = sum(cluster_sizes)
+        )
     else
         return lsize
     end

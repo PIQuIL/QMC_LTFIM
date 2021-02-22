@@ -238,8 +238,13 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
     _map_back_operator_list!(ocount, qmc_state, H)
 
     if runstats isa Val{true}
-        abort_rate = num_aborts / ccount
-        return lsize, mean(acceptance), ccount, mean(cluster_sizes), abort_rate
+        return lsize, (
+            # we'll divide by the total cluster count later
+            accepts_rate = mean(acceptance),
+            cluster_count = ccount,
+            cluster_size = mean(cluster_sizes),
+            num_aborts = num_aborts
+        )
     else
         return lsize
     end
