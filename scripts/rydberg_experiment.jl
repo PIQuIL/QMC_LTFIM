@@ -5,22 +5,17 @@ using QMC
 # main.jl
 #
 # A projector QMC program for the TFIM
-using LinearAlgebra
 
 using Random
 using RandomNumbers
 
-using ProgressMeter
-
 using Measurements
 using Statistics
-#using FFTW
 
 using DelimitedFiles
 using JLD2
-using Printf
+using FileIO
 
-using DataStructures
 using ArgParse
 
 
@@ -41,36 +36,59 @@ function init_mc_cli(parsed_args)
     batches = parsed_args["batches"]
 
     println("Running Rydberg(($nX, $nY), R_b=$R_b, Ω=$Ω, δ=$δ)")
-    H = Rydberg((nX, nY), R_b, Ω, δ, (false, true))
+
     d = (nX=nX, nY=nY, R_b=R_b, Ω=Ω, δ=δ)
 
     mc_opts = (MCS, batches)
 
-    qmc_state = BinaryThermalState(H, 2000)
-
-    rng = Xorshifts.Xoroshiro128Plus(parsed_args["seed"])
-    rand!(rng, qmc_state.left_config)
-    copyto!(qmc_state.right_config, qmc_state.left_config)
-
     sname = savename(d; digits = 4)
     path = joinpath(SCRATCH_PATH, "qmc_sims", "groundstate", "Rydberg_QCP", "nY=$nY", "delta=$δ")
     mkpath(path)
+
+    res = continue_simulation(path, sname)
+    if res === nothing || parsed_args["restart"]
+        H = Rydberg((nX, nY), R_b, Ω, δ, (false, true))
+        qmc_state = BinaryThermalState(H, 2000)
+
+        rng = Xorshifts.Xoroshiro128Plus(parsed_args["seed"])
+        rand!(rng, qmc_state.left_config)
+        copyto!(qmc_state.right_config, qmc_state.left_config)
+
+        starting_batch = 1
+    else
+        H, qmc_state, rng, starting_batch = res
+    end
+
     path = joinpath(path, sname)
 
-    return H, qmc_state, path, mc_opts, rng
+    return H, qmc_state, path, mc_opts, rng, starting_batch
+end
+
+function continue_simulation(path, sname)
+    checkpoints = filter(endswith(".jld2"), readdir(path))
+    isempty(checkpoints) && return nothing
+
+    starting_batch = maximum(checkpoints) do s
+        parse(Int, split(split(s, "batch_")[2], '_')[1])
+    end
+
+    qmc_state_file = joinpath(path, sname) * "_batch_$(starting_batch)_state.jld2"
+    state = load(qmc_state_file)
+
+    rng::Xorshifts.Xoroshiro128Plus = state["rng"]
+    qmc_state::BinaryGroundState = state["qmc_state"]
+    H::Rydberg = state["hamiltonian"]
+
+    return H, qmc_state, rng, starting_batch + 1
 end
 
 
 function groundstate(parsed_args)
-    H, qmc_state, path, mc_opts, rng = init_mc_cli(parsed_args)
+    H, qmc_state, path, mc_opts, rng, starting_batch = init_mc_cli(parsed_args)
     runstats = Val{true}()
     MCS, batches = mc_opts
 
     ns, mags, smags = zeros(MCS), zeros(MCS), zeros(MCS)
-
-    open(path * "_raw_observables_columns.txt", "w") do io
-        writedlm(io, ["ns", "mags", "smags"])
-    end
 
     diag_update_fails = zeros(MCS)
     cluster_update_accep = zeros(MCS)
@@ -78,25 +96,31 @@ function groundstate(parsed_args)
     cluster_sizes = zeros(MCS)
     abort_rates = zeros(MCS)
 
-    open(path * "_runstats_columns.txt", "w") do io
-        writedlm(io, [
-            "diag_update_fails", "cluster_update_accep",
-            "num_clusters", "cluster_sizes", "abort_rates"
-        ])
+    if starting_batch == 1
+        open(path * "_raw_observables_columns.txt", "w") do io
+            writedlm(io, ["ns", "mags", "smags"])
+        end
+
+        open(path * "_runstats_columns.txt", "w") do io
+            writedlm(io, [
+                "diag_update_fails", "cluster_update_accep",
+                "num_clusters", "cluster_sizes", "abort_rates"
+            ])
+        end
+
+        beta = 20.0
+        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:MCS])
+
+        # TODO: bug with 3//2. Using 1.5 instead
+        #resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
+        resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
+        qmc_state = convert(BinaryGroundState{3, typeof(qmc_state.left_config)}, qmc_state)
+        println("operator list length: $(length(qmc_state.operator_list))")
     end
-
-    beta = 20.0
-    max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:MCS])
-
-    # TODO: bug with 3//2. Using 1.5 instead
-    #resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
-    resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
-    qmc_state = convert(BinaryGroundState{3, typeof(qmc_state.left_config)}, qmc_state)
-    println("operator list length: $(length(qmc_state.operator_list))")
 
     l = floor(Int, log10(batches) + 1)
 
-    for b in 1:batches
+    for b in starting_batch:batches
         for i in 1:MCS # Monte Carlo Production Steps
             diag_update_fails[i], cluster_stats = mc_step!(rng, qmc_state, H, Val{true}()) do lsize, qmc_state, H
                 spin_prop = sample(H, qmc_state)
@@ -145,9 +169,6 @@ s = ArgParseSettings()
     "groundstate"
         help = "Use Projector SSE to simulate the ground state"
         action = :command
-    # "mixedstate"
-    #     help = "Use vanilla SSE to simulate the system at non-zero temperature"
-    #     action = :command
 end
 
 
@@ -184,16 +205,11 @@ end
         arg_type = Int
         default = 1234
 
+    "--restart"
+        help = "Ignore saved simulation results and start from scratch"
+        action = :store_true
+
 end
-
-# import_settings!(s["mixedstate"], s["groundstate"])
-
-# @add_arg_table! s["mixedstate"] begin
-#     "--beta"
-#         help = "The inverse-temperature parameter for the simulation"
-#         arg_type = Float64
-#         default = 10.0
-# end
 
 
 parsed_args = parse_args(ARGS, s)
