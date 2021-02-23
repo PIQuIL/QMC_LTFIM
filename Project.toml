@@ -33,6 +33,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [compat]
 Aqua = "0.5"
 ArgParse = "1.1"
+Comonicon = "0.10"
 DataStructures = "0.18"
 DrWatson = "1.16"
 FFTW = "1.2"
