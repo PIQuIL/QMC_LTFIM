@@ -1,9 +1,0 @@
-#!/bin/bash
-#SBATCH --time=24:00:00
-echo nY=$N
-echo Rb=$Rb
-echo omega=$omega
-echo delta=$delta
-module load gcc/7.3.0 hdf5 julia/1.5.2
-julia --project=../ rydberg_experiment.jl groundstate $nY \
-     --omega $omega -R $Rb -delta $delta -n 100000 -b 100

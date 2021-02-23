@@ -14,7 +14,7 @@ using ProgressMeter
 
 using Measurements
 using Statistics
-using FFTW
+#using FFTW
 
 using DelimitedFiles
 using JLD2
