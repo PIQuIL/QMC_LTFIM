@@ -33,6 +33,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [compat]
 Aqua = "0.5"
 ArgParse = "1.1"
+BinningAnalysis = "0.4"
 Comonicon = "0.10"
 DataStructures = "0.18"
 DependentBootstrap = "1.1"
