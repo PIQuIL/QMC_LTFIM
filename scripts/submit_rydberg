@@ -3,7 +3,7 @@
 #SBATCH --mem=4G
 #SBATCH --account=rrg-rgmelko-ab
 #SBATCH --output=/home/ejaazm/scratch/qmc_sims/output-%x-%j.out
-#SBATCH --array=4-12:2
+#SBATCH --array=10-12:2
 echo nY=$SLURM_ARRAY_TASK_ID
 echo Rb=$Rb
 echo omega=$omega
