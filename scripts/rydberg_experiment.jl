@@ -68,11 +68,12 @@ function continue_simulation(path, sname)
     checkpoints = filter(endswith(".jld2"), readdir(path))
     isempty(checkpoints) && return nothing
 
-    starting_batch = maximum(checkpoints) do s
-        parse(Int, split(split(s, "batch_")[2], '_')[1])
+    starting_batch_s = maximum(checkpoints) do s
+        split(split(s, "batch_")[2], '_')[1]
     end
+    starting_batch = parse(Int, starting_batch_s)
 
-    qmc_state_file = joinpath(path, sname) * "_batch_$(starting_batch)_state.jld2"
+    qmc_state_file = joinpath(path, sname) * "_batch_$(starting_batch_s)_state.jld2"
     state = load(qmc_state_file)
 
     rng::Xorshifts.Xoroshiro128Plus = state["rng"]
