@@ -10,6 +10,7 @@ using Random
 using RandomNumbers
 
 using Measurements
+using BinningAnalysis
 using Statistics
 
 using DelimitedFiles
