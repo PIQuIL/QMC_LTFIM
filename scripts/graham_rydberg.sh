@@ -1,7 +1,9 @@
 #!/bin/bash
-for delta in $(seq 1.0 0.01 1.3)
+for M in $(seq 0 2000 40000)
 do
-  X="delta=${delta},omega=1.0,Rb=1.2"
-  sbatch -J "$X" --export="$X" submit_rydberg
+  for p in $(seq 0.0 0.1 0.9)
+  do
+    X="M=$M,p=$p"
+    sbatch -J "$X" --export="$X" submit_rydberg
+  done
 done
-

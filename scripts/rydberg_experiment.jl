@@ -10,17 +10,19 @@ using Random
 using RandomNumbers
 
 using Measurements
-using BinningAnalysis
+# using BinningAnalysis
 using Statistics
 
 using DelimitedFiles
 using JLD2
+using JSON
 using FileIO
 
 using ArgParse
 
 
-SCRATCH_PATH = "/home/ejaazm/scratch"
+SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+# SCRATCH_PATH = "/home/ejaazm/scratch/"
 
 ###############################################################################
 
@@ -33,40 +35,83 @@ function init_mc_cli(parsed_args)
     nX = 2*nY
 
     # MC parameters
+    M = parsed_args["M"]
     MCS = parsed_args["measurements"] # the number of samples to record per batch
     batches = parsed_args["batches"]
+    mb_prob = parsed_args["mb-prob"]
+    @assert 0.0 <= mb_prob <= 1.0
 
     println("Running Rydberg(($nX, $nY), R_b=$R_b, Ω=$Ω, δ=$δ)")
 
     d = (nX=nX, nY=nY, R_b=R_b, Ω=Ω, δ=δ)
 
-    mc_opts = (MCS, batches)
+    mc_opts = (M, MCS, batches, mb_prob)
 
     sname = savename(d; digits = 4)
-    path = joinpath(SCRATCH_PATH, "qmc_sims", "groundstate", "Rydberg_QCP", "nY=$nY", "delta=$δ")
+    path = joinpath(
+        SCRATCH_PATH, "qmc_sims", "groundstate",
+        "Rydberg_QCP", "nY=$nY", "delta=$δ",
+        "M=$M", "p=$mb_prob")
     mkpath(path)
 
     res = continue_simulation(path, sname)
     if res === nothing || parsed_args["restart"]
         H = Rydberg((nX, nY), R_b, Ω, δ, (false, true))
-        qmc_state = BinaryThermalState(H, 2000)
+        if M == 0
+            qmc_state = BinaryThermalState(H, 2000)
+        else
+            qmc_state = BinaryGroundState(H, M)
+        end
 
         rng = Xorshifts.Xoroshiro128Plus(parsed_args["seed"])
         rand!(rng, qmc_state.left_config)
         copyto!(qmc_state.right_config, qmc_state.left_config)
 
         starting_batch = 1
+
+        energy_estimator = LogBinner{Float64, 32}(
+            Bootstrap(ns -> energy_density(BinaryGroundState, H, ns))
+        )
+        binder_cumulant = LogBinner{Vector{Float64}, 32}(
+            Bootstrap(zeros(Float64, 2)) do v
+                M4, M2 = v[1], v[2]
+                (3 - (M4 / (M2 ^ 2))) / 2
+            end
+        )
+
+        observables = (
+            mags=LogBinner(), smags=LogBinner(),
+            mags2=LogBinner(), smags2=LogBinner(),
+            binder_cumulant=binder_cumulant, energy=energy_estimator
+        )
+
+        runstats = (
+            line_update=(
+                diag_update_fails=QMC.Variance(),
+                cluster_update_accep=QMC.Variance(),
+                num_clusters=QMC.Variance(),
+                cluster_sizes=QMC.Variance(),
+                abort_rates=QMC.Variance()
+            ),
+            multibranch_update=(
+                diag_update_fails=QMC.Variance(),
+                cluster_update_accep=QMC.Variance(),
+                num_clusters=QMC.Variance(),
+                cluster_sizes=QMC.Variance(),
+            )
+        )
     else
-        H, qmc_state, rng, starting_batch = res
+        H, qmc_state, rng, observables, runstats, starting_batch = res
     end
 
     path = joinpath(path, sname)
 
-    return H, qmc_state, path, mc_opts, rng, starting_batch
+    return H, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch
 end
 
 function continue_simulation(path, sname)
-    checkpoints = filter(endswith(".jld2"), readdir(path))
+    checkpoints = filter(contains("batch"),
+                         filter(endswith(".jld2"), readdir(path)))
     isempty(checkpoints) && return nothing
 
     starting_batch_s = maximum(checkpoints) do s
@@ -80,84 +125,131 @@ function continue_simulation(path, sname)
     rng::Xorshifts.Xoroshiro128Plus = state["rng"]
     qmc_state::BinaryGroundState = state["qmc_state"]
     H::Rydberg = state["hamiltonian"]
+    observables = state["observables"]
+    runstats = state["runstats"]
 
-    return H, qmc_state, rng, starting_batch + 1
+    return H, qmc_state, rng, observables, runstats, starting_batch + 1
 end
+
+measurementtodict(V::QMC.Variance) = Dict("value" => mean(V), "error" => std_error(V))
+measurementtodict(B::LogBinner, convergence_threshold::Float64 = 0.05) = Dict(
+    "value" => mean(B),
+    "error" => std_error(B),
+    "tau" => tau(B),
+    "has_converged" => has_converged(B,
+                                     QMC._reliable_level(B),
+                                     convergence_threshold),
+    "convergence" => convergence(B),
+    "convergence_threshold" => convergence_threshold,
+
+    "all_varNs" => all_varNs(B),
+    "all_taus" => all_taus(B),
+    "all_std_errors" => all_std_errors(B),
+    "all_means" => all_means(B)
+)
 
 
 function groundstate(parsed_args)
-    H, qmc_state, path, mc_opts, rng, starting_batch = init_mc_cli(parsed_args)
-    runstats = Val{true}()
-    MCS, batches = mc_opts
+    H, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch =
+        init_mc_cli(parsed_args)
 
-    ns, mags, smags = zeros(MCS), zeros(MCS), zeros(MCS)
-
-    diag_update_fails = zeros(MCS)
-    cluster_update_accep = zeros(MCS)
-    num_clusters = zeros(Int, MCS)
-    cluster_sizes = zeros(MCS)
-    abort_rates = zeros(MCS)
-
-    if starting_batch == 1
-        open(path * "_raw_observables_columns.txt", "w") do io
-            writedlm(io, ["ns", "mags", "smags"])
-        end
-
-        open(path * "_runstats_columns.txt", "w") do io
-            writedlm(io, [
-                "diag_update_fails", "cluster_update_accep",
-                "num_clusters", "cluster_sizes", "abort_rates"
-            ])
-        end
-
+    M, MCS, batches, mb_prob = mc_opts
+    if starting_batch == 1 && M == 0
         beta = 20.0
-        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:MCS])
+        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:MCS])
 
-        # TODO: bug with 3//2. Using 1.5 instead
-        #resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
         resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
         qmc_state = convert(BinaryGroundState{3, typeof(qmc_state.left_config)}, qmc_state)
-        println("operator list length: $(length(qmc_state.operator_list))")
     end
+
+    if starting_batch == 1  # equilibration step
+        for i in 1:MCS
+            mc_step!(rng, qmc_state, H)
+        end
+    end
+
+    # atexit() do
+    #     println("Killed by SIGTERM!")
+    #     qmc_state_file = path * "_killed_checkpoint.jld2"
+    #     @time @save qmc_state_file rng=rng qmc_state=qmc_state hamiltonian=H
+    #     exit(69)
+    # end
 
     l = floor(Int, log10(batches) + 1)
 
     for b in starting_batch:batches
         for i in 1:MCS # Monte Carlo Production Steps
-            diag_update_fails[i], cluster_stats = mc_step!(rng, qmc_state, H, Val{true}()) do lsize, qmc_state, H
+            diag_update_fail, cluster_stats = mc_step!(rng, qmc_state, H, Val{true}(); p=mb_prob) do lsize, qmc_state, H
                 spin_prop = sample(H, qmc_state)
 
-                ns[i] = num_single_site_diag(H, qmc_state.operator_list)
-                mags[i] = magnetization(spin_prop)
-                smags[i] = staggered_magnetization(H, spin_prop)
+                n = num_single_site_diag(H, qmc_state.operator_list)
+                mag = magnetization(spin_prop)
+                smag = staggered_magnetization(H, spin_prop)
+
+                push!(observables.mags, mag)
+                push!(observables.mags2, mag ^ 2)
+
+                push!(observables.smags, smag)
+                push!(observables.smags2, smag ^ 2)
+
+                push!(observables.binder_cumulant, [smag ^ 4, smag ^ 2])
+
+                push!(observables.energy, n)
             end
 
-            cluster_update_accep[i], num_clusters[i], cluster_sizes[i], abort_rates[i] = cluster_stats
+            if length(cluster_stats) == 4
+                push!(runstats.line_update.diag_update_fails, diag_update_fail)
+                push!(runstats.line_update.cluster_update_accep, cluster_stats[1])
+                push!(runstats.line_update.num_clusters, cluster_stats[2])
+                push!(runstats.line_update.cluster_sizes, cluster_stats[3])
+                push!(runstats.line_update.abort_rates, cluster_stats[4])
+            else
+                push!(runstats.multibranch_update.diag_update_fails, diag_update_fail)
+                push!(runstats.multibranch_update.cluster_update_accep, cluster_stats[1])
+                push!(runstats.multibranch_update.num_clusters, cluster_stats[2])
+                push!(runstats.multibranch_update.cluster_sizes, cluster_stats[3])
+            end
         end
 
         begin
-            batch_num = lpad(b, l, "0")
             # save batch
-            open(path * "_batch_$(batch_num)_raw_observables.txt", "w") do io
-                writedlm(io, zip(ns, mags, smags), ", ")
-            end
-            open(path * "_batch_$(batch_num)_runstats.txt", "w") do io
-                writedlm(
-                    io,
-                    zip(diag_update_fails,
-                        cluster_update_accep,
-                        num_clusters,
-                        cluster_sizes,
-                        abort_rates),
-                    ", "
-                )
-            end
+            qmc_state_file = path * "_batch_$(lpad(b, l, "0"))_state.jld2"
+            @save(qmc_state_file,
+                  rng=rng,
+                  qmc_state=qmc_state,
+                  hamiltonian=H,
+                  observables=observables,
+                  runstats=runstats)
 
-            qmc_state_file = path * "_batch_$(batch_num)_state.jld2"
-            @save qmc_state_file rng=rng qmc_state=qmc_state hamiltonian=H
+            # delete the previous saved state, if it exists
+            old_qmc_state = path * "_batch_$(lpad(b-1, l, "0"))_state.jld2"
+            if isfile(old_qmc_state)
+                rm(old_qmc_state)
+            end
         end
     end
 
+    observables_file = path * "_observables.json"
+    runstats_file = path * "_runstats.json"
+
+    open(observables_file, "w") do io
+        JSON.print(io,
+            Dict([k => measurementtodict(observables[k]) for k in keys(observables)]),
+            2)
+    end
+    open(runstats_file, "w") do io
+        JSON.print(io,
+            Dict([
+                k => Dict([k1 => measurementtodict(runstats[k][k1]) for k1 in keys(runstats[k])])
+                for k in keys(runstats)
+            ]),
+            2)
+    end
+
+    operator_length_file = path * "_operator_list_length=$(length(qmc_state.operator_list)).txt"
+    open(operator_length_file, "w") do io #just create the file
+        nothing
+    end
 end
 
 
@@ -191,6 +283,16 @@ end
         help = "Rydberg blockade radius (in units of the lattice spacing). Control the strength of the interaction"
         arg_type = Float64
         default = 1.2
+
+    "-M"
+        help = "Projector length. If zero, will perform a thermal equilibration at beta=20 to select a starting M."
+        arg_type = Int64
+        default = 0
+
+    "--mb-prob"
+        help = "Probability of performing a multibranch update"
+        arg_type = Float64
+        default = 0.0
 
     "--measurements", "-n"
         help = "Number of samples to record per batch"

@@ -1,13 +1,12 @@
 #!/bin/bash
-#SBATCH --time=8:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem=8G
 #SBATCH --account=rrg-rgmelko-ab
 #SBATCH --output=/home/ejaazm/scratch/qmc_sims/output-%x-%j.out
-#SBATCH --array=4-8:2
+#SBATCH --array=4-10:2
 echo nY=$SLURM_ARRAY_TASK_ID
-echo delta=$delta
+echo M=$M
+echo p=$p
 module load gcc/7.3.0 StdEnv/2020 julia/1.5.2
-# julia --project=../ rydberg_experiment.jl groundstate $SLURM_ARRAY_TASK_ID \
-#      --omega $omega -R $Rb --delta $delta -n 100000 -b 100
-julia --project=../ rydberg_cleanup.jl $SLURM_ARRAY_TASK_ID \
-     --delta $delta --bin-size 100 --delete
+julia --project=../ rydberg_experiment.jl groundstate $SLURM_ARRAY_TASK_ID \
+     --omega 1.0 -R 1.2 --delta 1.0 -n 100000 -b 10 -M $M --mb-prob $p

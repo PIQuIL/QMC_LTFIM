@@ -19,7 +19,7 @@ using CSV
 using ArgParse
 
 
-SCRATCH_PATH = "/home/ejaaz/scratch"
+SCRATCH_PATH = "/home/ejaazm/scratch"
 
 ###############################################################################
 

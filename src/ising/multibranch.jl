@@ -257,6 +257,15 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                     end
                 end
             end
+            # any trial state considerations would go here
+            # if qmc_state isa BinaryGroundState
+            #         && trial state is not a |+>-state #short-circuit
+            #     get i in current_cluster <= Ns (left config)
+            #                           or >= lsize-Ns (right config)
+            #     query trial state for weight change of left & right
+            #         configs separately
+            #     accumulate weight changes into lnA
+
             # heat bath: inv(1 + inv(A))) = W2/(W1 + W2) not good
             # metropolis: A (equiv to min(A, 1)) pretty good
             # scaled metropolis: min(A, 1)/2 also good

@@ -4,6 +4,8 @@ using ProgressMeter
 
 using Measurements
 using Statistics
+import Statistics: var, mean
+using Distributions
 using FFTW
 
 using DelimitedFiles
@@ -19,9 +21,11 @@ using LinearAlgebra
 using Random
 
 import Base: zero, one, convert
-import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex, rand, show, pop!
+import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex
+import Base: rand, show, pop!, push!, append!
 
-
+# using BinningAnalysis
+# import BinningAnalysis: varN, std_error
 
 export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         Hamiltonian, AbstractIsing, AbstractTFIM, TFIM, AbstractLTFIM, LTFIM, GeneralLTFIM, AbstractRydberg, Rydberg,
@@ -32,6 +36,9 @@ export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         num_single_site_diag, num_single_site_offdiag,
         num_single_site, num_two_site_diag, autocorrelation, correlation_time, jackknife, bootstrap, mean_and_stderr,
         lattice_bond_spins, ProbabilityAlias, ProbabilityHeap, ProbabilityVector, probability_vector
+
+export Bootstrap, LogBinner, varN, std_error, convergence, has_converged,
+        tau, all_taus, all_vars, all_varNs, all_means, all_std_errors
 
 
 @inline function pop!(v::PushVector)
@@ -51,6 +58,7 @@ include("operatorsamplers/improved_op_sampler.jl")
 include("ising/Ising.jl")
 include("measurements.jl")
 include("error.jl")
+include("error/Error.jl")
 
 
 end

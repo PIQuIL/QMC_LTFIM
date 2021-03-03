@@ -130,13 +130,25 @@ haslongitudinalfield(::AbstractTFIM) = false
 ###############################################################################
 
 
-function energy(::BinaryGroundState, H::AbstractIsing, ns::Vector{<:Real}; resampler::Function=jackknife)
+function energy(::Type{BinaryGroundState}, H::AbstractIsing, ns::Vector{<:Real}; resampler::Function=jackknife)
     hx = total_hx(H)
 
     if !iszero(hx)
         E = -hx * resampler(inv, ns)
     else
         E = measurement(zero(H.energy_shift))
+    end
+
+    return H.energy_shift + E
+end
+
+function energy(::Type{BinaryGroundState}, H::AbstractIsing, ns_mean::Real)
+    hx = total_hx(H)
+
+    if !iszero(hx)
+        E = -hx / ns_mean
+    else
+        E = zero(H.energy_shift)
     end
 
     return H.energy_shift + E

@@ -1,23 +1,23 @@
 
 ########################## finite-beta #######################################
 
-function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real, runstats=Val{false}(); eq::Bool = false)
+function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real, runstats=Val{false}(); eq::Bool = false, kw...)
     if runstats isa Val{true}
         num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq=eq)
-        lsize, cluster_stats = cluster_update!(rng, qmc_state, H, runstats)
+        lsize, cluster_stats = cluster_update!(rng, qmc_state, H, runstats; kw...)
         f(lsize, qmc_state, H)
         return num_ops, cluster_stats
     else
         num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq=eq)
-        lsize = cluster_update!(rng, qmc_state, H, runstats)
+        lsize = cluster_update!(rng, qmc_state, H, runstats; kw...)
         f(lsize, qmc_state, H)
         return num_ops
     end
 end
 
-mc_step_beta!(f::Function, qmc_state, H, beta; eq = false) = mc_step_beta!(f, Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
-mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta; eq = false) = mc_step_beta!((args...) -> nothing, rng, qmc_state, H, beta; eq = eq)
-mc_step_beta!(qmc_state, H, beta; eq = false) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq)
+mc_step_beta!(f::Function, qmc_state, H, beta; eq = false, kw...) = mc_step_beta!(f, Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq, kw...)
+mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta; eq = false, kw...) = mc_step_beta!((args...) -> nothing, rng, qmc_state, H, beta; eq = eq, kw...)
+mc_step_beta!(qmc_state, H, beta; eq = false, kw...) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta; eq = eq, kw...)
 
 function resize_op_list!(qmc_state::BinaryThermalState{K}, H::AbstractIsing, new_size::Int) where {K}
     operator_list = filter!(!isidentity(H), qmc_state.operator_list)

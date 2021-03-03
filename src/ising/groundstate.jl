@@ -1,21 +1,28 @@
 cluster_update!(rng, qmc_state, H::Hamiltonian, runstats) = multibranch_update!(rng, qmc_state, H, runstats)
-cluster_update!(rng, qmc_state, H::AbstractRydberg, runstats) = line_update!(rng, qmc_state, H, runstats)
+function cluster_update!(rng, qmc_state, H::AbstractRydberg, runstats; p::Float64=0.1)
+    if rand(rng) < p
+        # occasionally do a multibranch update to maintain ergodicity
+        multibranch_update!(rng, qmc_state, H, runstats)
+    else
+        line_update!(rng, qmc_state, H, runstats)
+    end
+end
 
-function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}())
+function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); p::Float64=0.1)
     if runstats isa Val{true}
         diag_update_fails = full_diagonal_update!(rng, qmc_state, H, runstats)
-        lsize, cluster_stats = cluster_update!(rng, qmc_state, H, runstats)
+        lsize, cluster_stats = cluster_update!(rng, qmc_state, H, runstats; p=p)
         f(lsize, qmc_state, H)
         return diag_update_fails, cluster_stats
     else
         full_diagonal_update!(rng, qmc_state, H, runstats)
-        lsize = cluster_update!(rng, qmc_state, H, runstats)
+        lsize = cluster_update!(rng, qmc_state, H, runstats; p=p)
         f(lsize, qmc_state, H)
     end
 end
-mc_step!(f::Function, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!(f, Random.GLOBAL_RNG, qmc_state, H, runstats)
-mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!((args...) -> nothing, rng, qmc_state, H, runstats)
-mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}()) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+mc_step!(f::Function, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); kw...) = mc_step!(f, Random.GLOBAL_RNG, qmc_state, H, runstats; kw...)
+mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); kw...) = mc_step!((args...) -> nothing, rng, qmc_state, H, runstats; kw...)
+mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); kw...) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats; kw...)
 
 
 Base.@propagate_inbounds alignment_check(H::AbstractTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
