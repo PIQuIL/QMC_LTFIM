@@ -82,6 +82,7 @@ function init_mc_cli(parsed_args)
         observables = (
             mags=LogBinner(), smags=LogBinner(),
             mags2=LogBinner(), smags2=LogBinner(),
+            mags4=LogBinner(), smags4=LogBinner(),
             binder_cumulant=binder_cumulant, energy=energy_estimator
         )
 
@@ -188,9 +189,11 @@ function groundstate(parsed_args)
 
                 push!(observables.mags, mag)
                 push!(observables.mags2, mag ^ 2)
+                push!(observables.mags4, mag ^ 4)
 
                 push!(observables.smags, smag)
                 push!(observables.smags2, smag ^ 2)
+                push!(observables.smags4, smag ^ 4)
 
                 push!(observables.binder_cumulant, [smag ^ 4, smag ^ 2])
 
