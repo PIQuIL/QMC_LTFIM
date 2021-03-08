@@ -21,8 +21,8 @@ using FileIO
 using ArgParse
 
 
-SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
-# SCRATCH_PATH = "/home/ejaazm/scratch/"
+# SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+SCRATCH_PATH = "/home/ejaaz/scratch/"
 
 ###############################################################################
 

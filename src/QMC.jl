@@ -22,7 +22,7 @@ using Random
 
 import Base: zero, one, convert
 import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex
-import Base: rand, show, pop!, push!, append!
+import Base: rand, show, pop!, push!, append!, isempty, empty!, count
 
 # using BinningAnalysis
 # import BinningAnalysis: varN, std_error

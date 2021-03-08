@@ -26,7 +26,8 @@ function LogBinner{T, N}(
     accumulator::V
 ) where {T, N, V <: AbstractVarianceAccumulator{T}}
     LogBinner{T, N}(
-        tuple([Compressor{T}(zero(accumulator.mean), false) for i in 1:N]...),
+        # TODO: more general zero element extraction
+        tuple([Compressor{T}(zero(mean(accumulator.mean)), false) for i in 1:N]...),
         [deepcopy(accumulator) for i in 1:N]
     )
 end
@@ -34,7 +35,7 @@ end
 
 # Overload some basic Base functions
 Base.eltype(::LogBinner{T,N}) where {T,N} = T
-Base.length(B::LogBinner) = B.accumulators[1].count
+Base.length(B::LogBinner) = count(B.accumulators[1])
 Base.ndims(B::LogBinner{T,N}) where {T,N} = ndims(eltype(B))
 Base.isempty(B::LogBinner) = length(B) == 0
 Base.:(==)(a::T, b::T) where {T <: Compressor} = (a.value == b.value) && (a.switch == b.switch)

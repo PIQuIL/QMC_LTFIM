@@ -88,7 +88,7 @@ Base.:(==)(a::FastVariance{T}, b::FastVariance{T}) where T = (
     && (a.count == b.count)
 )
 Base.copy(V::FastVariance{T}) where T = FastVariance{T}(copy(V.x_sum), copy(V.x2_sum), copy(V.count))
-
+count(V::FastVariance) = V.count
 mean(V::FastVariance) = isempty(V) ? zero(V.x_sum) : V.x_sum / V.count
 
 function var(V::FastVariance{T}) where {T <: Real}
@@ -148,7 +148,7 @@ Base.:(==)(a::Variance{T}, b::Variance{T}) where T = (
     && (a.count == b.count)
 )
 Base.copy(V::Variance{T}) where T = Variance{T}(copy(V.m1), copy(V.m2), copy(V.count))
-
+count(V::Variance) = V.count
 mean(V::Variance) = V.m1
 
 var(V::Variance{T}) where {T <: Real} = V.m2 / (V.count - 1)
