@@ -21,9 +21,17 @@ function push!(m::Mean{T}, val::T, k::Int=1) where T
     m.mean += k * (val - m.mean) / m.count
     return m
 end
-append!(m::Mean{T}, vals::Vector{T}) where T = (foreach(v -> push!(m, v), vals); m)
+function append!(m::Mean{T}, vals::AbstractVector{T}) where T
+    vm = Mean{T}(mean(vals), length(vals))
+    combine!(m, vm)
+end
 
 isempty(m::Mean) = iszero(m.count)
+function empty!(m::Mean)
+    m.mean = zero(m.mean)
+    m.count = zero(m.count)
+    return m
+end
 
 function combine!(a::Mean{T}, b::Mean{T}) where T
     isempty(a) && isempty(b) && return a
@@ -92,6 +100,7 @@ Bootstrap(; kwargs...) = Bootstrap(identity; kwargs...)
 
 count(B::Bootstrap) = count(B.mean)
 nreplicates(B::Bootstrap) = length(B.replicate_means)
+isempty(B::Bootstrap) = iszero(count(B))
 
 streamingmode(B::Bootstrap) = count(B) >= nreplicates(B)
 
@@ -139,26 +148,26 @@ mean(B::Bootstrap; kw...) = value(B; kw...)
 
 
 """Bootstrap estimate of var / N"""
-function varN(B::Bootstrap; replicate_vals=get_replicates!(B))
-    replicate_var = var(replicate_vals; corrected=false)
-    prefactor = count(B) / (count(B) - 1)
-    return prefactor * replicate_var
-end
+varN(B::Bootstrap; replicate_vals=get_replicates!(B)) = var(replicate_vals)
 var(B::Bootstrap; kw...) = varN(B; kw...) * count(B)
 std_error(B::Bootstrap; kw...) = sqrt(varN(B; kw...))
 
 
 
 function _make_bins!(B::Bootstrap)
-    for i in 1:nreplicates(B)
-        idx = rand!(B.rng, B.rng_buffer, 1:count(B))
-        B.replicate_means[i].mean = mean(@views B.buffer[idx])
-        B.replicate_means[i].count = nreplicates(B)
+    @inbounds for i in 1:nreplicates(B)
+        empty!(B.replicate_means[i])
+        rand!(B.rng, B.rng_buffer, 1:count(B))
+        append!(B.replicate_means[i], @view B.buffer[B.rng_buffer])
     end
 end
 make_bins!(B::Bootstrap) = streamingmode(B) || _make_bins!(B)
 
-get_replicates!(B::Bootstrap) = (make_bins!(B); map(B.f ∘ mean, B.replicate_means))
+function get_replicates!(B::Bootstrap)
+    isempty(B) && throw(ArgumentError("Can't perform bootstrapping without data!"))
+    make_bins!(B)
+    return @. B.f(mean(B.replicate_means))
+end
 
 
 function push!(B::Bootstrap{F, T}, val::T) where {F, T}

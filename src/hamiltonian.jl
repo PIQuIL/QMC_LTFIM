@@ -23,7 +23,7 @@ function energy(::Type{BinaryThermalState}, H::Hamiltonian, β::Float64, ns::Vec
     E = -mean_and_stderr(ns) / β
     return H.energy_shift + E
 end
-energy(qmc_state::BinaryQMCState, args...; kwargs...) = energy_density(typeof(qmc_state), args...; kwargs...)
+energy(qmc_state::BinaryQMCState, args...; kwargs...) = energy(typeof(qmc_state), args...; kwargs...)
 
 
 energy_density(S::Type{<:BinaryQMCState}, H::Hamiltonian, args...; kwargs...) =

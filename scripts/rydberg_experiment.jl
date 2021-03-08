@@ -70,10 +70,10 @@ function init_mc_cli(parsed_args)
         starting_batch = 1
 
         energy_estimator = LogBinner{Float64, 32}(
-            Bootstrap(ns -> energy_density(BinaryGroundState, H, ns))
+            Bootstrap(ns::Float64 -> energy_density(BinaryGroundState, H, ns))
         )
         binder_cumulant = LogBinner{Vector{Float64}, 32}(
-            Bootstrap(zeros(Float64, 2)) do v
+            Bootstrap(zeros(Float64, 2)) do v::Vector{Float64}
                 M4, M2 = v[1], v[2]
                 (3 - (M4 / (M2 ^ 2))) / 2
             end
