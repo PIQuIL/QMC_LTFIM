@@ -290,13 +290,6 @@ function groundstate(parsed_args)
         "energy" => measurementtodict(energy_density(qmc_state, H, ns))
     )
 
-    @show dbootvar(
-        ns;
-        flevel1 = n -> (H.energy_shift - (QMC.total_hx(H) / mean(n))) / nspins(H)
-    )
-
-    @show optblocklength(ns, DependentBootstrap.BLPPW2009(), DependentBootstrap.BootStationary())
-
     l = LogBinner(ns)
     println("$(mean(l)) $(std_error(l)) $(tau(l)) $(convergence(l))")
 
