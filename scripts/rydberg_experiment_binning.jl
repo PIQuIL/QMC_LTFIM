@@ -39,6 +39,7 @@ function init_mc_cli(parsed_args)
     M = parsed_args["M"]
     MCS = parsed_args["measurements"] # the number of samples to record per batch
     batches = parsed_args["batches"]
+    binsize = parsed_args["binsize"]
     mb_prob = parsed_args["mb-prob"]
     @assert 0.0 <= mb_prob <= 1.0
 
@@ -46,7 +47,7 @@ function init_mc_cli(parsed_args)
 
     d = (nX=nX, nY=nY, R_b=R_b, Ω=Ω, δ=δ, seed=seed)
 
-    mc_opts = (M, MCS, batches, mb_prob)
+    mc_opts = (M, MCS, batches, binsize, mb_prob)
 
     sname = savename(d; digits = 4)
     path = joinpath(
@@ -70,24 +71,11 @@ function init_mc_cli(parsed_args)
 
         starting_batch = 1
 
-        energy_estimator = LogBinner(
-            zero(Float64); rng = Xorshifts.Xoroshiro128Plus(seed), nreps = 100
-        ) do ns::Float64
-            energy_density(BinaryGroundState, H, ns)
-        end
-
-        binder_cumulant = LogBinner(
-            zeros(Float64, 2); rng = Xorshifts.Xoroshiro128Plus(seed), nreps = 100
-        ) do v::Vector{Float64}
-            M4, M2 = v[1], v[2]
-            (3 - (M4 / (M2 ^ 2))) / 2
-        end
-
         observables = (
-            mags=LogBinner(), smags=LogBinner(),
-            mags2=LogBinner(), smags2=LogBinner(),
-            mags4=LogBinner(), smags4=LogBinner(),
-            binder_cumulant=binder_cumulant, energy=energy_estimator
+            mags=zeros(batches, MCS ÷ binsize), smags=zeros(batches, MCS ÷ binsize),
+            mags2=zeros(batches, MCS ÷ binsize), smags2=zeros(batches, MCS ÷ binsize),
+            mags4=zeros(batches, MCS ÷ binsize), smags4=zeros(batches, MCS ÷ binsize),
+            n_ssd=zeros(batches, MCS ÷ binsize)
         )
 
         runstats = (
@@ -137,28 +125,13 @@ function continue_simulation(path, sname)
 end
 
 measurementtodict(V::BinningAnalysis.Variance) = Dict("value" => mean(V), "error" => std_error(V))
-measurementtodict(B::LogBinner, convergence_threshold::Float64 = 0.05) = Dict(
-    "value" => mean(B),
-    "error" => std_error(B),
-    "tau" => tau(B),
-    "has_converged" => has_converged(B,
-                                     BinningAnalysis._reliable_level(B),
-                                     convergence_threshold),
-    "convergence" => convergence(B),
-    "convergence_threshold" => convergence_threshold,
-
-    "all_varNs" => all_varNs(B),
-    "all_taus" => all_taus(B),
-    "all_std_errors" => all_std_errors(B),
-    "all_means" => all_means(B)
-)
-
+measurementtodict(M::Measurement) = Dict("value" => M.val, "error" => M.err)
 
 function groundstate(parsed_args)
     H, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch =
         init_mc_cli(parsed_args)
 
-    M, MCS, batches, mb_prob = mc_opts
+    M, MCS, batches, binsize, mb_prob = mc_opts
     if starting_batch == 1 && M == 0
         beta = 20.0
         max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:MCS])
@@ -183,38 +156,42 @@ function groundstate(parsed_args)
     l = floor(Int, log10(batches) + 1)
 
     for b in starting_batch:batches
-        for i in 1:MCS # Monte Carlo Production Steps
-            diag_update_fail, cluster_stats = mc_step!(rng, qmc_state, H, Val{true}(); p=mb_prob) do lsize, qmc_state, H
-                spin_prop = sample(H, qmc_state)
+        for i in 1:(MCS÷binsize) # Monte Carlo Production Steps
+            for j in 1:binsize
+                diag_update_fail, cluster_stats = mc_step!(rng, qmc_state, H, Val{true}(); p=mb_prob) do lsize, qmc_state, H
+                    spin_prop = sample(H, qmc_state)
 
-                n = num_single_site_diag(H, qmc_state.operator_list)
-                mag = magnetization(spin_prop)
-                smag = staggered_magnetization(H, spin_prop)
+                    n = num_single_site_diag(H, qmc_state.operator_list)
+                    mag = magnetization(spin_prop)
+                    smag = staggered_magnetization(H, spin_prop)
 
-                push!(observables.mags, mag)
-                push!(observables.mags2, mag ^ 2)
-                push!(observables.mags4, mag ^ 4)
+                    observables.mags[b, i] += mag
+                    observables.mags2[b, i] += mag ^ 2
+                    observables.mags4[b, i] += mag ^ 4
 
-                push!(observables.smags, smag)
-                push!(observables.smags2, smag ^ 2)
-                push!(observables.smags4, smag ^ 4)
+                    observables.smags[b, i] += smag
+                    observables.smags2[b, i] += smag ^ 2
+                    observables.smags4[b, i] += smag ^ 4
 
-                push!(observables.binder_cumulant, [smag ^ 4, smag ^ 2])
+                    observables.n_ssd[b, i] += n
+                end
 
-                push!(observables.energy, n)
+                if length(cluster_stats) == 4
+                    push!(runstats.line_update.diag_update_fails, diag_update_fail)
+                    push!(runstats.line_update.cluster_update_accep, cluster_stats[1])
+                    push!(runstats.line_update.num_clusters, cluster_stats[2])
+                    push!(runstats.line_update.cluster_sizes, cluster_stats[3])
+                    push!(runstats.line_update.abort_rates, cluster_stats[4])
+                else
+                    push!(runstats.multibranch_update.diag_update_fails, diag_update_fail)
+                    push!(runstats.multibranch_update.cluster_update_accep, cluster_stats[1])
+                    push!(runstats.multibranch_update.num_clusters, cluster_stats[2])
+                    push!(runstats.multibranch_update.cluster_sizes, cluster_stats[3])
+                end
             end
 
-            if length(cluster_stats) == 4
-                push!(runstats.line_update.diag_update_fails, diag_update_fail)
-                push!(runstats.line_update.cluster_update_accep, cluster_stats[1])
-                push!(runstats.line_update.num_clusters, cluster_stats[2])
-                push!(runstats.line_update.cluster_sizes, cluster_stats[3])
-                push!(runstats.line_update.abort_rates, cluster_stats[4])
-            else
-                push!(runstats.multibranch_update.diag_update_fails, diag_update_fail)
-                push!(runstats.multibranch_update.cluster_update_accep, cluster_stats[1])
-                push!(runstats.multibranch_update.num_clusters, cluster_stats[2])
-                push!(runstats.multibranch_update.cluster_sizes, cluster_stats[3])
+            for obs in observables
+                obs[b, i] /= binsize
             end
         end
 
@@ -239,9 +216,19 @@ function groundstate(parsed_args)
     observables_file = path * "_observables.json"
     runstats_file = path * "_runstats.json"
 
+    obs_estimates = Dict{Symbol, Measurement}()
+    for k in keys(observables)
+        obs_estimates[k] = mean_and_stderr(observables[k][:])
+    end
+
+    obs_estimates[:energy] = energy_density(qmc_state, H, observables[:n_ssd][:])
+    obs_estimates[:binder] = QMC.jackknife(observables[:smags4][:], observables[:smags2][:]) do M4, M2
+        (3 - (M4/(M2^2))) / 2
+    end
+
     open(observables_file, "w") do io
         JSON.print(io,
-            Dict([k => measurementtodict(observables[k]) for k in keys(observables)]),
+            Dict([k => measurementtodict(obs_estimates[k]) for k in keys(obs_estimates)]),
             2)
     end
     open(runstats_file, "w") do io
@@ -254,9 +241,7 @@ function groundstate(parsed_args)
     end
 
     operator_length_file = path * "_operator_list_length=$(length(qmc_state.operator_list)).txt"
-    open(operator_length_file, "w") do io #just create the file
-        nothing
-    end
+    open(io -> nothing, operator_length_file, "w") #just create the file
 end
 
 
@@ -308,6 +293,11 @@ end
 
     "--batches", "-b"
         help = "Number of batches to run"
+        arg_type = Int
+        default = 100
+
+    "--binsize"
+        help = "Size of the bins to average over before saving"
         arg_type = Int
         default = 100
 

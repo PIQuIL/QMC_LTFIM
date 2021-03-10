@@ -24,8 +24,8 @@ import Base: zero, one, convert
 import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex
 import Base: rand, show, pop!, push!, append!, isempty, empty!, count
 
-# using BinningAnalysis
-# import BinningAnalysis: varN, std_error
+using BinningAnalysis
+import BinningAnalysis: varN, std_error
 
 export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         Hamiltonian, AbstractIsing, AbstractTFIM, TFIM, AbstractLTFIM, LTFIM, GeneralLTFIM, AbstractRydberg, Rydberg,
@@ -37,9 +37,7 @@ export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         num_single_site, num_two_site_diag, autocorrelation, correlation_time, jackknife, bootstrap, mean_and_stderr,
         lattice_bond_spins, ProbabilityAlias, ProbabilityHeap, ProbabilityVector, probability_vector
 
-export Bootstrap, LogBinner, varN, std_error, convergence, has_converged,
-        tau, all_taus, all_vars, all_varNs, all_means, all_std_errors
-
+export Bootstrap
 
 @inline function pop!(v::PushVector)
     @boundscheck isempty(v) && throw(ArgumentError("vector must be non-empty"))

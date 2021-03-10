@@ -50,7 +50,7 @@ end
 
 
 
-struct Bootstrap{F <: Function, T, R <: AbstractRNG} <: AbstractVarianceAccumulator{T}
+struct Bootstrap{F <: Function, T, R <: AbstractRNG} <: BinningAnalysis.AbstractVarianceAccumulator{T}
     f::F
 
     mean::Mean{T}
@@ -101,6 +101,14 @@ Bootstrap(; kwargs...) = Bootstrap(identity; kwargs...)
 count(B::Bootstrap) = count(B.mean)
 nreplicates(B::Bootstrap) = length(B.replicate_means)
 isempty(B::Bootstrap) = iszero(count(B))
+
+function Base.getproperty(B::Bootstrap, property::Symbol)
+    if property === :count
+        return count(B)
+    else
+        return getfield(B, property)
+    end
+end
 
 streamingmode(B::Bootstrap) = count(B) >= nreplicates(B)
 
@@ -155,15 +163,15 @@ std_error(B::Bootstrap; kw...) = sqrt(varN(B; kw...))
 
 
 function _make_bins!(B::Bootstrap)
+    L = count(B)
     @inbounds for i in 1:nreplicates(B)
-        empty!(B.replicate_means[i])
-        rand!(B.rng, B.rng_buffer, 1:count(B))
-        append!(B.replicate_means[i], @view B.buffer[B.rng_buffer])
+        rand!(B.rng, @view(B.rng_buffer[1:L]), 1:L)
+        B.replicate_means[i] = Mean(mean(@view B.buffer[B.rng_buffer[1:L]]), L)
     end
 end
-make_bins!(B::Bootstrap) = streamingmode(B) || _make_bins!(B)
+make_bins!(B::Bootstrap) = streamingmode(B) ? nothing : _make_bins!(B)
 
-function get_replicates!(B::Bootstrap)
+function get_replicates!(B::Bootstrap{F, T})::Vector{T} where {F, T}
     isempty(B) && throw(ArgumentError("Can't perform bootstrapping without data!"))
     make_bins!(B)
     return @. B.f(mean(B.replicate_means))
@@ -172,10 +180,8 @@ end
 
 function push!(B::Bootstrap{F, T}, val::T) where {F, T}
     if streamingmode(B)
-        @inbounds for r in 1:nreplicates(B)
-            push!(B.replicate_means[r],
-                  val,
-                  rand(B.rng, Poisson(1)))
+        for replicate in B.replicate_means
+            push!(replicate, val, rand(B.rng, Poisson(1)))
         end
         push!(B.mean, val)
         return B
@@ -193,3 +199,37 @@ end
 
 append!(B::Bootstrap{F, T}, vals::Vector{T}) where {F, T} =
     (foreach(v -> push!(B, v), vals); B)
+
+
+function BinningAnalysis.LogBinner(f::Function, x::T;
+        capacity::Int64 = BinningAnalysis._nlvls2capacity(32), kw...
+    ) where {T <: Union{Number, AbstractArray}}
+
+    # check keyword args
+    capacity <= 0 && throw(ArgumentError("`capacity` must be finite and positive."))
+
+    # got_timeseries = didn't receive a zero && is a vector
+    got_timeseries = count(!iszero, x) > 0 && ndims(T) == 1
+
+    if got_timeseries
+        # x = time series
+        N = BinningAnalysis._capacity2nlvls(length(x))
+        S = BinningAnalysis._sum_type_heuristic(eltype(T), ndims(x[1]))
+        el = zero(x[1])
+    else
+        # x = zero_element
+        N = BinningAnalysis._capacity2nlvls(capacity)
+        S = BinningAnalysis._sum_type_heuristic(T, ndims(x))
+        el = x
+    end
+
+    boot = Bootstrap{typeof(f), S}(f, zero(el); kw...)
+    B = LogBinner{S, N}(
+        tuple([BinningAnalysis.Compressor{S}(copy(el), false) for i in 1:N]...),
+        tuple([deepcopy(boot) for _ in 1:N]...)
+    )
+
+    got_timeseries && append!(B, x)
+
+    return B
+end
