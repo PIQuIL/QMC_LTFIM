@@ -224,8 +224,6 @@ function mixedstate(parsed_args)
 end
 
 
-using DependentBootstrap
-
 function groundstate(parsed_args)
     H, qmc_state, sname, mc_opts, rng, runstats = init_mc_cli(parsed_args)
 

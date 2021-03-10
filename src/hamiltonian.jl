@@ -18,8 +18,8 @@ nbonds(H::Hamiltonian) = H.Nb
 
 @inline diag_update_normalization(H::Hamiltonian) = normalization(H.op_sampler)
 
-energy(::Type{BinaryThermalState}, H::Hamiltonian, β::Float64, n::Int) = H.energy_shift - (n / β)
-function energy(::Type{BinaryThermalState}, H::Hamiltonian, β::Float64, ns::Vector{T}) where {T <: Real}
+energy(::Type{<:BinaryThermalState}, H::Hamiltonian, β::Float64, n::Int) = H.energy_shift - (n / β)
+function energy(::Type{<:BinaryThermalState}, H::Hamiltonian, β::Float64, ns::Vector{T}) where {T <: Real}
     E = -mean_and_stderr(ns) / β
     return H.energy_shift + E
 end
