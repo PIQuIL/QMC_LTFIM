@@ -1,9 +1,13 @@
 #!/bin/bash
-for M in $(seq 0 2000 40000)
+for M in $(seq 2000 2000 10000)
 do
-  for p in $(seq 0.0 0.1 0.9)
+  for p in $(seq 0.0 0.1 0.1)
   do
-    X="M=$M,p=$p"
-    sbatch -J "$X" --export="$X" submit_rydberg
+    for delta in $(seq 1.01 0.01 1.2)
+    do
+      X="delta=$delta,M=$M,p=$p"
+      sbatch -J "p=$p,d=$delta,M=$M" --export="$X" submit_rydberg
+    done
   done
 done
+

@@ -1,12 +1,18 @@
 #!/bin/bash
-#SBATCH --time=12:00:00
-#SBATCH --mem=8G
+#SBATCH --time=6:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem-per-cpu=8G
 #SBATCH --account=rrg-rgmelko-ab
-#SBATCH --output=/home/ejaazm/scratch/qmc_sims/output-%x-%j.out
+#SBATCH --output=/scratch-deleted-2021-mar-20/ejaazm/qmc_sims/improved_lines/delta_scan/logs/output-%x-%A-%a.out
 #SBATCH --array=4-10:2
 echo nY=$SLURM_ARRAY_TASK_ID
+echo delta=$delta
 echo M=$M
 echo p=$p
-module load gcc/7.3.0 StdEnv/2020 julia/1.5.2
-julia --project=../ rydberg_experiment.jl groundstate $SLURM_ARRAY_TASK_ID \
-     --omega 1.0 -R 1.2 --delta 1.0 -n 100000 -b 10 -M $M --mb-prob $p
+module load StdEnv/2020 julia/1.5.2
+parallel --jobs $SLURM_CPUS_PER_TASK -k --group \
+	julia --compiled-modules=no --project=../ rydberg_experiment_binning.jl \
+		groundstate $SLURM_ARRAY_TASK_ID \
+		--omega 1.0 -R 1.2 --delta $delta -n 100000 -b 25 -M $M --mb-prob $p \
+		--seed {} ::: $(shuf -i 0-10000 -n $SLURM_CPUS_PER_TASK)
+

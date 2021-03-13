@@ -21,8 +21,8 @@ using FileIO
 using ArgParse
 
 
-SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
-# SCRATCH_PATH = "/home/ejaaz/scratch/"
+# SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+SCRATCH_PATH = "/scratch-deleted-2021-mar-20/ejaazm/"
 
 ###############################################################################
 
@@ -51,7 +51,10 @@ function init_mc_cli(parsed_args)
 
     sname = savename(d; digits = 4)
     path = joinpath(
-        SCRATCH_PATH, "qmc_sims", "groundstate",
+        SCRATCH_PATH, "qmc_sims",
+	"improved_lines",
+	"delta_scan",
+	"groundstate",
         "Rydberg_QCP", "nY=$nY", "delta=$δ",
         "M=$M", "p=$mb_prob")
     mkpath(path)
