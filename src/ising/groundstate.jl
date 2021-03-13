@@ -1,5 +1,5 @@
 cluster_update!(rng, qmc_state, H::Hamiltonian, runstats) = multibranch_update!(rng, qmc_state, H, runstats)
-function cluster_update!(rng, qmc_state, H::AbstractRydberg, runstats; p::Float64=0.1)
+function cluster_update!(rng, qmc_state, H::AbstractRydberg, runstats; p::Float64=0.0)
     if rand(rng) < p
         # occasionally do a multibranch update to maintain ergodicity
         multibranch_update!(rng, qmc_state, H, runstats)
@@ -8,7 +8,7 @@ function cluster_update!(rng, qmc_state, H::AbstractRydberg, runstats; p::Float6
     end
 end
 
-function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); p::Float64=0.1)
+function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); p::Float64=0.0)
     if runstats isa Val{true}
         diag_update_fails = full_diagonal_update!(rng, qmc_state, H, runstats)
         lsize, cluster_stats = cluster_update!(rng, qmc_state, H, runstats; p=p)

@@ -187,10 +187,13 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
                     in_cluster[leg] = true  # add the new leg and flip it
 
                     push!(current_cluster, leg)
+                    a = Associates[leg]
+
+                    a == 0 && continue
+
                     lnA += flipping_weights[leg]
 
                     # now check all associates and add them to the cluster
-                    a = Associates[leg]
                     j = 1
                     while a != 0 && !in_cluster[a]
                         in_cluster[a] = true
