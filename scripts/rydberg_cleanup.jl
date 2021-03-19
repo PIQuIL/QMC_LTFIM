@@ -11,35 +11,50 @@ using Statistics
 using DelimitedFiles
 using JLD2
 using FileIO
-
-using DataFrames
 using JSON
 using CSV
+
+using DataFrames
+using Query
+using StatsPlots
 
 using ArgParse
 
 
-SCRATCH_PATH = "/home/ejaazm/scratch"
+SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+# SCRATCH_PATH = "/scratch-deleted-2021-mar-20/ejaazm/"
+
+RELIABLE_SIZE = 256
 
 ###############################################################################
 
-function init_mc_cli(parsed_args)
+function init_cli(parsed_args)
     δ = parsed_args["delta"]
     nY = parsed_args["nY"]
+    M = parsed_args["M"]
 
-    binsize = parsed_args["bin-size"]
-    path = joinpath(SCRATCH_PATH, "qmc_sims", "groundstate", "Rydberg_QCP", "nY=$nY", "delta=$δ")
+    path = joinpath(
+        SCRATCH_PATH, "qmc_sims",
+        "disord2checkerboard",
+        "groundstate",
+        "Rydberg_QCP", "nY=$nY", "delta=$δ", "M=$M")
 
-    return path, binsize, parsed_args["delete"]
+    if !isdir(path)
+        println("$path doesn't point to a valid directory!")
+        exit(1)
+    end
+
+    return path, parsed_args["delete"], nY, δ, M
 end
 
+measurementtodict(V::BinningAnalysis.Variance) = Dict("value" => mean(V), "error" => std_error(V))
 measurementtodict(M::Measurement) = Dict("value" => M.val, "error" => M.err)
-measurementtodict(B::LogBinner, convergence_threshold::Float64 = 0.05) = Dict(
+measurementtodict(B::LogBinner{T, N}, convergence_threshold::Float64 = 0.05) where {T, N} = Dict(
     "value" => mean(B),
     "error" => std_error(B),
     "tau" => tau(B),
     "has_converged" => has_converged(B,
-                                     BinningAnalysis._reliable_level(B),
+                                     something(findlast(x -> x.count >= RELIABLE_SIZE, B.accumulators), 1),
                                      convergence_threshold),
     "convergence" => convergence(B),
     "convergence_threshold" => convergence_threshold,
@@ -47,126 +62,262 @@ measurementtodict(B::LogBinner, convergence_threshold::Float64 = 0.05) = Dict(
     "all_varNs" => all_varNs(B),
     "all_taus" => all_taus(B),
     "all_std_errors" => all_std_errors(B),
-    "all_means" => all_means(B)
+    "all_means" => all_means(B),
+    "all_counts" => [count(B, lvl) for lvl in 1:N if count(B, lvl) > 1]
 )
 
 
-function reduce_runstats(delete_files::Bool, dir_contents::Vector{String})
-    runstats_files = filter(endswith("runstats.txt"), dir_contents)
-    runstats_files = runstats_files[2:end]  # drop equilibriation samples
 
-    runstats_names = only(filter(endswith("runstats_columns.txt"), dir_contents))
-    runstats_names = reshape(readdlm(runstats_names, String), :)
-
-    runstats_df = DataFrame()
-
-    for (i, file) in enumerate(runstats_files)
-        data = readdlm(file, ',', Float64)
-        df = DataFrame(data, runstats_names);
-
-        append!(runstats_df, combine(df, names(df) .=> mean .=> names(df)))
-
-        if delete_files
-            rm(file)
-        end
-    end
-
-    runstats_df = combine(runstats_df, names(runstats_df) .=> mean)[1, :]
-    runstats = NamedTuple(runstats_df)
-
-    runstats_file = replace(only(filter(endswith("runstats_columns.txt"), dir_contents)),
-                            "runstats_columns.txt" => "runstats.json")
-
-    open(runstats_file, "w") do io
-        JSON.print(io, runstats, 2)
-    end
-end
-
-
-
-function cleanup(parsed_args)
-    path, binsize, delete_files = init_mc_cli(parsed_args)
-
+function get_df(path, nY, delta, M)
     dir_contents = readdir(path, join=true, sort=true)
-    reduce_runstats(delete_files, dir_contents)
 
-    observable_files = filter(endswith("raw_observables.txt"), dir_contents)
-    observable_files = observable_files[2:end]  # drop equilibriation samples
+    observable_files = filter(endswith("raw_observables.csv"), dir_contents)
 
-    observable_names = only(filter(endswith("raw_observables_columns.txt"), dir_contents))
-    observable_names = reshape(readdlm(observable_names, String), :)
-
-    binners = Dict()
-    num_batches = length(observable_files)
-
-    binned_df = DataFrame()
+    full_df = DataFrame()
 
     for (i, file) in enumerate(observable_files)
-        data = readdlm(file, ',', Float64)
+        df = DataFrame(CSV.File(file));
 
-        df = DataFrame(data, observable_names);
         df.abs_mags = abs.(df.mags)
         df.abs_smags = abs.(df.smags)
         df.mags2 = df.mags .^ 2
         df.smags2 = df.smags .^ 2
         df.mags4 = df.mags .^ 4
-        df.smags4 = df.smags .^ 4;
+        df.smags4 = df.smags .^ 4
 
-        if isempty(binners)
-            for col in names(df)
-                binners[col] = LogBinner()
-            end
-        end
+        df[!, :chain] .= i
 
-        for col in names(df)
-            append!(binners[col], df[!, col])
-        end
+        seed = split(file, "seed=")[2]
+        seed = parse(Int, split(seed, "_")[1])
+        df[!, :seed] .= seed
 
-        df.block = repeat(1:(size(df, 1) ÷ binsize); inner=binsize)
+        df[!, :nY] .= nY
+        df[!, :delta] .= delta
+        df[!, :M] .= M
 
-        gd = groupby(df, :block)
-        append!(binned_df, combine(gd, valuecols(gd) .=> mean))
-
-        if delete_files
-            rm(file)
-        end
-    end
-    binned_df = select(binned_df, Not(:block))
-
-    state_files = filter(endswith(".jld2"), readdir(path, join=true, sort=true))
-
-    if delete_files
-        for f in state_files[1:end-1]
-            rm(f)
-        end
+        append!(full_df, df)
     end
 
-    state_file = state_files[end]
+    return full_df
+end
 
-    H, qmc_state = load(state_file, "hamiltonian", "qmc_state")
 
-    E_density = energy_density(qmc_state, H, binned_df.ns_mean)
+function plot_equilibration(plots_path, gdf)
+    plots_path = joinpath(plots_path, "equilibration")
+    mkpath(plots_path)
 
-    binder_cumulant = QMC.jackknife(binned_df.smags4_mean, binned_df.smags2_mean) do M4, M2
+    for observable in [:n_ssd, :smags, :abs_smags, :smags2, :smags4, :mags, :abs_mags, :mags2, :mags4]
+        for (ch, df) in enumerate(gdf)
+            seed = df[1, :seed]
+
+            plt = df |>
+                @filter(_.batch < 5) |>
+                @df density(
+                    df[:, ^(observable)],
+                    group = :batch,
+                    fmt = :png,
+                    legend = true,
+                    title = "Density histogram of $observable by batch (chain #$(ch))",
+                    size = (750, 500)
+                )
+            savefig(plt, joinpath(plots_path, "density_$(observable)_chain_$(ch)_seed_$(seed).png"))
+
+            plt = df |>
+                @filter(_.batch < 10) |>
+                @df violin(
+                    :batch,
+                    df[:, ^(observable)],
+                    fmt = :png,
+                    title = "Violin/Boxplot of $observable by batch (chain #$(ch))",
+                    xlabel = "Batch",
+                    ylabel = "$observable",
+                    legend = false,
+                    size = (750, 500)
+                )
+            plt = df |>
+                @filter(_.batch < 10) |>
+                @df boxplot!(
+                    :batch,
+                    df[:, ^(observable)],
+                    fmt = :png,
+                    legend = false,
+                    fillalpha = 0.5,
+                )
+            savefig(plt, joinpath(plots_path, "violin_$(observable)_chain_$(ch)_seed_$(seed).png"))
+        end
+    end
+end
+
+
+function plot_corr_time_convergence(plots_path, gdf)
+    plots_path = joinpath(plots_path, "correlation_times")
+    mkpath(plots_path)
+
+    for observable in [:n_ssd, :abs_smags, :smags2, :smags4]
+        for (ch, df) in enumerate(gdf)
+            seed = df[1, :seed]
+            binner = LogBinner(df[!, observable])
+
+            τ = all_taus(binner)
+            τ = @. 2*τ + 1
+            plt = plot(τ,
+                       legend = :left,
+                       title = "Correlation time of $(observable) (chain #$(ch))",
+                       xlabel = "binning level, L",
+                       ylabel = "\\tau_L",
+                       label = "\\tau_L",
+                       size = (500, 500))
+
+            vline!([something(findlast(x -> x.count >= RELIABLE_SIZE, binner.accumulators), 1)],
+                    label = "highest level with >= $RELIABLE_SIZE samples")
+            savefig(plt, joinpath(plots_path, "$(observable)_chain_$(ch)_seed_$(seed).png"))
+        end
+    end
+end
+
+
+function energy_binning(qmc_state, H, n_ssd::AbstractVector)
+    n_ssd = Vector(n_ssd)
+    E_density = energy_density(qmc_state, H, n_ssd)
+    std_err = E_density.err
+    val = E_density.val
+
+    all_std_errs = [std_err]
+
+    while length(n_ssd) >= RELIABLE_SIZE
+        if iseven(length(n_ssd))
+            n_ssd = (n_ssd[1:2:end] + n_ssd[2:2:end]) / 2
+        else
+            n_ssd = (n_ssd[1:2:end-1] + n_ssd[2:2:end]) / 2
+        end
+
+        E_density = energy_density(qmc_state, H, n_ssd)
+        std_err = E_density.err
+        push!(all_std_errs, std_err)
+    end
+
+    return val, all_std_errs
+end
+
+
+
+function binder_binning(smags4::AbstractVector, smags2::AbstractVector)
+    smags4, smags2 = Vector(smags4), Vector(smags2)
+    binder_cumulant = QMC.jackknife(smags4, smags2) do M4, M2
         (3 - (M4 / (M2 ^ 2))) / 2
     end
+    std_err = binder_cumulant.err
+    val = binder_cumulant.val
+
+    all_std_errs = [std_err]
+
+    while length(smags4) >= RELIABLE_SIZE
+        if iseven(length(smags4))
+            smags2 = (smags2[1:2:end] + smags2[2:2:end]) / 2
+            smags4 = (smags4[1:2:end] + smags4[2:2:end]) / 2
+        else
+            smags2 = (smags2[1:2:end-1] + smags2[2:2:end]) / 2
+            smags4 = (smags4[1:2:end-1] + smags4[2:2:end]) / 2
+        end
+
+        binder_cumulant = QMC.jackknife(smags4, smags2) do M4, M2
+            (3 - (M4 / (M2 ^ 2))) / 2
+        end
+
+        std_err = binder_cumulant.err
+        push!(all_std_errs, std_err)
+    end
+
+    return val, all_std_errs
+end
+
+
+
+
+function estimate_observables_for_one_chain(state_file, observables, df)
+    H, qmc_state = load(state_file, "hamiltonian", "qmc_state")
+
+    msmt_dict = Dict(String(obs) => measurementtodict(LogBinner(df[!, obs]))
+                     for obs in observables)
+
+    E_density, E_std_errs = energy_binning(qmc_state, H, df.n_ssd)
+    msmt_dict["energy_density"] = Dict("value" => E_density,
+                                       "error" => maximum(E_std_errs),
+                                       "all_std_errors" => E_std_errs)
+
+    binder_cumulant, U_std_errs = binder_binning(df.smags4, df.smags2)
+    msmt_dict["binder_cumulant"] = Dict("value" => binder_cumulant,
+                                        "error" => maximum(U_std_errs),
+                                        "all_std_errors" => U_std_errs)
+
+    return msmt_dict
+end
+
+
+function estimate_observables(path, gdf)
+    # any state object works, we just need the Hamiltonian struct and the qmc_state's type
+    state_files = filter(endswith(".jld2"), readdir(path, join=true, sort=true))
+    state_file = last(state_files)
+
+    observables = [:n_ssd, :smags, :abs_smags, :smags2, :smags4]
 
     msmt_dicts = Dict(
-        k => measurementtodict(v) for (k, v) in binners
+        "chain_$chain" => estimate_observables_for_one_chain(state_file, observables, df)
+        for (chain, df) in enumerate(gdf)
     )
-    msmt_dicts["energy_density"] = measurementtodict(E_density)
-    msmt_dicts["binder_cumulant"] = measurementtodict(binder_cumulant)
 
-    msmt_file = replace(only(filter(endswith("raw_observables_columns.txt"), dir_contents)),
-                        "raw_observables_columns.txt" => "observables.json")
+    mean_df = deepcopy(select(gdf[1], observables))
+    for i in 2:gdf.ngroups
+        mean_df .+= select(gdf[i], observables)
+    end
+    mean_df ./= gdf.ngroups
 
+    msmt_dicts["combined"] = estimate_observables_for_one_chain(state_file, observables, mean_df)
+
+    msmt_file = first(filter(endswith("raw_observables.csv"), readdir(path, join=true, sort=true)))
+    msmt_file = replace(msmt_file, "raw_observables.csv" => "observables.json")
+    msmt_file = replace(msmt_file, r"_seed=\d+" => "")
     open(msmt_file, "w") do io
         JSON.print(io, msmt_dicts, 2)
     end
-
-    binned_file = replace(msmt_file, "observables.json" => "binned_observables.csv")
-    CSV.write(binned_file, binned_df)
 end
+
+
+###############################################################################
+
+function cleanup_single_system(parsed_args)
+    path, delete_files, nY, δ, M = init_cli(parsed_args)
+
+    df = get_df(path, nY, δ, M)
+
+    println("Beginning cleanup for system nY=$nY, delta=$δ, M=$M...")
+
+    plots_path = joinpath(path, "plots")
+    mkpath(plots_path)
+
+    gdf = groupby(df, :seed)
+
+    println("Generating equilibration plots...")
+    plot_equilibration(plots_path, gdf)
+
+    println("Generating correlation time plots...")
+    plot_corr_time_convergence(plots_path, gdf)
+
+    println("Estimating observables...")
+
+    # drop equilibration samples
+    df = df |> @filter(_.batch > 0) |> DataFrame
+    gdf = groupby(df, :seed)
+    estimate_observables(path, gdf)
+
+    if delete_files
+        println("Deleting raw observables files...")
+        foreach(rm, filter(endswith("raw_observables.csv"), readdir(path, join=true)))
+    end
+end
+
+
+
 
 
 ###############################################################################
@@ -180,14 +331,15 @@ s = ArgParseSettings()
         help = "The length of the square lattice along the Y axis (PBC dimension)"
         required = true
         arg_type = Int
-    "--delta"
-        help = "Strength of the longitudinal field"
+
+    "delta"
+        help = "Strength of the detuning"
         arg_type = Float64
-        default = 1.0
-    "--bin-size", "-b"
-        help = "Size of bins to reduce data to"
-        arg_type = Int
-        default = 100
+
+    "M"
+        help = "Projector length."
+        arg_type = Int64
+
     "--delete"
         help = "Delete files that are no longer needed"
         action = :store_true
@@ -196,4 +348,4 @@ end
 
 parsed_args = parse_args(ARGS, s)
 
-cleanup(parsed_args)
+cleanup_single_system(parsed_args)

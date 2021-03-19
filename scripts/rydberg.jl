@@ -326,7 +326,7 @@ end
 parsed_args = parse_args(ARGS, s)
 
 if parsed_args["%COMMAND%"] == "groundstate"
-    groundstate(parsed_args["groundstate"])
+    @time groundstate(parsed_args["groundstate"])
 else
     mixedstate(parsed_args["mixedstate"])
 end

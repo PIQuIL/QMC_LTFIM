@@ -21,8 +21,8 @@ using FileIO
 using ArgParse
 
 
-# SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
-SCRATCH_PATH = "/scratch-deleted-2021-mar-20/ejaazm/"
+SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+# SCRATCH_PATH = "/scratch-deleted-2021-mar-20/ejaazm/"
 
 ###############################################################################
 
@@ -139,8 +139,10 @@ function groundstate(parsed_args)
         beta = 20.0
         max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:MCS])
 
-        resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
+        resize_op_list!(qmc_state, H, round(Int, 1.2*max_ns, RoundUp))
         qmc_state = convert(BinaryGroundState{3, typeof(qmc_state.left_config)}, qmc_state)
+        println("final operator list length: ", length(qmc_state.operator_list))
+        println("max ops: ", max_ns)
     end
 
     if starting_batch == 1  # equilibration step

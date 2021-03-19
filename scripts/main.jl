@@ -288,9 +288,6 @@ function groundstate(parsed_args)
         "energy" => measurementtodict(energy_density(qmc_state, H, ns))
     )
 
-    l = LogBinner(ns)
-    println("$(mean(l)) $(std_error(l)) $(tau(l)) $(convergence(l))")
-
     save_data(path, mc_opts, qmc_state, observables, runtime_stats)
 end
 
