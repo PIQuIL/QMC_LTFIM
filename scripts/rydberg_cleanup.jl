@@ -161,12 +161,12 @@ function plot_corr_time_convergence(plots_path, gdf)
             τ = all_taus(binner)
             τ = @. 2*τ + 1
             plt = plot(τ,
-                       legend = :left,
+                       legend = :outerbottom,
                        title = "Correlation time of $(observable) (chain #$(ch))",
                        xlabel = "binning level, L",
                        ylabel = "\\tau_L",
                        label = "\\tau_L",
-                       size = (500, 500))
+                       size = (500, 600))
 
             vline!([something(findlast(x -> x.count >= RELIABLE_SIZE, binner.accumulators), 1)],
                     label = "highest level with >= $RELIABLE_SIZE samples")
@@ -183,6 +183,7 @@ function energy_binning(qmc_state, H, n_ssd::AbstractVector)
     val = E_density.val
 
     all_std_errs = [std_err]
+    all_counts = [length(n_ssd)]
 
     while length(n_ssd) >= RELIABLE_SIZE
         if iseven(length(n_ssd))
@@ -194,9 +195,10 @@ function energy_binning(qmc_state, H, n_ssd::AbstractVector)
         E_density = energy_density(qmc_state, H, n_ssd)
         std_err = E_density.err
         push!(all_std_errs, std_err)
+        push!(all_counts, length(n_ssd))
     end
 
-    return val, all_std_errs
+    return val, all_std_errs, all_counts
 end
 
 
@@ -210,6 +212,7 @@ function binder_binning(smags4::AbstractVector, smags2::AbstractVector)
     val = binder_cumulant.val
 
     all_std_errs = [std_err]
+    all_counts = [length(smags4)]
 
     while length(smags4) >= RELIABLE_SIZE
         if iseven(length(smags4))
@@ -226,9 +229,10 @@ function binder_binning(smags4::AbstractVector, smags2::AbstractVector)
 
         std_err = binder_cumulant.err
         push!(all_std_errs, std_err)
+        push!(all_counts, length(smags4))
     end
 
-    return val, all_std_errs
+    return val, all_std_errs, all_counts
 end
 
 
@@ -240,15 +244,17 @@ function estimate_observables_for_one_chain(state_file, observables, df)
     msmt_dict = Dict(String(obs) => measurementtodict(LogBinner(df[!, obs]))
                      for obs in observables)
 
-    E_density, E_std_errs = energy_binning(qmc_state, H, df.n_ssd)
+    E_density, E_std_errs, E_counts = energy_binning(qmc_state, H, df.n_ssd)
     msmt_dict["energy_density"] = Dict("value" => E_density,
                                        "error" => maximum(E_std_errs),
-                                       "all_std_errors" => E_std_errs)
+                                       "all_std_errors" => E_std_errs,
+                                       "all_counts" => E_counts)
 
-    binder_cumulant, U_std_errs = binder_binning(df.smags4, df.smags2)
+    binder_cumulant, U_std_errs, U_counts = binder_binning(df.smags4, df.smags2)
     msmt_dict["binder_cumulant"] = Dict("value" => binder_cumulant,
                                         "error" => maximum(U_std_errs),
-                                        "all_std_errors" => U_std_errs)
+                                        "all_std_errors" => U_std_errs,
+                                        "all_counts" => U_counts)
 
     return msmt_dict
 end
