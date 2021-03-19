@@ -17,6 +17,7 @@ function line_link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::
         # The first N elements of the linked list are the spins of the LHS basis state
         @inbounds for i in 1:Ns
             LegType[i] = spin_left[i]
+            Associates[i] = 0
             First[i] = i
         end
         idx = Ns
@@ -158,9 +159,8 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
 
     if runstats isa Val{true}
         ccount = 0  # cluster number counter
-        cluster_sizes = PushVector{Int}()
-        acceptance = PushVector{Float64}()
-        num_aborts = 0
+        total_cluster_size = 0
+        total_acceptance = 0.0
     end
 
     @inbounds for i in 1:lsize
@@ -216,7 +216,7 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
             A = exp(min(lnA, zero(lnA)))
             flip = rand(rng) < A
 
-            if runstats isa Val{true}; push!(acceptance, A); end
+            if runstats isa Val{true}; total_acceptance += A; end
 
             if flip
                 @inbounds for i in current_cluster
@@ -224,7 +224,7 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
                 end
             end
 
-            if runstats isa Val{true}; push!(cluster_sizes, length(current_cluster)); end
+            if runstats isa Val{true}; total_cluster_size += length(current_cluster); end
         end
     end
 
@@ -235,10 +235,9 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
     if runstats isa Val{true}
         return lsize, (
             # we'll divide by the total cluster count later
-            accepts_rate = mean(acceptance),
+            accepts_rate = total_acceptance / ccount,
             cluster_count = ccount,
-            cluster_size = mean(cluster_sizes),
-            num_aborts = num_aborts
+            cluster_size = total_cluster_size / ccount,
         )
     else
         return lsize
