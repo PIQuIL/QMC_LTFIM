@@ -23,8 +23,8 @@ using DataFrames
 using ArgParse
 
 
-SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
-# SCRATCH_PATH = "/scratch-deleted-2021-mar-20/ejaazm/"
+#SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+SCRATCH_PATH = "/scratch/ejaazm/"
 
 ###############################################################################
 

@@ -6,13 +6,12 @@
 #SBATCH --mail-user=emerali@uwaterloo.ca
 #SBATCH --mail-type=TIME_LIMIT
 #SBATCH --account=rrg-rgmelko-ab
-#SBATCH --output=/scratch-deleted-2021-mar-20/ejaazm/qmc_sims/improved_lines/disordered_2_checkerboard/logs/output-%x-%j.out
+#SBATCH --output=/scratch/ejaazm/qmc_sims/disord2checkerboard/logs/output-%x-%j.out
 echo delta=$delta
 
 M=100000
 
-JOBLOG="/scratch-deleted-2021-mar-20/ejaazm/qmc_sims"
-JOBLOG="$JOBLOG/disordered_2_checkerboard/joblogs"
+JOBLOG="/scratch/ejaazm/qmc_sims/disord2checkerboard/joblogs"
 
 mkdir -p $JOBLOG
 
@@ -30,5 +29,5 @@ parallel --jobs $SLURM_CPUS_PER_TASK -k --group --joblog $JOBLOG_MCMC \
 		::: $(shuf -i 0-10000 -n 8)
 
 parallel --jobs 4 -k --group --joblog $JOBLOG_AGGR \
-	julia --compiled-modules=no --project=../ rydberg_cleanup.jl {} $delta $M \
+	julia --compiled-modules=no --project=../ rydberg_cleanup.jl {} $delta $M --delete \
 		::: $(seq 8 8 32)
