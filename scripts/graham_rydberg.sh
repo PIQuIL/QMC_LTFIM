@@ -1,9 +1,13 @@
 #!/bin/bash
-for delta in $(seq 1.02 0.01 1.2)
+for i in $(seq 0 9)
 do
-  X="delta=$delta"
-  #echo $X
-  sbatch -J "Ryd_D2C_contd" --export="$X" continue_rydberg
-  sleep 1s
+  delta_i=$(echo "1.01 + ($i*0.02)" | bc)
+  delta_f=$(echo "$delta_i + 0.01" | bc)
+  deltas=$(echo "$delta_i\n$delta_f")
+  for nY in $(seq 8 8 32)
+  do
+    X="nY=$nY,deltas=$deltas"
+    sbatch -J "nY=$nY_δ=$delta_i-$delta_f" --export="$X" submit_rydberg
+    sleep 0.5s
+  done
 done
-
