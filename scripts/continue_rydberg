@@ -1,0 +1,44 @@
+#!/bin/bash
+#SBATCH --time=1-0
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=0
+#SBATCH --mail-user=emerali@uwaterloo.ca
+#SBATCH --mail-type=TIME_LIMIT
+#SBATCH --account=rrg-rgmelko-ab
+#SBATCH --output=/scratch/ejaazm/qmc_sims/disord2checkerboard/logs/output-%x-%j.out
+echo delta=$delta
+
+delta_eval=$(echo $delta | sed "s/\./\\\./g")
+M=100000
+
+JOBLOG="/scratch/ejaazm/qmc_sims/disord2checkerboard/joblogs"
+
+mkdir -p $JOBLOG
+
+JOBLOG_MCMC="$JOBLOG/joblog-$SLURM_JOB_NAME-$SLURM_JOB_ID-mcmc.log"
+JOBLOG_AGGR="$JOBLOG/joblog-$SLURM_JOB_NAME-$SLURM_JOB_ID-aggr.log"
+
+# generated runs.log using:
+#
+# find ./ -name "**.jld2" -printf %f\\0\\n | \
+#	sed "s/.*_nY=\(.*\)_seed=\(.*\)_.*_δ=\(.*\)_batch.*/\3 \1 \2/"
+# 
+# from Rydberg_QCP folder
+
+
+module load StdEnv/2020 julia/1.5.2
+cat "/scratch/ejaazm/qmc_sims/disord2checkerboard/groundstate/Rydberg_QCP/runs.log" | \
+	grep "^$delta_eval " | \
+	parallel --jobs $SLURM_CPUS_PER_TASK -k --group --joblog $JOBLOG_MCMC \
+		--colsep " " \
+		julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
+			groundstate {2} \
+			--omega 1.0 -R 1.2 --delta {1} \
+			-n 131072 -b 32 \
+			--seed {3} -M $M
+
+parallel --jobs 4 -k --group --joblog $JOBLOG_AGGR \
+	julia --compiled-modules=no --project=../ rydberg_cleanup.jl {} $delta $M --delete \
+		::: $(seq 8 8 32)
+
