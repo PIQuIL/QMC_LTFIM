@@ -137,7 +137,12 @@ function energy_binning(qmc_state, H, n::AbstractVector; beta=0.0)
             n = (n[1:2:end-1] + n[2:2:end]) / 2
         end
 
-        E_density = energy_density(qmc_state, H, n)
+        if qmc_state isa BinaryThermalState
+            E_density = energy_density(qmc_state, H, beta, n)
+        else
+            E_density = energy_density(qmc_state, H, n)
+        end
+        
         std_err = E_density.err
         push!(all_std_errs, std_err)
         push!(all_counts, length(n))
