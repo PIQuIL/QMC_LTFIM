@@ -3,11 +3,16 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=0
+#SBATCH --array=1-5%1
 #SBATCH --mail-user=emerali@uwaterloo.ca
 #SBATCH --mail-type=TIME_LIMIT
+#SBATCH --mail-type=END
+#SBATCH --mail-type=FAIL
 #SBATCH --account=rrg-rgmelko-ab
-#SBATCH --output=/scratch/ejaazm/qmc_sims/disord2checkerboard/logs/output-%x-%j.out
-echo delta=$delta
+#SBATCH --output=/scratch/ejaazm/qmc_sims/disord2checkerboard/logs/output-%x-%A-%a.out
+echo nY=$nY
+echo deltas=$deltas
+
 
 M=100000
 
@@ -20,14 +25,10 @@ JOBLOG_AGGR="$JOBLOG/joblog-$SLURM_JOB_NAME-$SLURM_JOB_ID-aggr.log"
 
 module load StdEnv/2020 julia/1.5.2
 parallel --jobs $SLURM_CPUS_PER_TASK -k --group --joblog $JOBLOG_MCMC \
-	julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
-		groundstate {1} \
-		--omega 1.0 -R 1.2 --delta $delta \
-		-n 131072 -b 32 \
-		--seed {2} -M $M \
-		::: $(seq 8 8 32) \
-		::: $(shuf -i 0-10000 -n 8)
-
-parallel --jobs 4 -k --group --joblog $JOBLOG_AGGR \
-	julia --compiled-modules=no --project=../ rydberg_cleanup.jl {} $delta $M --delete \
-		::: $(seq 8 8 32)
+    julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
+        groundstate $nY \
+        --omega 1.0 -R 1.2 --delta {1} \
+        -n 131072 -b 16 \
+        --seed {2} -M $M \
+        ::: $deltas \
+        ::: $(seq 1000 1000 16000)

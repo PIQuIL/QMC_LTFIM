@@ -306,14 +306,14 @@ function cleanup_single_system(parsed_args)
     println("Generating equilibration plots...")
     plot_equilibration(plots_path, gdf)
 
+    # drop equilibration samples
+    df = df |> @filter(_.batch > 0) |> DataFrame
+    gdf = groupby(df, :seed)
+
     println("Generating correlation time plots...")
     plot_corr_time_convergence(plots_path, gdf)
 
     println("Estimating observables...")
-
-    # drop equilibration samples
-    df = df |> @filter(_.batch > 0) |> DataFrame
-    gdf = groupby(df, :seed)
     estimate_observables(path, gdf)
 
     if delete_files
