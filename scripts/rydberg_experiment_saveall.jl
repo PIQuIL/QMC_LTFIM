@@ -94,8 +94,9 @@ function init_mc_cli(parsed_args)
 end
 
 function continue_simulation(path, sname)
-    checkpoints = filter(contains("batch"),
-                         filter(endswith(".jld2"), readdir(path)))
+    checkpoints = filter(readdir(path)) do s
+        endswith(s, ".jld2") && contains(s, "batch") && contains(s, sname)
+    end
     isempty(checkpoints) && return nothing
 
     starting_batch_s = maximum(checkpoints) do s
