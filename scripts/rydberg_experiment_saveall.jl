@@ -99,21 +99,30 @@ function continue_simulation(path, sname)
     end
     isempty(checkpoints) && return nothing
 
-    starting_batch_s = maximum(checkpoints) do s
-        split(split(s, "batch_")[2], '_')[1]
+    batches = map(checkpoints) do s
+        parse(Int, split(split(s, "batch_")[2], '_')[1])
     end
-    starting_batch = parse(Int, starting_batch_s)
+    batches = sort(batches, rev=true)
 
-    qmc_state_file = joinpath(path, sname) * "_batch_$(starting_batch_s)_state.jld2"
-    state = load(qmc_state_file)
+    for s in batches
+        try
+            qmc_state_file = joinpath(path, sname) * "_batch_$(s)_state.jld2"
+            state = load(qmc_state_file)
+            starting_batch = s + 1
 
-    rng::Xorshifts.Xoroshiro128Plus = state["rng"]
-    qmc_state::BinaryGroundState = state["qmc_state"]
-    H::Rydberg = state["hamiltonian"]
-    observables = state["observables"]
-    runstats = state["runstats"]
+            rng::Xorshifts.Xoroshiro128Plus = state["rng"]
+            qmc_state::BinaryGroundState = state["qmc_state"]
+            H::Rydberg = state["hamiltonian"]
+            observables = state["observables"]
+            runstats = state["runstats"]
 
-    return H, qmc_state, rng, observables, runstats, starting_batch + 1
+            return H, qmc_state, rng, observables, runstats, starting_batch
+        catch e
+            nothing
+        end
+    end
+
+    return nothing
 end
 
 measurementtodict(V::BinningAnalysis.Variance) = Dict("value" => mean(V), "error" => std_error(V))
