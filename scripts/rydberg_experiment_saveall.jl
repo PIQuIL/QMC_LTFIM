@@ -100,15 +100,15 @@ function continue_simulation(path, sname)
     isempty(checkpoints) && return nothing
 
     batches = map(checkpoints) do s
-        parse(Int, split(split(s, "batch_")[2], '_')[1])
+        split(split(s, "batch_")[2], '_')[1]
     end
-    batches = sort(batches, rev=true)
+    batches = sort(batches, by=x->parse(Int, x), rev=true)
 
     for s in batches
         try
             qmc_state_file = joinpath(path, sname) * "_batch_$(s)_state.jld2"
             state = load(qmc_state_file)
-            starting_batch = s + 1
+            starting_batch = parse(Int, s) + 1
 
             rng::Xorshifts.Xoroshiro128Plus = state["rng"]
             qmc_state::BinaryGroundState = state["qmc_state"]
@@ -135,7 +135,7 @@ function groundstate(parsed_args)
     M, MCS, batches = mc_opts
     if starting_batch == 0 && M == 0
         beta = 20.0
-        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:MCS])
+        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:MCS])
 
         # there's still a lot of identity elements left over, no need to make the simulation cell bigger
         resize_op_list!(qmc_state, H, max_ns)
