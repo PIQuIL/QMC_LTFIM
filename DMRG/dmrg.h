@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <random>
 #include <fstream>
+#include <math.h>
 
 using namespace std;
 using namespace itensor;
@@ -18,6 +19,7 @@ class DMRG
     MPS psi_;
     double energy_;
     double magnetization_;
+    double stag_magnetization_;
     MPS psi0_;
 
 public:
@@ -36,6 +38,11 @@ public:
     inline double GetM()
     {
         return magnetization_;
+    }
+
+    inline double GetSM()
+    {
+        return stag_magnetization_;
     }
 
     inline SiteSet GetSiteSet()
@@ -186,28 +193,35 @@ public:
     void Run()
     {
         auto sweeps = Sweeps(100);
-        sweeps.maxdim() = 50, 50, 100, 100, 200;
+        sweeps.maxdim() = 50, 100, 200;
+        sweeps.cutoff() = 1E-5, 1E-8, 1E-10;
 
         auto [energy, psi] = dmrg(Hamiltonian_, psi0_, sweeps, "Quiet");
         psi_ = psi;
         
         // measure magnetization
-        double Sz;
-        double Szj;
+        double mag;
+        double smag;
+        double mag_j;
 
-        Sz = 0.0;
+        mag = 0.0;
+        smag = 0.0;
+
         for (int j = 1; j <= N_; ++j) 
         {
             psi.position(j);
-            Szj = elt(psi.A(j) * sites_.op("Sz", j) * dag(prime(psi.A(j), "Site")));
-            Sz += Szj;
+            mag_j = elt(psi.A(j) * sites_.op("Sz", j) * dag(prime(psi.A(j), "Site")));
+            mag += mag_j;
+            smag += mag_j * pow(-1, j);
         }
 
-        magnetization_ = Sz / float(N_);
+        magnetization_ = mag / float(N_);
+        stag_magnetization_ = smag / float(N_);
         // mult by 2 since itensor works with +/- 1/2 and not +/- 1
         energy_ = energy / float(N_);
         printfln("\nGround State E = %.10f", energy_);
         printfln("\nGround State M = %.10f", magnetization_);
+        printfln("\nGround State stagg M = %.10f", stag_magnetization_);
     }
 };
 
