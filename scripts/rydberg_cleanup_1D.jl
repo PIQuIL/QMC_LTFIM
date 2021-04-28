@@ -20,8 +20,11 @@ using StatsPlots
 
 using ArgParse
 
+using ProfileView
 
-SCRATCH_PATH = "../../qmc_data/"
+
+SCRATCH_PATH = "../../qmc_data/production/production/"
+#SCRATCH_PATH = "/scratch/ijsdevlu/1D_qmc_data/preprod/"
 
 RELIABLE_SIZE = 256
 
@@ -32,21 +35,20 @@ function init_cli(parsed_args)
     L = parsed_args["L"]
     M = parsed_args["M"]
     mb = parsed_args["multibranch"]
+    rseed = parsed_args["seed"]
 
     update_name = mb ? "multibranch" : "line"
 
     if haskey(parsed_args, "beta")
         beta = parsed_args["beta"]
         path = joinpath(
-            SCRATCH_PATH, "qmc_sims",
-            "1D",
+            SCRATCH_PATH,
             "thermalstate", "$update_name",
             "L=$L", "delta=$δ", "M=$M", "beta=$beta")
         
     else
         path = joinpath(
-            SCRATCH_PATH, "qmc_sims",
-            "1D",
+            SCRATCH_PATH,
             "groundstate", "$update_name",
             "L=$L", "delta=$δ", "M=$M")
 
@@ -57,7 +59,7 @@ function init_cli(parsed_args)
         exit(1)
     end
 
-    return path, L, δ, M
+    return path, L, δ, M, rseed
 end
 
 measurementtodict(V::BinningAnalysis.Variance) = Dict("value" => mean(V), "error" => std_error(V))
@@ -79,16 +81,19 @@ measurementtodict(B::LogBinner{T, N}, convergence_threshold::Float64 = 0.05) whe
     "all_counts" => [count(B, lvl) for lvl in 1:N if count(B, lvl) > 1]
 )
 
-
-
-function get_df(path, L, delta, M)
+function get_df(path, L, delta, M; rseed=nothing)
     dir_contents = readdir(path, join=true, sort=true)
     observable_files = filter(endswith("raw_observables.csv"), dir_contents)
+
+    if rseed != nothing
+        observable_files = filter(x -> occursin("seed=$rseed", x), observable_files)
+    end
 
     full_df = DataFrame()
 
     for (i, file) in enumerate(observable_files)
-        df = DataFrame(CSV.File(file));
+        # TODO: read docs to see if you can read in a batch at a time instead of whole file
+        @time df = DataFrame(CSV.File(file));
 
         df.abs_mags = abs.(df.mags)
         df.abs_smags = abs.(df.smags)
@@ -107,7 +112,7 @@ function get_df(path, L, delta, M)
         df[!, :delta] .= delta
         df[!, :M] .= M
 
-        append!(full_df, df)
+        @time append!(full_df, df)
     end
 
     return full_df
@@ -119,7 +124,7 @@ function energy_binning(qmc_state, H, n::AbstractVector; beta=0.0)
     n = Vector(n)
 
     if qmc_state isa BinaryThermalState
-        E_density = energy_density(qmc_state, H, beta, n)
+        E_density = energy_density(qmc_state, H, beta, n) # this is where jackknife happens!!!
     else
         E_density = energy_density(qmc_state, H, n)
     end
@@ -185,7 +190,6 @@ end
 
 
 
-
 function estimate_observables_for_one_chain(state_file, observables, df; beta=0.0)
     H, qmc_state = load(state_file, "hamiltonian", "qmc_state")
 
@@ -214,7 +218,7 @@ function estimate_observables(path, gdf; beta=0.0)
     state_files = filter(endswith(".jld2"), readdir(path, join=true, sort=true))
     state_file = last(state_files)
 
-    observables = [:n, :mags, :smags]
+    observables = [:n, :mags, :smags, :abs_smags]
 
     msmt_dicts = Dict(
         "chain_$chain" => estimate_observables_for_one_chain(state_file, observables, df; beta=beta)
@@ -240,9 +244,11 @@ end
 ###############################################################################
 
 function cleanup_single_system(parsed_args)
-    path, L, δ, M = init_cli(parsed_args)
+    path, L, δ, M, rseed = init_cli(parsed_args)
 
-    df = get_df(path, L, δ, M)
+    println("Getting dataframe...")
+
+    df = get_df(path, L, δ, M, rseed=rseed)
 
     if haskey(parsed_args, "beta")
         beta = parsed_args["beta"]
@@ -252,15 +258,16 @@ function cleanup_single_system(parsed_args)
         println("Beginning cleanup for system L=$L, delta=$δ, M=$M...")
     end
 
-    gdf = groupby(df, :seed)
+    @time gdf = groupby(df, :seed)
 
     println("Estimating observables...")
 
     # drop equilibration samples
+    #df = df |> @filter(_.batch > 0) |> @filter(_.batch <= 2) |> DataFrame
     df = df |> @filter(_.batch > 0) |> DataFrame
     gdf = groupby(df, :seed)
     
-    estimate_observables(path, gdf; beta=beta)
+    @time estimate_observables(path, gdf; beta=beta)
 
 end
 
@@ -293,8 +300,12 @@ end
         help = "Projector length."
         arg_type = Int64
 
+    "--seed"
+        help = "Specify cleaning up simulations for a single seed."
+        default = nothing
+
     "--multibranch", "--mb"
-        help = "Do multibranch cluster updates instead of default (line updates)"
+        help = "Specify that the update used was the multibranch update, not the (default) line update."
         action = :store_true
 end
 

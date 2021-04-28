@@ -57,6 +57,30 @@ function staggered_magnetization(H::AbstractRydberg, spin_prop)
     return M / nspins(H)
 end
 
+function domain_wall_density(H::AbstractRydberg, spin_prop)
+    # Currently set up for 1D + open boundary conditions
+    #= 
+    From https://www.nature.com/articles/nature24622: 
+
+    Domain walls are identified as either two neighbouring atoms 
+    in the same state or a ground-state atom at the edge of the array.
+    =#
+    
+    L = nspins(H)
+    dwd = 0.0
+
+    # check boundaries
+    dwd += iszero(spin_prop[1]) ? 1.0 : 0.0
+    dwd += iszero(spin_prop[end]) ? 1.0 : 0.0
+
+    # now check the bulk
+    for i in 1:(L-1)
+        dwd += (spin_prop[i] == spin_prop[i+1]) ? 1.0 : 0.0
+    end
+
+    return dwd / L
+end
+
 num_single_site_diag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && isdiagonal(H, x), operator_list)
 num_single_site_offdiag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && !isdiagonal(H, x), operator_list)
 num_single_site(H::AbstractIsing, operator_list) = mean(issiteoperator(H), operator_list)

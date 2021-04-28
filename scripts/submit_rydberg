@@ -30,5 +30,5 @@ parallel --jobs $SLURM_CPUS_PER_TASK -k --group --joblog $JOBLOG_MCMC \
         --omega 1.0 -R 1.2 --delta {1} \
         -n 131072 -b 16 \
         --seed {2} -M $M \
-        ::: $deltas \
+	::: $(echo -e $deltas) \
         ::: $(seq 1000 1000 16000)
