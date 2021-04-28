@@ -85,6 +85,8 @@ function get_df(path, nY, delta, M)
         df.mags4 = df.mags .^ 4
         df.smags4 = df.smags .^ 4
 
+        df.n_ssd_corrected = @. ((df.n_ssd * 2 * M) + 1) / (2*M + 1)
+
         df[!, :chain] .= i
 
         seed = split(file, "seed=")[2]
@@ -106,7 +108,9 @@ function plot_equilibration(plots_path, gdf)
     plots_path = joinpath(plots_path, "equilibration")
     mkpath(plots_path)
 
-    for observable in [:n_ssd, :smags, :abs_smags, :smags2, :smags4, :mags, :abs_mags, :mags2, :mags4]
+    for observable in [:n_ssd, :n_ssd_corrected,
+                       :smags, :abs_smags, :smags2, :smags4,
+                       :mags, :abs_mags, :mags2, :mags4]
         for (ch, df) in enumerate(gdf)
             seed = df[1, :seed]
 
@@ -153,7 +157,7 @@ function plot_corr_time_convergence(plots_path, gdf)
     plots_path = joinpath(plots_path, "correlation_times")
     mkpath(plots_path)
 
-    for observable in [:n_ssd, :abs_smags, :smags2, :smags4]
+    for observable in [:n_ssd, :n_ssd_corrected, :abs_smags, :smags2, :smags4]
         for (ch, df) in enumerate(gdf)
             seed = df[1, :seed]
             binner = LogBinner(df[!, observable])
@@ -250,6 +254,12 @@ function estimate_observables_for_one_chain(state_file, observables, df)
                                        "all_std_errors" => E_std_errs,
                                        "all_counts" => E_counts)
 
+    E_density, E_std_errs, E_counts = energy_binning(qmc_state, H, df.n_ssd_corrected)
+    msmt_dict["energy_density_corrected"] = Dict("value" => E_density,
+                                                 "error" => maximum(E_std_errs),
+                                                 "all_std_errors" => E_std_errs,
+                                                 "all_counts" => E_counts)
+
     binder_cumulant, U_std_errs, U_counts = binder_binning(df.smags4, df.smags2)
     msmt_dict["binder_cumulant"] = Dict("value" => binder_cumulant,
                                         "error" => maximum(U_std_errs),
@@ -262,10 +272,11 @@ end
 
 function estimate_observables(path, gdf)
     # any state object works, we just need the Hamiltonian struct and the qmc_state's type
+    #  to calculate the energy from samples
     state_files = filter(endswith(".jld2"), readdir(path, join=true, sort=true))
     state_file = last(state_files)
 
-    observables = [:n_ssd, :smags, :abs_smags, :smags2, :smags4]
+    observables = [:n_ssd, :n_ssd_corrected, :smags, :abs_smags, :smags2, :smags4]
 
     msmt_dicts = Dict(
         "chain_$chain" => estimate_observables_for_one_chain(state_file, observables, df)
@@ -321,9 +332,6 @@ function cleanup_single_system(parsed_args)
         foreach(rm, filter(endswith("raw_observables.csv"), readdir(path, join=true)))
     end
 end
-
-
-
 
 
 ###############################################################################
