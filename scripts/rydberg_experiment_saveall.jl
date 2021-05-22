@@ -12,7 +12,10 @@ using RandomNumbers
 using Measurements
 using BinningAnalysis
 using Statistics
+using OnlineStats
 
+using Plots
+using StatsPlots
 using DelimitedFiles
 using JLD2
 using JSON
@@ -35,30 +38,31 @@ function init_mc_cli(parsed_args)
     seed = parsed_args["seed"]
 
     nY = parsed_args["nY"]
-    nX = 2*nY
+    nX = nY
 
     # MC parameters
     M = parsed_args["M"]
     MCS = parsed_args["measurements"] # the number of samples to record per batch
     batches = parsed_args["batches"]
+    mb_prob = parsed_args["mb-prob"]
 
     println("Running Rydberg(($nX, $nY), R_b=$R_b, Ω=$Ω, δ=$δ)")
 
     d = (nX=nX, nY=nY, R_b=R_b, Ω=Ω, δ=δ, seed=seed)
 
-    mc_opts = (M, MCS, batches)
+    mc_opts = (M, MCS, batches, mb_prob)
 
     sname = savename(d; digits = 4)
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "disord2checkerboard",
+        "histograms",
         "groundstate",
-        "Rydberg_QCP", "nY=$nY", "delta=$δ", "M=$M")
+        "nY=$nY", "delta=$δ", "M=$M", "p=$mb_prob")
     mkpath(path)
 
-    res = parsed_args["restart"] ? nothing : continue_simulation(path, sname)
+    res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)
     if res === nothing
-        H = Rydberg((nX, nY), R_b, Ω, δ, (false, true))
+        H = Rydberg((nX, nY), R_b, Ω, δ, (false, false))
         if M == 0
             qmc_state = BinaryThermalState(H, 2000)
         else
@@ -78,12 +82,13 @@ function init_mc_cli(parsed_args)
             mags = zeros(MCS),
         )
 
-        runstats = (
-            diag_update_fails=BinningAnalysis.Variance(),
-            cluster_update_accep=BinningAnalysis.Variance(),
-            num_clusters=BinningAnalysis.Variance(),
-            cluster_sizes=BinningAnalysis.Variance(),
-        )
+        if parsed_args["runstats"] > 2
+            runstats = RunStatsHistogram(parsed_args["runstats"])
+        elseif 0 <= parsed_args["runstats"] <= 2
+            runstats = RunStats(parsed_args["runstats"])
+        else
+            runstats = NoStats()
+        end
     else
         H, qmc_state, rng, observables, runstats, starting_batch = res
     end
@@ -93,7 +98,7 @@ function init_mc_cli(parsed_args)
     return H, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch
 end
 
-function continue_simulation(path, sname)
+function continue_simulation(path, sname, parsed_args)
     checkpoints = filter(readdir(path)) do s
         endswith(s, ".jld2") && contains(s, "batch") && contains(s, sname)
     end
@@ -116,8 +121,23 @@ function continue_simulation(path, sname)
             observables = state["observables"]
             runstats = state["runstats"]
 
+            if parsed_args["runstats"] > 2
+                runstats2 = RunStatsHistogram(parsed_args["runstats"])
+            elseif 0 < parsed_args["runstats"] <= 2
+                runstats2 = RunStats(parsed_args["runstats"])
+            elseif parsed_args["runstats"] == 0
+                runstats2 = runstats
+            else
+                runstats2 = NoStats()
+            end
+
+            # allow overriding of runstats method when continuing simulation
+            if typeof(runstats) != typeof(runstats2)
+                runstats = runstats2
+            end
+
             return H, qmc_state, rng, observables, runstats, starting_batch
-        catch e
+        catch _
             nothing
         end
     end
@@ -126,16 +146,18 @@ function continue_simulation(path, sname)
 end
 
 measurementtodict(V::BinningAnalysis.Variance) = Dict("value" => mean(V), "error" => std_error(V))
+measurementtodict(V::OnlineStats.Variance) = Dict("value" => mean(V), "error" => std(V) / nobs(V))
 measurementtodict(M::Measurement) = Dict("value" => M.val, "error" => M.err)
+measurementtodict(H::OnlineStats.KHist) = Dict("value" => mean(H), "error" => std(H) / nobs(H))
 
 function groundstate(parsed_args)
     H, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch =
         init_mc_cli(parsed_args)
 
-    M, MCS, batches = mc_opts
+    M, MCS, batches, mb_prob = mc_opts
     if starting_batch == 0 && M == 0
         beta = 20.0
-        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:MCS])
+        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:MCS])
 
         # there's still a lot of identity elements left over, no need to make the simulation cell bigger
         resize_op_list!(qmc_state, H, max_ns)
@@ -148,7 +170,10 @@ function groundstate(parsed_args)
 
     for b in starting_batch:batches
         for i in 1:MCS  # Monte Carlo Production Steps
-            diag_update_fail, cluster_stats = mc_step!(rng, qmc_state, H, Val{true}()) do lsize, qmc_state, H
+            # don't include equilibration samples in runstats
+            rs = (b == 0) ? NoStats() : runstats
+
+            mc_step!(rng, qmc_state, H, rs; p=mb_prob) do lsize, qmc_state, H
                 spin_prop = sample(H, qmc_state)
 
                 observables[i, :n_ssd] = num_single_site_diag(H, qmc_state.operator_list)
@@ -156,13 +181,6 @@ function groundstate(parsed_args)
                 observables[i, :smags] = staggered_magnetization(H, spin_prop)
 
                 observables[i, :batch] = b
-            end
-
-            if b > 0  # don't include equilibration samples
-                push!(runstats.diag_update_fails, diag_update_fail)
-                push!(runstats.cluster_update_accep, cluster_stats[1])
-                push!(runstats.num_clusters, cluster_stats[2])
-                push!(runstats.cluster_sizes, cluster_stats[3])
             end
         end
 
@@ -187,13 +205,25 @@ function groundstate(parsed_args)
 
     runstats_file = path * "_runstats.json"
 
-    runstats = Dict{Symbol, Any}([k => measurementtodict(runstats[k]) for k in keys(runstats)])
-    runstats[:operator_list_length] = length(qmc_state.operator_list)
+    runstats_dict = Dict{Symbol, Any}([k => measurementtodict(getproperty(runstats, k)) for k in fieldnames(typeof(runstats))])
+    runstats_dict[:operator_list_length] = length(qmc_state.operator_list)
 
     open(runstats_file, "w") do io
-        JSON.print(io, runstats, 2)
+        JSON.print(io, runstats_dict, 2)
     end
 
+    if runstats isa RunStatsHistogram
+        # plot histograms
+        for k in fieldnames(typeof(runstats))
+            file = path * "_$(k).png"
+            plt = plot(
+                getproperty(runstats, k),
+                legend = nothing,
+                size = (500, 500)
+            )
+            savefig(plt, file)
+        end
+    end
 end
 
 
@@ -242,6 +272,21 @@ end
         help = "Number of batches to run"
         arg_type = Int
         default = 100
+
+    "--mb-prob"
+        help = "Probability of performing a multibranch cluster update"
+        arg_type = Float64
+        default = 0.0
+
+    "--runstats"
+        help = """Number of histogram bins for runstats.
+                If <=2, only compute the mean and std error of each stat.
+                If < 0, don't track runstats at all.
+                When continuing a simulation, a value of 0 will re-use the
+                same runstats calculation as before.
+               """
+        arg_type = Int
+        default = 0
 
     "--seed"
         help = "Random seed"
