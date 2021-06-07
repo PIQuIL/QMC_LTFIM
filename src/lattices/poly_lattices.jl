@@ -28,6 +28,41 @@ function Custom(a::Float64, a2::Tuple{Float64,Float64}, n1::Int, n2::Int, r::Arr
 end
 
 
+struct Kagome <: PolyLattice
+    # parameter that defines the equilateral triangle side length
+    t::Float64
+
+    # translation vectors
+    a1::Array{Float64,1}
+    a2::Array{Float64,1}
+
+    # number of repititions in directions of a1 and a2
+    n1::Int # a1
+    n2::Int # a2
+
+    # coordinates of sites inside a unit cell
+    r::Array{Array{Float64,1},1}
+
+    # Periodic boundaries in directions of a1, a2
+    # these are conventional PBCs
+    PBC::Tuple{Bool,Bool}
+end
+
+function Kagome(t::Float64, n1::Int, n2::Int, PBC::Tuple{Bool, Bool})
+    a = 2*t
+    a1 = [a, 0.]
+    a2 = [a*0.5, a*sqrt(3)*0.5]
+
+    # coordinates of each site in the unit cell
+    r1 = [0., 0.]
+    r2 = 0.5 * a2
+    r3 = 0.5 * a1
+    r = [r1, r2, r3]
+
+    return Kagome(t, a1, a2, n1, n2, r, PBC)
+end
+
+
 struct Ruby <: PolyLattice
     # parameter that defines spacing
     ρ::Float64
@@ -66,7 +101,8 @@ function Ruby(ρ::Float64, n1::Int, n2::Int, PBC::Tuple{Bool, Bool})
 end
 
 
-function distance_matrix(lattice::AbstractLattice)
+function distance_matrix(lattice::AbstractLattice; trunc::Float64 = Inf, plotting::Bool = false, plotname::String = "lattice")
+    # the plotting flag is strictly for saving a picture of the lattice on a graph
     a1 = lattice.a1
     a2 = lattice.a2
     n1 = lattice.n1
@@ -83,6 +119,11 @@ function distance_matrix(lattice::AbstractLattice)
 
     a2_length = sqrt(a2[1]^2 + a2[2]^2) # length of a2 vector
     θ = acos(a2[1] / a2_length) # a2 angle from horizontal
+
+    if plotting
+        xs = []
+        ys = []
+    end
 
     # NOT ENDING ON num_cells-1 BECAUSE WE NEED INTER-CELL BONDS
     for i in 1:num_cells
@@ -106,6 +147,11 @@ function distance_matrix(lattice::AbstractLattice)
                 site_num_i = site_i + length(r)*(i-1)
                 ri = r[site_i] + cell1
 
+                if plotting
+                    push!(xs, ri[1])
+                    push!(ys, ri[2])
+                end
+
                 for site_j in 1:length(r)
                     # ensure that there are no diagonal entries
                     if i == j & site_i == site_j
@@ -114,6 +160,12 @@ function distance_matrix(lattice::AbstractLattice)
 
                     site_num_j = site_j + length(r)*(j-1)
                     rj = r[site_j] + cell2
+
+                    if plotting
+                        push!(xs, rj[1])
+                        push!(ys, rj[2])
+                    end
+
                     Δ = ri - rj
                     Δx, Δy = Δ[1], Δ[2]
 
@@ -169,10 +221,17 @@ function distance_matrix(lattice::AbstractLattice)
                         d = sqrt(Δx^2 + Δy^2)
                     end
 
-                    dij[site_num_i, site_num_j] = d
+                    dij[site_num_i, site_num_j] = d <= trunc ? d : 0.0
+
                 end
             end
         end
     end
+
+    if plotting
+        plot(xs, ys, seriestype = :scatter)
+        savefig(plotname * ".png")
+    end
+
     return dij
 end

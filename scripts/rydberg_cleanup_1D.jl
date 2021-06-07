@@ -258,7 +258,7 @@ function cleanup_single_system(parsed_args)
         println("Beginning cleanup for system L=$L, delta=$δ, M=$M...")
     end
 
-    @time gdf = groupby(df, :seed)
+    gdf = groupby(df, :seed)
 
     println("Estimating observables...")
 
