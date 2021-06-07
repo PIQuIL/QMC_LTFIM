@@ -8,21 +8,14 @@ function cluster_update!(rng, qmc_state, H::AbstractRydberg, runstats; p::Float6
     end
 end
 
-function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); kw...)
-    if runstats isa Val{true}
-        diag_update_fails = full_diagonal_update!(rng, qmc_state, H, runstats)
-        lsize, cluster_stats = cluster_update!(rng, qmc_state, H, runstats; kw...)
-        f(lsize, qmc_state, H)
-        return diag_update_fails, cluster_stats
-    else
-        full_diagonal_update!(rng, qmc_state, H, runstats)
-        lsize = cluster_update!(rng, qmc_state, H, runstats; kw...)
-        f(lsize, qmc_state, H)
-    end
+function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats::AbstractRunStats=NoStats(); kw...)
+    full_diagonal_update!(rng, qmc_state, H, runstats)
+    lsize = cluster_update!(rng, qmc_state, H, runstats; kw...)
+    f(lsize, qmc_state, H)
 end
-mc_step!(f::Function, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); kw...) = mc_step!(f, Random.GLOBAL_RNG, qmc_state, H, runstats; kw...)
-mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); kw...) = mc_step!((args...) -> nothing, rng, qmc_state, H, runstats; kw...)
-mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats=Val{false}(); kw...) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats; kw...)
+mc_step!(f::Function, qmc_state::BinaryGroundState, H::Hamiltonian, runstats::AbstractRunStats=NoStats(); kw...) = mc_step!(f, Random.GLOBAL_RNG, qmc_state, H, runstats; kw...)
+mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats::AbstractRunStats=NoStats(); kw...) = mc_step!((args...) -> nothing, rng, qmc_state, H, runstats; kw...)
+mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats::AbstractRunStats=NoStats(); kw...) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats; kw...)
 
 
 Base.@propagate_inbounds alignment_check(H::AbstractTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
@@ -75,10 +68,10 @@ insert_diagonal_operator!(qmc_state, H, spin_prop, n) = insert_diagonal_operator
 
 #############################################################################
 
-function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats=Val{false}())
+function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
     spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
 
-    if runstats isa Val{true}
+    if !(runstats isa NoStats)
         failures = 0
         count = 0
     end
@@ -88,12 +81,12 @@ function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H
             @inbounds spin_prop[op[2]] ⊻= 1  # spinflip
         else
             op = nothing
-            if runstats isa Val{true}; i = -1; end
+            if !(runstats isa NoStats); i = -1; end
             while op === nothing
                 op, _ = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
-                if runstats isa Val{true}; i += 1; end
+                if !(runstats isa NoStats); i += 1; end
             end
-            if runstats isa Val{true}; failures += i; count += 1; end
+            if !(runstats isa NoStats); failures += i; count += 1; end
         end
     end
 
@@ -101,8 +94,9 @@ function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H
     @debug("Diagonal Update basis state propagation status: $(spin_prop == qmc_state.right_config)",
            spin_prop,
            qmc_state.right_config)
-    if runstats isa Val{true}
-        return failures / count
+
+    if !(runstats isa NoStats)
+        fit!(runstats, :diag_update_fails, failures/count)
     end
 end
-full_diagonal_update!(qmc_state, H, runstats=Val{false}()) = full_diagonal_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+full_diagonal_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) = full_diagonal_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)

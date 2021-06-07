@@ -25,7 +25,7 @@ function jackknife(f::Function, xs::Vector...)
 
     μ = mean(f_J)
     σ2 = (N - 1) * (mean(abs2, f_J) - μ^2)
-    σ = sqrt(σ2)
+    σ = σ2 < 0 ? 0.0 : sqrt(σ2)
 
     f_ = f((sum_xs / N)...)
     # bias = ((N - 1) * μ) - ((N - 1) * f_)

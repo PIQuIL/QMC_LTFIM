@@ -37,7 +37,7 @@ export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         num_single_site, num_two_site_diag, autocorrelation, correlation_time, jackknife, bootstrap, mean_and_stderr,
         lattice_bond_spins, ProbabilityAlias, ProbabilityHeap, ProbabilityVector, probability_vector
 
-export Bootstrap
+export Bootstrap, AbstractRunStats, NoStats, RunStats, RunStatsHistogram
 
 @inline function pop!(v::PushVector)
     @boundscheck isempty(v) && throw(ArgumentError("vector must be non-empty"))

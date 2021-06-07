@@ -1,4 +1,4 @@
-function line_link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats=Val{false}())
+function line_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, ::AbstractRunStats=NoStats())
     Ns = nspins(H)
     spin_left = qmc_state.left_config
 
@@ -30,7 +30,7 @@ function line_link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::
     spin_prop = copyto!(qmc_state.propagated_config, spin_left)  # the propagated spin state
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
-    @inbounds for (n, op) in enumerate(qmc_state.operator_list)
+    @inbounds for op in qmc_state.operator_list
         if issiteoperator(H, op)
             site = op[2]
             # lower or left leg
@@ -138,13 +138,14 @@ function line_link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::
 
     return idx
 end
-line_link_list_update!(qmc_state, H, runstats=Val{false}()) = line_link_list_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+line_link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
+    line_link_list_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
 
 
 #############################################################################
 
 
-function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats=Val{false}())
+function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
 
@@ -157,16 +158,14 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
     cstack = qmc_state.cstack # This is the stack of vertices in a cluster
     current_cluster = qmc_state.current_cluster
 
-    if runstats isa Val{true}
+    if !(runstats isa NoStats)
         ccount = 0  # cluster number counter
-        total_cluster_size = 0
-        total_acceptance = 0.0
     end
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
         if !in_cluster[i] && Associates[i] == 0
-            if runstats isa Val{true}; ccount += 1; end
+            if !(runstats isa NoStats); ccount += 1; end
             push!(cstack, i)
             in_cluster[i] = true
 
@@ -216,7 +215,7 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
             A = exp(min(lnA, zero(lnA)))
             flip = rand(rng) < A
 
-            if runstats isa Val{true}; total_acceptance += A; end
+            fit!(runstats, :cluster_update_accept, A)
 
             if flip
                 @inbounds for i in current_cluster
@@ -224,34 +223,29 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
                 end
             end
 
-            if runstats isa Val{true}; total_cluster_size += length(current_cluster); end
+            fit!(runstats, :cluster_sizes, float(length(current_cluster)))
         end
+    end
+
+    if !(runstats isa NoStats)
+        fit!(runstats, :cluster_count, float(ccount))
     end
 
     # map back basis states and operator list
     ocount = _map_back_basis_states!(rng, lsize, qmc_state, H)
     _map_back_operator_list!(ocount, qmc_state, H)
 
-    if runstats isa Val{true}
-        return lsize, (
-            # we'll divide by the total cluster count later
-            accepts_rate = total_acceptance / ccount,
-            cluster_count = ccount,
-            cluster_size = total_cluster_size / ccount,
-        )
-    else
-        return lsize
-    end
+    return lsize
 end
 
-line_cluster_update!(lsize, qmc_state, H, runstats=Val{false}()) = line_cluster_update!(Random.GLOBAL_RNG, lsize, qmc_state, H, runstats)
+line_cluster_update!(lsize, qmc_state, H, runstats::AbstractRunStats=NoStats()) = line_cluster_update!(Random.GLOBAL_RNG, lsize, qmc_state, H, runstats)
 
 
 #############################################################################
 
 
-function line_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats=Val{false}())
+function line_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
     lsize = line_link_list_update!(rng, qmc_state, H, runstats)
     return line_cluster_update!(rng, lsize, qmc_state, H, runstats)
 end
-line_update!(qmc_state::BinaryQMCState, H::AbstractIsing, runstats=Val{false}()) = line_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+line_update!(qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats()) = line_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)

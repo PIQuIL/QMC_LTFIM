@@ -309,7 +309,7 @@ end
         default = 1234
 
     "--runstats"
-        help = "Print run statistics (acceptance rates, cluster sizes, etc."
+        help = "Print run statistics (acceptance rates, cluster sizes, etc.)"
         action = :store_true
 end
 
