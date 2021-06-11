@@ -26,8 +26,8 @@ using DataFrames
 using ArgParse
 
 
-#SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
-SCRATCH_PATH = "/scratch/ejaazm/"
+SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+# SCRATCH_PATH = "/scratch/ejaazm/"
 
 ###############################################################################
 
@@ -85,7 +85,7 @@ function init_mc_cli(parsed_args)
         if parsed_args["runstats"] > 2
             runstats = RunStatsHistogram(parsed_args["runstats"])
         elseif 0 <= parsed_args["runstats"] <= 2
-            runstats = RunStats(parsed_args["runstats"])
+            runstats = RunStats()
         else
             runstats = NoStats()
         end
@@ -146,9 +146,10 @@ function continue_simulation(path, sname, parsed_args)
 end
 
 measurementtodict(V::BinningAnalysis.Variance) = Dict("value" => mean(V), "error" => std_error(V))
-measurementtodict(V::OnlineStats.Variance) = Dict("value" => mean(V), "error" => std(V) / nobs(V))
+measurementtodict(V::OnlineStats.Variance) = Dict("value" => mean(V), "error" => std(V) / sqrt(nobs(V)))
 measurementtodict(M::Measurement) = Dict("value" => M.val, "error" => M.err)
-measurementtodict(H::OnlineStats.KHist) = Dict("value" => mean(H), "error" => std(H) / nobs(H))
+measurementtodict(H::OnlineStats.KHist) = Dict("value" => mean(H), "error" => std(H) / sqrt(nobs(H)))
+measurementtodict(H::OnlineStats.Hist) = Dict("value" => mean(H), "error" => std(H) / sqrt(nobs(H)))
 
 function groundstate(parsed_args)
     H, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch =

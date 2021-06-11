@@ -16,13 +16,14 @@ using CSV
 
 using DataFrames
 using Query
+using Plots
 using StatsPlots
 
 using ArgParse
 
 
-#SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
-SCRATCH_PATH = "/scratch/ejaazm/"
+SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+# SCRATCH_PATH = "/scratch/ejaazm/"
 
 RELIABLE_SIZE = 256
 
@@ -35,9 +36,9 @@ function init_cli(parsed_args)
 
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "disord2checkerboard",
+        "histograms",
         "groundstate",
-        "Rydberg_QCP", "nY=$nY", "delta=$δ", "M=$M")
+        "nY=$nY", "delta=$δ", "M=$M")
 
     if !isdir(path)
         println("$path doesn't point to a valid directory!")
@@ -180,6 +181,33 @@ function plot_corr_time_convergence(plots_path, gdf)
 end
 
 
+function block_average!(v::AbstractVector{T}, blocksize::Int=2) where T <: AbstractFloat
+    L, rem = divrem(length(v), blocksize)
+
+    @inbounds for i in 0:(L-1)
+        offset = blocksize*i + 1
+        v[i + 1] = v[offset]
+        for j in 1:(blocksize-1)
+            v[i + 1] += v[offset + j]
+        end
+        v[i + 1] /= blocksize
+    end
+
+    if !iszero(rem)
+        offset = blocksize*L + 1
+        v[L + 1] = v[offset]
+        for j in 1:(rem - 1)
+            v[L + 1] += v[offset + j]
+        end
+        v[L + 1] /= rem
+    end
+
+    resize!(v, L + Int(!iszero(rem)))
+    return v
+end
+
+
+
 function energy_binning(qmc_state, H, n_ssd::AbstractVector)
     n_ssd = Vector(n_ssd)
     E_density = energy_density(qmc_state, H, n_ssd)
@@ -190,11 +218,7 @@ function energy_binning(qmc_state, H, n_ssd::AbstractVector)
     all_counts = [length(n_ssd)]
 
     while length(n_ssd) >= RELIABLE_SIZE
-        if iseven(length(n_ssd))
-            n_ssd = (n_ssd[1:2:end] + n_ssd[2:2:end]) / 2
-        else
-            n_ssd = (n_ssd[1:2:end-1] + n_ssd[2:2:end]) / 2
-        end
+        block_average!(n_ssd, 2)
 
         E_density = energy_density(qmc_state, H, n_ssd)
         std_err = E_density.err
@@ -219,13 +243,8 @@ function binder_binning(smags4::AbstractVector, smags2::AbstractVector)
     all_counts = [length(smags4)]
 
     while length(smags4) >= RELIABLE_SIZE
-        if iseven(length(smags4))
-            smags2 = (smags2[1:2:end] + smags2[2:2:end]) / 2
-            smags4 = (smags4[1:2:end] + smags4[2:2:end]) / 2
-        else
-            smags2 = (smags2[1:2:end-1] + smags2[2:2:end]) / 2
-            smags4 = (smags4[1:2:end-1] + smags4[2:2:end]) / 2
-        end
+        block_average!(smags2, 2)
+        block_average!(smags4, 2)
 
         binder_cumulant = QMC.jackknife(smags4, smags2) do M4, M2
             (3 - (M4 / (M2 ^ 2))) / 2
@@ -270,7 +289,7 @@ function estimate_observables_for_one_chain(state_file, observables, df)
 end
 
 
-function estimate_observables(path, gdf)
+function estimate_observables(path, df, gdf)
     # any state object works, we just need the Hamiltonian struct and the qmc_state's type
     #  to calculate the energy from samples
     state_files = filter(endswith(".jld2"), readdir(path, join=true, sort=true))
@@ -279,8 +298,8 @@ function estimate_observables(path, gdf)
     observables = [:n_ssd, :n_ssd_corrected, :smags, :abs_smags, :smags2, :smags4]
 
     msmt_dicts = Dict(
-        "chain_$chain" => estimate_observables_for_one_chain(state_file, observables, df)
-        for (chain, df) in enumerate(gdf)
+        "chain_$chain" => estimate_observables_for_one_chain(state_file, observables, df_)
+        for (chain, df_) in enumerate(gdf)
     )
 
     mean_df = deepcopy(select(gdf[1], observables))
@@ -289,7 +308,9 @@ function estimate_observables(path, gdf)
     end
     mean_df ./= gdf.ngroups
 
-    msmt_dicts["combined"] = estimate_observables_for_one_chain(state_file, observables, mean_df)
+    msmt_dicts["meaned"] = estimate_observables_for_one_chain(state_file, observables, mean_df)
+
+    msmt_dicts["concat"] = estimate_observables_for_one_chain(state_file, observables, df)
 
     msmt_file = first(filter(endswith("raw_observables.csv"), readdir(path, join=true, sort=true)))
     msmt_file = replace(msmt_file, "raw_observables.csv" => "observables.json")
@@ -314,18 +335,18 @@ function cleanup_single_system(parsed_args)
 
     gdf = groupby(df, :seed)
 
-    println("Generating equilibration plots...")
-    plot_equilibration(plots_path, gdf)
+    # println("Generating equilibration plots...")
+    # plot_equilibration(plots_path, gdf)
 
     # drop equilibration samples
     df = df |> @filter(_.batch > 0) |> DataFrame
     gdf = groupby(df, :seed)
 
-    println("Generating correlation time plots...")
-    plot_corr_time_convergence(plots_path, gdf)
+    # println("Generating correlation time plots...")
+    # plot_corr_time_convergence(plots_path, gdf)
 
     println("Estimating observables...")
-    estimate_observables(path, gdf)
+    estimate_observables(path, df, gdf)
 
     if delete_files
         println("Deleting raw observables files...")
@@ -335,6 +356,39 @@ end
 
 
 ###############################################################################
+
+function runstats_histograms(parsed_args)
+    path = init_cli(parsed_args)[1]
+
+    mb_prob_dirs = filter(contains("p="), readdir(path, join=true, sort=true))
+
+    runstats = Dict{Float64, RunStatsHistogram}()
+
+    for dir in mb_prob_dirs
+        @show dir
+        mb_prob = parse(Float64, split(dir, "p=")[2])
+        jld_file = last(filter(endswith(".jld2"), readdir(dir, join=true, sort=true)))
+
+        runstats[mb_prob] = load(jld_file, "runstats")
+    end
+
+    for k in fieldnames(RunStatsHistogram)
+        file = joinpath(path, "$(k)_histogram.png")
+        plt = plot()
+
+        for mb_prob in keys(runstats)
+            plt = plot!(
+                getproperty(runstats[mb_prob], k),
+                label = "p = $mb_prob",
+                fillalpha = 0.3,
+                size = (500, 500)
+            )
+        end
+
+        savefig(plt, file)
+    end
+end
+
 
 
 s = ArgParseSettings()
@@ -357,9 +411,17 @@ s = ArgParseSettings()
     "--delete"
         help = "Delete files that are no longer needed"
         action = :store_true
+
+    "--histograms"
+        help = "Only build runstats histogram plots"
+        action = :store_true
 end
 
 
 parsed_args = parse_args(ARGS, s)
 
-cleanup_single_system(parsed_args)
+if parsed_args["histograms"]
+    runstats_histograms(parsed_args)
+else
+    @time cleanup_single_system(parsed_args)
+end

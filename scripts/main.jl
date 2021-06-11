@@ -15,6 +15,7 @@ using ProgressMeter
 
 using Measurements
 using Statistics
+using OnlineStats
 using BinningAnalysis
 
 using DelimitedFiles
@@ -35,7 +36,6 @@ function init_mc_cli(parsed_args)
     hx = parsed_args["hx"]
     hz = parsed_args["hz"]
     J = parsed_args["interaction"]
-    runstats = parsed_args["runstats"]
 
     # MC parameters
     M = parsed_args["M"] # length of the operator_list is 2M
@@ -89,7 +89,15 @@ function init_mc_cli(parsed_args)
 
     rng = Xorshifts.Xoroshiro128Plus(parsed_args["seed"])
 
-    return H, qmc_state, savename(d; digits = 4), mc_opts, rng, Val{runstats}()
+    if parsed_args["runstats"] > 2
+        runstats = RunStatsHistogram(parsed_args["runstats"])
+    elseif 0 <= parsed_args["runstats"] <= 2
+        runstats = RunStats()
+    else
+        runstats = NoStats()
+    end
+
+    return H, qmc_state, savename(d; digits = 4), mc_opts, rng, runstats
 end
 
 
@@ -152,6 +160,9 @@ measurementtodict(B::LogBinner, convergence_threshold::Float64 = 0.05) = Dict(
     "convergence" => convergence(B),
     "convergence_threshold" => convergence_threshold,
 )
+measurementtodict(H::OnlineStats.KHist) = Dict("value" => mean(H), "error" => std(H) / sqrt(nobs(H)))
+measurementtodict(V::BinningAnalysis.Variance) = Dict("value" => mean(V), "error" => std_error(V))
+measurementtodict(V::OnlineStats.Variance) = Dict("value" => mean(V), "error" => std(V) / sqrt(nobs(V)))
 
 
 function mixedstate(parsed_args)
@@ -169,26 +180,16 @@ function mixedstate(parsed_args)
     sqr_mags = LogBinner(capacity=binner_capacity)
     energy = LogBinner(capacity=binner_capacity)
 
-    if runstats isa Val{true}
-        cluster_stats = Vector{NamedTuple}(undef, MCS)
-    end
-
     max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
 
     resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
-        output = mc_step_beta!(rng, qmc_state, H, beta, runstats) do lsize, qmc_state, H
-            m = magnetization(qmc_state.left_config)
+        n = mc_step_beta!(rng, qmc_state, H, beta, runstats) do lsize, qmc_state, H
+            m = magnetization(sample(H, qmc_state))
             push!(mags, m)
             push!(abs_mags, abs(m))
             push!(sqr_mags, m ^ 2)
-        end
-
-        if runstats isa Val{true}
-            n, cluster_stats[i] = output
-        else
-            n = output
         end
 
         push!(energy, energy_density(qmc_state, H, beta, n))
@@ -198,20 +199,7 @@ function mixedstate(parsed_args)
         end
     end
 
-
-    if runstats isa Val{true}
-        # don't worry about std_errors for these right now
-        #  if we decide we need them we'll add them back in
-        total_cluster_count = sum(x -> x.cluster_count, cluster_stats)
-
-        runtime_stats = Dict(
-            "average_cluster_count" => total_cluster_count / length(cluster_stats),
-            "average_cluster_acceptance" => sum(x -> x.num_accepts, cluster_stats) / total_cluster_count,
-            "average_cluster_size" => sum(x -> x.cluster_size, cluster_stats) / total_cluster_count
-        )
-    else
-        runtime_stats = Dict()
-    end
+    runtime_stats = Dict{Symbol, Any}([k => measurementtodict(getproperty(runstats, k)) for k in fieldnames(typeof(runstats))])
 
     observables = Dict{String, Dict{String, Number}}(
         "magnetization" => measurementtodict(mags),
@@ -238,17 +226,12 @@ function groundstate(parsed_args)
     sqr_mags = LogBinner(capacity=binner_capacity)
     ns = zeros(MCS)
 
-    if runstats isa Val{true}
-        diag_update_fails = zeros(MCS)
-        cluster_stats = Vector{NamedTuple}(undef, MCS)
-    end
-
     @showprogress "Warm up..." for i in 1:EQ_MCS
         mc_step!(rng, qmc_state, H)
     end
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
-        output = mc_step!(rng, qmc_state, H, runstats) do lsize, qmc_state, H
+        mc_step!(rng, qmc_state, H, runstats) do lsize, qmc_state, H
             m = magnetization(sample(H, qmc_state))
             push!(mags, m)
             push!(abs_mags, abs(m))
@@ -257,29 +240,12 @@ function groundstate(parsed_args)
             ns[i] = num_single_site_diag(H, qmc_state.operator_list)
         end
 
-        if runstats isa Val{true}
-            diag_update_fails[i], cluster_stats[i] = output
-        end
-
         for _ in 1:skip
             mc_step!(rng, qmc_state, H)
         end
     end
 
-    if runstats isa Val{true}
-        # don't worry about std_errors for these right now
-        #  if we decide we need them we'll add them back in
-        total_cluster_count = sum(x -> x.cluster_count, cluster_stats)
-
-        runtime_stats = Dict(
-            "diag_update_acceptance" => 1 - mean(diag_update_fails),
-            "average_cluster_count" => total_cluster_count / length(cluster_stats),
-            "average_cluster_acceptance" => sum(x -> x.num_accepts, cluster_stats) / total_cluster_count,
-            "average_cluster_size" => sum(x -> x.cluster_size, cluster_stats) / total_cluster_count
-        )
-    else
-        runtime_stats = Dict()
-    end
+    runtime_stats = Dict{Symbol, Any}([k => measurementtodict(getproperty(runstats, k)) for k in fieldnames(typeof(runstats))])
 
     observables = Dict{String, Dict{String, Number}}(
         "magnetization" => measurementtodict(mags),
@@ -350,8 +316,14 @@ end
         default = 1234
 
     "--runstats"
-        help = "Print run statistics (acceptance rates, cluster sizes, etc."
-        action = :store_true
+        help = """Number of histogram bins for runstats.
+                If <=2, only compute the mean and std error of each stat.
+                If < 0, don't track runstats at all.
+                When continuing a simulation, a value of 0 will re-use the
+                same runstats calculation as before.
+               """
+        arg_type = Int
+        default = 0
 end
 
 import_settings!(s["mixedstate"], s["groundstate"])

@@ -19,14 +19,14 @@ RunStats() = RunStats{Float64}()
 @inline OnlineStats.fit!(R::RunStats, field::Symbol, val) = (fit!(getproperty(R, field), val); R)
 
 
-struct RunStatsHistogram{T <: Real} <: AbstractRunStats
+struct RunStatsHistogram{T <: Real, R <: StepRangeLen} <: AbstractRunStats
     diag_update_fails::KHist{T}
-    cluster_update_accept::KHist{T}
+    cluster_update_accept::Hist{T, R}
     cluster_count::KHist{T}
     cluster_sizes::KHist{T}
 
     RunStatsHistogram{T}(size::Int) where T =
-        new{T}(KHist(size, T), KHist(size, T), KHist(size, T), KHist(size, T))
+        new{T, typeof(0:(1/size):1)}(KHist(size, T), Hist(0:(1/size):1, T), KHist(size, T), KHist(size, T))
 end
 RunStatsHistogram(size::Int) = RunStatsHistogram{Float64}(size::Int)
 @inline OnlineStats.fit!(R::RunStatsHistogram, field::Symbol, val) = (fit!(getproperty(R, field), val); R)
