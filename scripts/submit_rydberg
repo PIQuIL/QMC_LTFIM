@@ -1,34 +1,33 @@
 #!/bin/bash
-#SBATCH --time=24:00:00
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=0
-#SBATCH --array=1-5%1
+#SBATCH --time=12:00:00
+#SBATCH --mem=32G
 #SBATCH --mail-user=emerali@uwaterloo.ca
 #SBATCH --mail-type=TIME_LIMIT
 #SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL
 #SBATCH --account=rrg-rgmelko-ab
-#SBATCH --output=/scratch/ejaazm/qmc_sims/disord2checkerboard/logs/output-%x-%A-%a.out
+#SBATCH --output=/scratch/ejaazm/qmc_sims/disord2checkerboard/logs/cleanup-output-%x-%A-%a.out
+
 echo nY=$nY
-echo deltas=$deltas
+echo delta=$delta
+echo M=$M
 
+#JOBLOG="/scratch/ejaazm/qmc_sims/histograms/logs"
 
-M=100000
+#mkdir -p $JOBLOG
 
-JOBLOG="/scratch/ejaazm/qmc_sims/disord2checkerboard/joblogs"
-
-mkdir -p $JOBLOG
-
-JOBLOG_MCMC="$JOBLOG/joblog-$SLURM_JOB_NAME-$SLURM_JOB_ID-mcmc.log"
-JOBLOG_AGGR="$JOBLOG/joblog-$SLURM_JOB_NAME-$SLURM_JOB_ID-aggr.log"
+#JOBLOG_MCMC="$JOBLOG/joblog-$SLURM_JOB_NAME-$SLURM_JOB_ID-mcmc.log"
+#JOBLOG_AGGR="$JOBLOG/joblog-$SLURM_JOB_NAME-$SLURM_JOB_ID-aggr.log"
 
 module load StdEnv/2020 julia/1.5.2
-parallel --jobs $SLURM_CPUS_PER_TASK -k --group --joblog $JOBLOG_MCMC \
-    julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
-        groundstate $nY \
-        --omega 1.0 -R 1.2 --delta {1} \
-        -n 131072 -b 16 \
-        --seed {2} -M $M \
-	::: $(echo -e $deltas) \
-        ::: $(seq 1000 1000 16000)
+#parallel --jobs $SLURM_CPUS_PER_TASK -k --group --joblog $JOBLOG_MCMC \
+
+#julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
+#    groundstate 16 \
+#    --omega 1.0 -R 1.2 --delta $delta \
+#    -n 131072 -b 4 --mb-prob $p \
+#    --seed 1234 -M $M \
+#    --runstats 500
+
+julia --compiled-modules=no --project=../ rydberg_cleanup.jl $nY $delta $M
+

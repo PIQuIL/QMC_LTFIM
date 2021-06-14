@@ -22,8 +22,8 @@ using StatsPlots
 using ArgParse
 
 
-SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
-# SCRATCH_PATH = "/scratch/ejaazm/"
+# SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+SCRATCH_PATH = "/scratch/ejaazm/"
 
 RELIABLE_SIZE = 256
 
@@ -36,8 +36,9 @@ function init_cli(parsed_args)
 
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "histograms",
+        "disord2checkerboard",
         "groundstate",
+	"Rydberg_QCP",
         "nY=$nY", "delta=$δ", "M=$M")
 
     if !isdir(path)
