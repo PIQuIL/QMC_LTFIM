@@ -32,21 +32,21 @@ RELIABLE_SIZE = 256
 function init_cli(parsed_args)
     δ = parsed_args["delta"]
     nY = parsed_args["nY"]
+    mb_prob = parsed_args["p"]
     M = parsed_args["M"]
 
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "disord2checkerboard",
+        "histograms",
         "groundstate",
-	"Rydberg_QCP",
-        "nY=$nY", "delta=$δ", "M=$M")
+        "nY=$nY", "delta=$δ", "M=$M", "p=$mb_prob")
 
     if !isdir(path)
         println("$path doesn't point to a valid directory!")
         exit(1)
     end
 
-    return path, parsed_args["delete"], nY, δ, M
+    return path, parsed_args["delete"], nY, δ, M, mb_prob
 end
 
 measurementtodict(V::BinningAnalysis.Variance) = Dict("value" => mean(V), "error" => std_error(V))
@@ -70,7 +70,7 @@ measurementtodict(B::LogBinner{T, N}, convergence_threshold::Float64 = 0.05) whe
 
 
 
-function get_df(path, nY, delta, M)
+function get_df(path, nY, delta, M, mb_prob)
     dir_contents = readdir(path, join=true, sort=true)
 
     observable_files = filter(endswith("raw_observables.csv"), dir_contents)
@@ -97,6 +97,7 @@ function get_df(path, nY, delta, M)
 
         df[!, :nY] .= nY
         df[!, :delta] .= delta
+        df[!, :mb_prob] .= mb_prob
         df[!, :M] .= M
 
         append!(full_df, df)
@@ -325,11 +326,11 @@ end
 ###############################################################################
 
 function cleanup_single_system(parsed_args)
-    path, delete_files, nY, δ, M = init_cli(parsed_args)
+    path, delete_files, nY, δ, M, mb_prob = init_cli(parsed_args)
 
-    df = get_df(path, nY, δ, M)
+    df = get_df(path, nY, δ, M, mb_prob)
 
-    println("Beginning cleanup for system nY=$nY, delta=$δ, M=$M...")
+    println("Beginning cleanup for system nY=$nY, delta=$δ, M=$M, p=$mb_prob...")
 
     plots_path = joinpath(path, "plots")
     mkpath(plots_path)
@@ -408,6 +409,10 @@ s = ArgParseSettings()
     "M"
         help = "Projector length."
         arg_type = Int64
+
+    "p"
+        help = "MB probability"
+        arg_type = Float64
 
     "--delete"
         help = "Delete files that are no longer needed"
