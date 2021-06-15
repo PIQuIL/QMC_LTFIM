@@ -361,6 +361,7 @@ end
 
 function runstats_histograms(parsed_args)
     path = init_cli(parsed_args)[1]
+    path = normpath(joinpath(path, ".."))
 
     mb_prob_dirs = filter(contains("p="), readdir(path, join=true, sort=true))
 
