@@ -18,7 +18,7 @@ using DataFrames
 using Query
 using Plots
 using StatsPlots
-
+using Printf
 using ArgParse
 
 
@@ -30,7 +30,7 @@ RELIABLE_SIZE = 256
 ###############################################################################
 
 function init_cli(parsed_args)
-    δ = parsed_args["delta"]
+    δ = Float64(parsed_args["delta"])
     nY = parsed_args["nY"]
     mb_prob = parsed_args["p"]
     M = parsed_args["M"]
@@ -39,7 +39,7 @@ function init_cli(parsed_args)
         SCRATCH_PATH, "qmc_sims",
         "histograms",
         "groundstate",
-        "nY=$nY", "delta=$δ", "M=$M", "p=$mb_prob")
+        "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M", "p=$mb_prob")
 
     if !isdir(path)
         println("$path doesn't point to a valid directory!")
@@ -370,25 +370,27 @@ function runstats_histograms(parsed_args)
     for dir in mb_prob_dirs
         @show dir
         mb_prob = parse(Float64, split(dir, "p=")[2])
-        jld_file = last(filter(endswith(".jld2"), readdir(dir, join=true, sort=true)))
+        jld_file = last(filter(endswith("batch_4_state.jld2"), readdir(dir, join=true, sort=true)))
 
         runstats[mb_prob] = load(jld_file, "runstats")
     end
 
     for k in fieldnames(RunStatsHistogram)
-        file = joinpath(path, "$(k)_histogram.png")
-        plt = plot()
+	for l in [:log, :identity]
+            file = joinpath(path, "$(k)_$(l)_histogram.png")
+            plt = plot()
 
-        for mb_prob in keys(runstats)
-            plt = plot!(
-                getproperty(runstats[mb_prob], k),
-                label = "p = $mb_prob",
-                fillalpha = 0.3,
-                size = (500, 500)
-            )
+            for mb_prob in keys(runstats)
+                plt = plot!(
+                    getproperty(runstats[mb_prob], k),
+                    label = "p = $mb_prob",
+                    fillalpha = 0.3,
+                    size = (500, 500),
+		    xscale = l
+                )
+            end
+            savefig(plt, file)
         end
-
-        savefig(plt, file)
     end
 end
 

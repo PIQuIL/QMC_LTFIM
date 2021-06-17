@@ -22,6 +22,7 @@ using JSON
 using FileIO
 using CSV
 using DataFrames
+using Printf
 
 using ArgParse
 
@@ -55,9 +56,9 @@ function init_mc_cli(parsed_args)
     sname = savename(d; digits = 4)
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "histograms",
+        "histograms_redo",
         "groundstate",
-        "nY=$nY", "delta=$δ", "M=$M", "p=$mb_prob")
+        "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M", "p=$mb_prob")
     mkpath(path)
 
     res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)

@@ -1,13 +1,15 @@
 #!/bin/bash
-for nY in $(seq 8 8 32)
+for M in $(seq 10000 10000 100000)
 do
-  for delta in $(seq 1.01 0.01 1.2)
+  for p in $(seq 1)
   do
-    M=100000
-    X="nY=$nY,delta=$delta,M=$M"
-    echo $X
-    sbatch -J "$X" --export="$X" submit_rydberg
-  done  
+    for delta in $(seq 1.0 0.04 1.2)
+    do
+      X="$M|$delta"
+      echo $X
+      sbatch -J "$X" --export="nY=16,delta=$delta,M=$M,p=$p" submit_rydberg
+    done
+  done
   sleep 0.5s
 done
 
