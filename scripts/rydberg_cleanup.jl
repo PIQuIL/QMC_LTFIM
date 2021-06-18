@@ -37,7 +37,7 @@ function init_cli(parsed_args)
 
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "histograms",
+        "histograms_redo",
         "groundstate",
         "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M", "p=$mb_prob")
 
@@ -359,6 +359,8 @@ end
 
 ###############################################################################
 
+using Plots.PlotMeasures
+
 function runstats_histograms(parsed_args)
     path = init_cli(parsed_args)[1]
     path = normpath(joinpath(path, ".."))
@@ -370,27 +372,30 @@ function runstats_histograms(parsed_args)
     for dir in mb_prob_dirs
         @show dir
         mb_prob = parse(Float64, split(dir, "p=")[2])
-        jld_file = last(filter(endswith("batch_4_state.jld2"), readdir(dir, join=true, sort=true)))
+        jld_file = last(filter(endswith("state.jld2"), readdir(dir, join=true, sort=true)))
 
         runstats[mb_prob] = load(jld_file, "runstats")
     end
 
-    for k in fieldnames(RunStatsHistogram)
-	for l in [:log, :identity]
-            file = joinpath(path, "$(k)_$(l)_histogram.png")
-            plt = plot()
+    
+    for l in [:log, :identity]
+        file = joinpath(path, "cluster_sizes_$(l)_histogram.png")
+        plt = plot()
 
-            for mb_prob in keys(runstats)
-                plt = plot!(
-                    getproperty(runstats[mb_prob], k),
-                    label = "p = $mb_prob",
-                    fillalpha = 0.3,
-                    size = (500, 500),
-		    xscale = l
-                )
-            end
-            savefig(plt, file)
+        for mb_prob in [0.0, 1.0]
+            plt = plot!(
+                runstats[mb_prob].cluster_sizes,
+                label = (iszero(mb_prob) ? "line" : "multibranch"),
+                fillalpha = 0.3,
+                size = (500, 500),
+                xscale = l,
+		xlims = (0, 10^3),
+		left_margin = 50px,
+		framestyle = :box,
+		title = "Cluster Sizes"
+            )
         end
+        savefig(plt, file)
     end
 end
 

@@ -3,10 +3,9 @@
 #SBATCH --mem=32G
 #SBATCH --mail-user=emerali@uwaterloo.ca
 #SBATCH --mail-type=TIME_LIMIT
-#SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL
 #SBATCH --account=rrg-rgmelko-ab
-#SBATCH --output=/scratch/ejaazm/qmc_sims/histograms/logs/cleanup-output-%x-%A-%a.out
+#SBATCH --output=/scratch/ejaazm/qmc_sims/histograms_redo/logs/cleanup-output-%x-%A-%a.out
 
 echo nY=$nY
 echo delta=$delta
@@ -24,7 +23,10 @@ module load StdEnv/2020 julia/1.5.2
 #    --seed 1234 -M $M \
 #    --runstats 500
 
-#julia --compiled-modules=no --project=../ rydberg_cleanup.jl $nY $delta $M $p
+for p in $(seq 0.0 0.5 1.0)
+do
+    julia --compiled-modules=no --project=../ rydberg_cleanup.jl $nY $delta $M $p
+done
 
 julia --compiled-modules=no --project=../ rydberg_cleanup.jl --histograms $nY $delta $M 0.0
 
