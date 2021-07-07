@@ -27,6 +27,8 @@ import Base: rand, show, pop!, push!, append!, isempty, empty!, count
 using BinningAnalysis
 import BinningAnalysis: varN, std_error
 
+using Plots
+
 export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         Hamiltonian, AbstractIsing, AbstractTFIM, TFIM, AbstractLTFIM, LTFIM, GeneralLTFIM, AbstractRydberg, Rydberg,
         haslongitudinalfield,
@@ -35,7 +37,9 @@ export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         sample, simulation_cell, magnetization, staggered_magnetization, domain_wall_density,
         num_single_site_diag, num_single_site_offdiag,
         num_single_site, num_two_site_diag, autocorrelation, correlation_time, jackknife, bootstrap, mean_and_stderr,
-        lattice_bond_spins, ProbabilityAlias, ProbabilityHeap, ProbabilityVector, probability_vector
+        Lattice, OneDLattice, BravaisLattice, PolyLattice,
+        Triangle, Rectangle, Kagome, Ruby, Custom, lattice_bond_spins, distance_matrix, 
+        ProbabilityAlias, ProbabilityHeap, ProbabilityVector, probability_vector
 
 export Bootstrap, AbstractRunStats, NoStats, RunStats, RunStatsHistogram
 
@@ -47,7 +51,8 @@ export Bootstrap, AbstractRunStats, NoStats, RunStats, RunStatsHistogram
 end
 
 
-include("lattice.jl")
+include("lattices/bond_spins.jl")
+include("lattices/lattices.jl")
 include("probabilityvectors/probabilityvector.jl")
 include("operatorsamplers/operatorsampler.jl")
 include("qmc_state.jl")

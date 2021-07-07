@@ -1,3 +1,6 @@
+using QMC
+using LinearAlgebra
+
 function make_hamiltonian_matrix(H::Union{AbstractLTFIM, AbstractTFIM})
     if !haslongitudinalfield(H)
         J, hx, hz = Symmetric(H.J), H.hx, zero(H.hx)
@@ -49,7 +52,7 @@ function make_hamiltonian_matrix(H::AbstractRydberg)
     for Ket = 0:dim-1  #Loop over Hilbert Space
         Diagonal = 0.0
         # interaction piece
-        for SpinIndex = 0:N-1  #Loop over spin index (zero indexing)
+        for SpinIndex = 0:N-2  #Loop over spin index (zero indexing)
             Spin1 = ((Ket>>SpinIndex)&1)
 
             for NextIndex = SpinIndex+1:N-1
@@ -64,12 +67,47 @@ function make_hamiltonian_matrix(H::AbstractRydberg)
             end
 
             bit = 2^SpinIndex   #The "label" of the bit to be flipped
-            Bra = Ket ⊻ bit    #Binary XOR flips the bit
-            Hamiltonian[Bra+1,Ket+1] = -Ω[SpinIndex+1]
+            Bra = Ket ⊻ bit     #Binary XOR flips the bit
+            Hamiltonian[Bra+1,Ket+1] = -0.5*Ω[SpinIndex+1]
         end
 
+        # did not loop over Nth spin in SpinIndex loop
+        SpinN = ((Ket>>(N-1))&1)
+        if δ isa AbstractArray
+            Diagonal -= δ[N]*SpinN
+        else
+            Diagonal -= δ*SpinN
+        end
+
+        bit = 2^(N-1)   #The "label" of the bit to be flipped
+        Bra = Ket ⊻ bit     #Binary XOR flips the bit
+        Hamiltonian[Bra+1,Ket+1] = -0.5*Ω[N]
         Hamiltonian[Ket+1,Ket+1] = Diagonal
     end
 
     return Hermitian(Hamiltonian)
 end
+
+R_b = 1.7
+δ = 3.3
+Ω = 1.0
+n1 = 2
+n2 = 2
+t = 1.0
+p = false
+
+lat = Kagome(t, n1, n2, p; trunc=2.0)
+H = Rydberg(lat, R_b, Ω, δ)
+N = nspins(H)
+
+#=
+for i in 1:(N-1)
+    for j in (i+1):N
+        println("i,j = $i, $j,   d = ", lat.distance_matrix[i,j])
+    end
+end
+=#
+
+H_mat = make_hamiltonian_matrix(H)
+diag = eigen(H_mat)
+@show diag.values[1] / N
