@@ -40,7 +40,7 @@ function init_mc_cli(parsed_args)
 
     t = parsed_args["t"]
     n1 = parsed_args["n1"]
-    n2 = parsed_args["n1"]
+    n2 = parsed_args["n2"]
 
     # MC parameters
     M = parsed_args["M"]
@@ -48,18 +48,7 @@ function init_mc_cli(parsed_args)
     batches = parsed_args["batches"]
     mb_prob = parsed_args["mb-prob"]
 
-    if haskey(parsed_args, "periodic")
-        lat = Kagome(t, n1, n2, true; trunc=trunc)
-    elseif haskey(parsed_args, "p1")
-        lat = Kagome(t, n1, n2, (true, false); trunc=trunc)
-    elseif haskey(parsed_args, "p2")
-        lat = Kagome(t, n1, n2, (false, true); trunc=trunc)
-    elseif haskey(parsed_args, "p1") & haskey(parsed_args, "p2")
-        lat = Kagome(t, n1, n2, true; trunc=trunc)
-    else
-        lat = Kagome(t, n1, n2, false; trunc=trunc)
-    end
-
+    lat = Kagome(t, n1, n2, false; trunc=trunc)
     lattice_type = typeof(lat)
 
     d = (lat=typeof(lat), n1=n1, n2=n2, R_b=R_b, Ω=Ω, δ=δ, seed=seed)
@@ -67,6 +56,8 @@ function init_mc_cli(parsed_args)
     mc_opts = (M, MCS, batches, mb_prob)
 
     println("Running Rydberg(lattice=$lattice_type, n1=$n1, n2=$n2, R_b=$R_b, Ω=$Ω, δ=$δ, p=$mb_prob, trunc=$trunc).")
+    println()
+    println("Boundary conditions are hard-coded to be open!")
 
     path = joinpath(
         SCRATCH_PATH, 
@@ -93,9 +84,7 @@ function init_mc_cli(parsed_args)
         observables = DataFrame(
             batch = zeros(Int, MCS),
             n_ssd = zeros(MCS),
-            smags = zeros(MCS),
-            mags = zeros(MCS),
-            dwd = zeros(MCS)
+            mags = zeros(MCS)
         )
 
         if parsed_args["runstats"] > 2
@@ -195,8 +184,6 @@ function groundstate(parsed_args)
 
                 observables[i, :n_ssd] = num_single_site_diag(H, qmc_state.operator_list)
                 observables[i, :mags] = magnetization(spin_prop)
-                observables[i, :smags] = staggered_magnetization(H, spin_prop)
-                observables[i, :dwd] = domain_wall_density(H, spin_prop)
 
                 observables[i, :batch] = b
             end
@@ -260,11 +247,11 @@ end
 
 @add_arg_table! s["groundstate"] begin
     "n1"
-        help = "Dimensions of Ruby lattice in x direction."
+        help = "Dimensions of Kagome lattice in x direction."
         required = true
         arg_type = Int
     "n2"
-        help = "Dimensions of Ruby lattice in the non-x direction."
+        help = "Dimensions of Kagome lattice in the non-x direction."
         required = true
         arg_type = Int
     "--omega"
@@ -290,16 +277,6 @@ end
                """
         arg_type = Float64
         default = Inf
-
-    "--p1", "--periodic1"
-        help = "Periodic boundary conditions along a1 only."
-        action = :store_true
-    "--p2", "--periodic2"
-        help = "Periodic boundary conditions along a2 only."
-        action = :store_true
-    "-p", "--periodic"
-        help = "Periodic boundary conditions along a1 and a2."
-        action = :store_true
 
     "-M"
         help = "Projector length. If zero, will perform a thermal equilibration at beta=20 to select M."

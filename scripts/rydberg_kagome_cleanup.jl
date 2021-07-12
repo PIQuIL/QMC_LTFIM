@@ -36,7 +36,7 @@ function init_cli(parsed_args)
 
     t = parsed_args["t"]
     n1 = parsed_args["n1"]
-    n2 = parsed_args["n1"]
+    n2 = parsed_args["n2"]
 
     M = parsed_args["M"]
 
@@ -93,11 +93,8 @@ function get_df(path, n1, n2, delta, M, mb_prob)
         df = DataFrame(CSV.File(file));
 
         df.abs_mags = abs.(df.mags)
-        df.abs_smags = abs.(df.smags)
         df.mags2 = df.mags .^ 2
-        df.smags2 = df.smags .^ 2
         df.mags4 = df.mags .^ 4
-        df.smags4 = df.smags .^ 4
 
         df.n_ssd_corrected = @. ((df.n_ssd * 2 * M) + 1) / (2*M + 1)
 
@@ -124,9 +121,7 @@ function plot_equilibration(plots_path, gdf)
     plots_path = joinpath(plots_path, "equilibration")
     mkpath(plots_path)
 
-    for observable in [:n_ssd, :n_ssd_corrected,
-                       :smags, :abs_smags, :smags2, :smags4,
-                       :mags, :abs_mags, :mags2, :mags4, :dwd]
+    for observable in [:n_ssd, :n_ssd_corrected, :mags]
         for (ch, df) in enumerate(gdf)
             seed = df[1, :seed]
 
@@ -173,7 +168,7 @@ function plot_corr_time_convergence(plots_path, gdf)
     plots_path = joinpath(plots_path, "correlation_times")
     mkpath(plots_path)
 
-    for observable in [:n_ssd, :n_ssd_corrected, :abs_smags, :smags2, :smags4, :dwd]
+    for observable in [:n_ssd, :n_ssd_corrected, :mags]
         for (ch, df) in enumerate(gdf)
             seed = df[1, :seed]
             binner = LogBinner(df[!, observable])
@@ -245,37 +240,6 @@ function energy_binning(qmc_state, H, n_ssd::AbstractVector)
 end
 
 
-
-function binder_binning(smags4::AbstractVector, smags2::AbstractVector)
-    smags4, smags2 = Vector(smags4), Vector(smags2)
-    binder_cumulant = QMC.jackknife(smags4, smags2) do M4, M2
-        (3 - (M4 / (M2 ^ 2))) / 2
-    end
-    std_err = binder_cumulant.err
-    val = binder_cumulant.val
-
-    all_std_errs = [std_err]
-    all_counts = [length(smags4)]
-
-    while length(smags4) >= RELIABLE_SIZE
-        block_average!(smags2, 2)
-        block_average!(smags4, 2)
-
-        binder_cumulant = QMC.jackknife(smags4, smags2) do M4, M2
-            (3 - (M4 / (M2 ^ 2))) / 2
-        end
-
-        std_err = binder_cumulant.err
-        push!(all_std_errs, std_err)
-        push!(all_counts, length(smags4))
-    end
-
-    return val, all_std_errs, all_counts
-end
-
-
-
-
 function estimate_observables_for_one_chain(state_file, observables, df)
     H, qmc_state = load(state_file, "hamiltonian", "qmc_state")
 
@@ -294,12 +258,6 @@ function estimate_observables_for_one_chain(state_file, observables, df)
                                                  "all_std_errors" => E_std_errs,
                                                  "all_counts" => E_counts)
 
-    binder_cumulant, U_std_errs, U_counts = binder_binning(df.smags4, df.smags2)
-    msmt_dict["binder_cumulant"] = Dict("value" => binder_cumulant,
-                                        "error" => maximum(U_std_errs),
-                                        "all_std_errors" => U_std_errs,
-                                        "all_counts" => U_counts)
-
     return msmt_dict
 end
 
@@ -310,7 +268,7 @@ function estimate_observables(path, df, gdf)
     state_files = filter(endswith(".jld2"), readdir(path, join=true, sort=true))
     state_file = last(state_files)
 
-    observables = [:n_ssd, :n_ssd_corrected, :smags, :abs_smags, :smags2, :smags4, :dwd]
+    observables = [:n_ssd, :n_ssd_corrected, :mags]
 
     msmt_dicts = Dict(
         "chain_$chain" => estimate_observables_for_one_chain(state_file, observables, df_)
