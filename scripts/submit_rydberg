@@ -2,10 +2,9 @@
 #SBATCH --time=1:00:00
 #SBATCH --mem=32G
 #SBATCH --mail-user=emerali@uwaterloo.ca
-#SBATCH --mail-type=TIME_LIMIT
 #SBATCH --mail-type=FAIL
 #SBATCH --account=rrg-rgmelko-ab
-#SBATCH --output=/scratch/ejaazm/qmc_sims/histograms_redo/logs/cleanup-output-%x-%A-%a.out
+#SBATCH --output=/scratch/ejaazm/qmc_sims/histograms_redo_delta_sweep/logs/cleanup-output-%x-%A-%a.out
 
 echo nY=$nY
 echo delta=$delta
@@ -19,9 +18,8 @@ module load StdEnv/2020 julia/1.5.2
 #julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
 #    groundstate 16 \
 #    --omega 1.0 -R 1.2 --delta $delta \
-#    -n 131072 -b 4 --mb-prob $p \
-#    --seed 1234 -M $M \
-#    --runstats 500
+#    -n 131072 -b 8 --mb-prob $p \
+#    --seed 1234 -M $M --runstats 500
 
 for p in $(seq 0.0 0.5 1.0)
 do

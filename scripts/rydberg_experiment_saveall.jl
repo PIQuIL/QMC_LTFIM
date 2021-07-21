@@ -56,7 +56,7 @@ function init_mc_cli(parsed_args)
     sname = savename(d; digits = 4)
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "histograms_redo",
+        "histograms_redo_delta_sweep",
         "groundstate",
         "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M", "p=$mb_prob")
     mkpath(path)
@@ -214,18 +214,18 @@ function groundstate(parsed_args)
         JSON.print(io, runstats_dict, 2)
     end
 
-    if runstats isa RunStatsHistogram
-        # plot histograms
-        for k in fieldnames(typeof(runstats))
-            file = path * "_$(k).png"
-            plt = plot(
-                getproperty(runstats, k),
-                legend = nothing,
-                size = (500, 500)
-            )
-            savefig(plt, file)
-        end
-    end
+    #if runstats isa RunStatsHistogram
+    #    # plot histograms
+    #    for k in fieldnames(typeof(runstats))
+    #        file = path * "_$(k).png"
+    #        plt = plot(
+    #            getproperty(runstats, k),
+    #            legend = nothing,
+    #            size = (500, 500)
+    #        )
+    #        savefig(plt, file)
+    #    end
+    #end
 end
 
 

@@ -37,7 +37,7 @@ function init_cli(parsed_args)
 
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "histograms_redo",
+        "histograms_redo_delta_sweep",
         "groundstate",
         "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M", "p=$mb_prob")
 
@@ -297,7 +297,9 @@ function estimate_observables(path, df, gdf)
     state_files = filter(endswith(".jld2"), readdir(path, join=true, sort=true))
     state_file = last(state_files)
 
-    observables = [:n_ssd, :n_ssd_corrected, :smags, :abs_smags, :smags2, :smags4]
+    observables = [:n_ssd, :n_ssd_corrected,
+		   :smags, :abs_smags, :smags2, :smags4,
+		   :mags, :abs_mags, :mags2]
 
     msmt_dicts = Dict(
         "chain_$chain" => estimate_observables_for_one_chain(state_file, observables, df_)
@@ -378,19 +380,22 @@ function runstats_histograms(parsed_args)
     end
 
     
-    for l in [:log, :identity]
+    for l in [:log10, :identity]
         file = joinpath(path, "cluster_sizes_$(l)_histogram.png")
         plt = plot()
 
         for mb_prob in [0.0, 1.0]
+            mi = extrema(runstats[mb_prob].cluster_sizes)[1]
             plt = plot!(
                 runstats[mb_prob].cluster_sizes,
                 label = (iszero(mb_prob) ? "line" : "multibranch"),
                 fillalpha = 0.3,
                 size = (500, 500),
                 xscale = l,
-		xlims = (0, 10^3),
-		left_margin = 50px,
+		xlims = (mi, 10^3),
+		left_margin = 30px,
+		right_margin = 30px,
+		top_margin = 20px,
 		framestyle = :box,
 		title = "Cluster Sizes"
             )
