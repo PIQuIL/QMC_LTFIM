@@ -1,0 +1,431 @@
+using QMC
+
+# main.jl
+#
+# A projector QMC program for the TFIM
+
+using Measurements
+using BinningAnalysis
+using Statistics
+
+using DelimitedFiles
+using JLD2
+using FileIO
+using JSON
+using CSV
+
+using DataFrames
+using Query
+using Plots
+using StatsPlots
+using Printf
+using ArgParse
+
+
+SCRATCH_PATH = "../../qmc_data/tests/"
+
+RELIABLE_SIZE = 256
+
+###############################################################################
+
+function init_cli(parsed_args)
+    Ω = parsed_args["omega"]
+    δ = parsed_args["delta"]
+    R_b = parsed_args["radius"]
+    trunc = parsed_args["trunc"]
+
+    t = parsed_args["t"]
+    n1 = parsed_args["n1"]
+    n2 = parsed_args["n2"]
+
+    M = parsed_args["M"]
+
+    mbprob = parsed_args["mbprob"]
+
+    path = joinpath(
+        SCRATCH_PATH, 
+        "groundstate", 
+        "Kagome",
+        "trunc=$trunc", 
+        "p=$mbprob",
+        "n1=$n1", "n2=$n2", "t=$t",
+        "Rb=$R_b", "delta=$δ", "M=$M"
+    )
+
+    if !isdir(path)
+        println("$path doesn't point to a valid directory!")
+        exit(1)
+    end
+
+    return path, parsed_args["delete"], n1, n2, δ, M, mbprob
+    #return path, parsed_args["delete"], nY, δ, M, mb_prob
+end
+
+measurementtodict(V::BinningAnalysis.Variance) = Dict("value" => mean(V), "error" => std_error(V))
+measurementtodict(M::Measurement) = Dict("value" => M.val, "error" => M.err)
+measurementtodict(B::LogBinner{T, N}, convergence_threshold::Float64 = 0.05) where {T, N} = Dict(
+    "value" => mean(B),
+    "error" => std_error(B),
+    "tau" => tau(B),
+    "has_converged" => has_converged(B,
+                                     something(findlast(x -> x.count >= RELIABLE_SIZE, B.accumulators), 1),
+                                     convergence_threshold),
+    "convergence" => convergence(B),
+    "convergence_threshold" => convergence_threshold,
+
+    "all_varNs" => all_varNs(B),
+    "all_taus" => all_taus(B),
+    "all_std_errors" => all_std_errors(B),
+    "all_means" => all_means(B),
+    "all_counts" => [count(B, lvl) for lvl in 1:N if count(B, lvl) > 1]
+)
+
+
+
+function get_df(path, n1, n2, delta, M, mb_prob)
+    dir_contents = readdir(path, join=true, sort=true)
+
+    observable_files = filter(endswith("raw_observables.csv"), dir_contents)
+
+    full_df = DataFrame()
+
+    for (i, file) in enumerate(observable_files)
+        df = DataFrame(CSV.File(file));
+
+        df.abs_mags = abs.(df.mags)
+        df.mags2 = df.mags .^ 2
+        df.mags4 = df.mags .^ 4
+
+        df.n_ssd_corrected = @. ((df.n_ssd * 2 * M) + 1) / (2*M + 1)
+
+        df[!, :chain] .= i
+
+        seed = split(file, "seed=")[2]
+        seed = parse(Int, split(seed, "_")[1])
+        df[!, :seed] .= seed
+
+        df[!, :n1] .= n1
+        df[!, :n2] .= n2
+        df[!, :delta] .= delta
+        df[!, :mb_prob] .= mb_prob
+        df[!, :M] .= M
+
+        append!(full_df, df)
+    end
+
+    return full_df
+end
+
+
+function plot_equilibration(plots_path, gdf)
+    plots_path = joinpath(plots_path, "equilibration")
+    mkpath(plots_path)
+
+    for observable in [:n_ssd, :n_ssd_corrected, :mags]
+        for (ch, df) in enumerate(gdf)
+            seed = df[1, :seed]
+
+            plt = df |>
+                @filter(_.batch < 5) |>
+                @df density(
+                    df[:, ^(observable)],
+                    group = :batch,
+                    fmt = :png,
+                    legend = true,
+                    title = "Density histogram of $observable by batch (chain #$(ch))",
+                    size = (750, 500)
+                )
+            savefig(plt, joinpath(plots_path, "density_$(observable)_chain_$(ch)_seed_$(seed).png"))
+
+            plt = df |>
+                @filter(_.batch < 10) |>
+                @df violin(
+                    :batch,
+                    df[:, ^(observable)],
+                    fmt = :png,
+                    title = "Violin/Boxplot of $observable by batch (chain #$(ch))",
+                    xlabel = "Batch",
+                    ylabel = "$observable",
+                    legend = false,
+                    size = (750, 500)
+                )
+            plt = df |>
+                @filter(_.batch < 10) |>
+                @df boxplot!(
+                    :batch,
+                    df[:, ^(observable)],
+                    fmt = :png,
+                    legend = false,
+                    fillalpha = 0.5,
+                )
+            savefig(plt, joinpath(plots_path, "violin_$(observable)_chain_$(ch)_seed_$(seed).png"))
+        end
+    end
+end
+
+
+function plot_corr_time_convergence(plots_path, gdf)
+    plots_path = joinpath(plots_path, "correlation_times")
+    mkpath(plots_path)
+
+    for observable in [:n_ssd, :n_ssd_corrected, :mags]
+        for (ch, df) in enumerate(gdf)
+            seed = df[1, :seed]
+            binner = LogBinner(df[!, observable])
+
+            τ = all_taus(binner)
+            τ = @. 2*τ + 1
+            plt = plot(τ,
+                       legend = :outerbottom,
+                       title = "Correlation time of $(observable) (chain #$(ch))",
+                       xlabel = "binning level, L",
+                       ylabel = "\\tau_L",
+                       label = "\\tau_L",
+                       size = (500, 600))
+
+            vline!([something(findlast(x -> x.count >= RELIABLE_SIZE, binner.accumulators), 1)],
+                    label = "highest level with >= $RELIABLE_SIZE samples")
+            savefig(plt, joinpath(plots_path, "$(observable)_chain_$(ch)_seed_$(seed).png"))
+        end
+    end
+end
+
+
+function block_average!(v::AbstractVector{T}, blocksize::Int=2) where T <: AbstractFloat
+    L, rem = divrem(length(v), blocksize)
+
+    @inbounds for i in 0:(L-1)
+        offset = blocksize*i + 1
+        v[i + 1] = v[offset]
+        for j in 1:(blocksize-1)
+            v[i + 1] += v[offset + j]
+        end
+        v[i + 1] /= blocksize
+    end
+
+    if !iszero(rem)
+        offset = blocksize*L + 1
+        v[L + 1] = v[offset]
+        for j in 1:(rem - 1)
+            v[L + 1] += v[offset + j]
+        end
+        v[L + 1] /= rem
+    end
+
+    resize!(v, L + Int(!iszero(rem)))
+    return v
+end
+
+
+
+function energy_binning(qmc_state, H, n_ssd::AbstractVector)
+    n_ssd = Vector(n_ssd)
+    E_density = energy_density(qmc_state, H, n_ssd)
+    std_err = E_density.err
+    val = E_density.val
+
+    all_std_errs = [std_err]
+    all_counts = [length(n_ssd)]
+
+    while length(n_ssd) >= RELIABLE_SIZE
+        block_average!(n_ssd, 2)
+
+        E_density = energy_density(qmc_state, H, n_ssd)
+        std_err = E_density.err
+        push!(all_std_errs, std_err)
+        push!(all_counts, length(n_ssd))
+    end
+
+    return val, all_std_errs, all_counts
+end
+
+
+function estimate_observables_for_one_chain(state_file, observables, df)
+    H, qmc_state = load(state_file, "hamiltonian", "qmc_state")
+
+    msmt_dict = Dict(String(obs) => measurementtodict(LogBinner(df[!, obs]))
+                     for obs in observables)
+
+    E_density, E_std_errs, E_counts = energy_binning(qmc_state, H, df.n_ssd)
+    msmt_dict["energy_density"] = Dict("value" => E_density,
+                                       "error" => maximum(E_std_errs),
+                                       "all_std_errors" => E_std_errs,
+                                       "all_counts" => E_counts)
+
+    E_density, E_std_errs, E_counts = energy_binning(qmc_state, H, df.n_ssd_corrected)
+    msmt_dict["energy_density_corrected"] = Dict("value" => E_density,
+                                                 "error" => maximum(E_std_errs),
+                                                 "all_std_errors" => E_std_errs,
+                                                 "all_counts" => E_counts)
+
+    return msmt_dict
+end
+
+
+function estimate_observables(path, df, gdf)
+    # any state object works, we just need the Hamiltonian struct and the qmc_state's type
+    #  to calculate the energy from samples
+    state_files = filter(endswith(".jld2"), readdir(path, join=true, sort=true))
+    state_file = last(state_files)
+
+    observables = [:n_ssd, :n_ssd_corrected, :mags]
+
+    msmt_dicts = Dict(
+        "chain_$chain" => estimate_observables_for_one_chain(state_file, observables, df_)
+        for (chain, df_) in enumerate(gdf)
+    )
+
+    mean_df = deepcopy(select(gdf[1], observables))
+    for i in 2:gdf.ngroups
+        mean_df .+= select(gdf[i], observables)
+    end
+    mean_df ./= gdf.ngroups
+
+    msmt_dicts["meaned"] = estimate_observables_for_one_chain(state_file, observables, mean_df)
+
+    msmt_dicts["concat"] = estimate_observables_for_one_chain(state_file, observables, df)
+
+    msmt_file = first(filter(endswith("raw_observables.csv"), readdir(path, join=true, sort=true)))
+    msmt_file = replace(msmt_file, "raw_observables.csv" => "observables.json")
+    msmt_file = replace(msmt_file, r"_seed=\d+" => "")
+    open(msmt_file, "w") do io
+        JSON.print(io, msmt_dicts, 2)
+    end
+end
+
+
+###############################################################################
+
+function cleanup_single_system(parsed_args)
+    path, delete_files, n1, n2, δ, M, mb_prob = init_cli(parsed_args)
+
+    df = get_df(path, n1, n2, δ, M, mb_prob)
+
+    println("Beginning cleanup for system n1=$n1, n2=$n2, delta=$δ, M=$M, p=$mb_prob...")
+
+    plots_path = joinpath(path, "plots")
+    mkpath(plots_path)
+
+    gdf = groupby(df, :seed)
+
+    # println("Generating equilibration plots...")
+    # plot_equilibration(plots_path, gdf)
+
+    # drop equilibration samples
+    df = df |> @filter(_.batch > 0) |> DataFrame
+    gdf = groupby(df, :seed)
+
+    # println("Generating correlation time plots...")
+    # plot_corr_time_convergence(plots_path, gdf)
+
+    println("Estimating observables...")
+    estimate_observables(path, df, gdf)
+
+    if delete_files
+        println("Deleting raw observables files...")
+        foreach(rm, filter(endswith("raw_observables.csv"), readdir(path, join=true)))
+    end
+end
+
+
+###############################################################################
+
+function runstats_histograms(parsed_args)
+    path = init_cli(parsed_args)[1]
+    path = normpath(joinpath(path, ".."))
+
+    mb_prob_dirs = filter(contains("p="), readdir(path, join=true, sort=true))
+
+    runstats = Dict{Float64, RunStatsHistogram}()
+
+    for dir in mb_prob_dirs
+        @show dir
+        mb_prob = parse(Float64, split(dir, "p=")[2])
+        jld_file = last(filter(endswith("batch_4_state.jld2"), readdir(dir, join=true, sort=true)))
+
+        runstats[mb_prob] = load(jld_file, "runstats")
+    end
+
+    for k in fieldnames(RunStatsHistogram)
+	for l in [:log, :identity]
+            file = joinpath(path, "$(k)_$(l)_histogram.png")
+            plt = plot()
+
+            for mb_prob in keys(runstats)
+                plt = plot!(
+                    getproperty(runstats[mb_prob], k),
+                    label = "p = $mb_prob",
+                    fillalpha = 0.3,
+                    size = (500, 500),
+		    xscale = l
+                )
+            end
+            savefig(plt, file)
+        end
+    end
+end
+
+
+
+s = ArgParseSettings()
+
+
+@add_arg_table! s begin
+    "n1"
+        help = "Dimensions of Ruby lattice in x direction."
+        required = true
+        arg_type = Int
+    "n2"
+        help = "Dimensions of Ruby lattice in the non-x direction."
+        required = true
+        arg_type = Int
+    "--omega"
+        help = "Strength of the transverse field"
+        arg_type = Float64
+        default = 1.0
+    "--delta"
+        help = "Strength of the detuning"
+        arg_type = Float64
+        default = 1.0
+    "--radius", "-R"
+        help = "Rydberg blockade radius (in units of the lattice spacing). Controls the strength of the interaction."
+        arg_type = Float64
+        default = 1.2
+    "-t"
+        help = "The parameter defining the Kagome lattice spacing."
+        arg_type = Float64
+        default = 1.0
+    "--trunc"
+        help = """Truncate interactions at this distance. E.g., 
+               if trunc = 4, sites that are greater that 4 units away from each other
+               do not interact. Measured in units of lattice spacing.
+               """
+        arg_type = Float64
+        default = Inf
+
+    "-M"
+        help = "Projector length."
+        arg_type = Int64
+
+    "--mbprob"
+        help = "Probability of doing a multibranch update instead of a line update at every MC step."
+        arg_type = Float64
+        default = 0.0
+
+    "--delete"
+        help = "Delete files that are no longer needed"
+        action = :store_true
+
+    "--histograms"
+        help = "Only build runstats histogram plots"
+        action = :store_true
+end
+
+
+parsed_args = parse_args(ARGS, s)
+
+if parsed_args["histograms"]
+    runstats_histograms(parsed_args)
+else
+    @time cleanup_single_system(parsed_args)
+end
