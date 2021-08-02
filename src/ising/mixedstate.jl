@@ -48,9 +48,6 @@ function full_diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalSt
                 num_ids += 1
             end
         else
-            # TODO: for the improved diagonal update, the thermal acceptance ratio
-            #       needs to be combined with the matrix element ratio; can't have it
-            #       be a two-step process
             if rand(rng)*num_ids < P_norm
                 op, _ = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
                 if op !== nothing

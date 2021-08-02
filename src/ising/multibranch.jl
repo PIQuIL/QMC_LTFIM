@@ -18,6 +18,13 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
         @inbounds for i in 1:Ns
             LegType[i] = spin_left[i]
             First[i] = i
+            if H isa AbstractLTFIM
+                if qmc_state.trialstate isa AbstractProductState
+                    flipping_weights[i] = logweightchange(qmc_state.trialstate, spin_left[i])
+                else
+                    flipping_weights[i] = 0.0
+                end
+            end
         end
         idx = Ns
     else
@@ -116,7 +123,11 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[i]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
+                if qmc_state.trialstate isa AbstractProductState
+                    flipping_weights[idx] = logweightchange(qmc_state.trialstate, spin_prop[i])
+                else
+                    flipping_weights[idx] = 0.0
+                end
             end
         end
     else
@@ -233,7 +244,11 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
 
             empty!(current_cluster)
             push!(current_cluster, i)
-            # flipping_weights[i] = 0 since we start clusters on a site op
+            # if qmc_state.trialstate isa AbstractProductState
+            #     lnA = flipping_weights[i]
+            # else
+            #     lnA = 0.0
+            # end
             lnA = 0.0
 
             while !isempty(cstack)
@@ -257,13 +272,20 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                 end
             end
             # any trial state considerations would go here
-            # if qmc_state isa BinaryGroundState
-            #         && trial state is not a |+>-state #short-circuit
-            #     get i in current_cluster <= Ns (left config)
-            #                           or >= lsize-Ns (right config)
-            #     query trial state for weight change of left & right
-            #         configs separately
-            #     accumulate weight changes into lnA
+            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
+                left_flips = empty!(qmc_state.trialstate.left_flips)
+                right_flips = empty!(qmc_state.trialstate.right_flips)
+                for i in current_cluster
+                    if i <= Ns
+                        push!(left_flips, i)
+                    elseif i > (lsize - Ns)
+                        push!(right_flips, i - lsize + Ns)
+                    end
+                end
+
+                lnA += logweightchange(qmc_state.trialstate, qmc_state.left_config, left_flips)
+                lnA += logweightchange(qmc_state.trialstate, qmc_state.right_config, right_flips)
+            end
 
             # heat bath: inv(1 + inv(A))) = W2/(W1 + W2) not good
             # metropolis: A (equiv to min(A, 1)) pretty good

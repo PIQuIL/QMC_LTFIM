@@ -13,7 +13,7 @@ abstract type AbstractQMCState{S<:AbstractStateType,T,K} end
 const AbstractGroundState = AbstractQMCState{Ground}
 const AbstractThermalState = AbstractQMCState{Thermal}
 
-struct QMCState{S,T,K,V <: AbstractVector{T}} <: AbstractQMCState{S,T,K}
+struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{<:Real, T}} <: AbstractQMCState{S,T,K}
     left_config::V
     right_config::V
     propagated_config::V
@@ -32,26 +32,30 @@ struct QMCState{S,T,K,V <: AbstractVector{T}} <: AbstractQMCState{S,T,K}
     first::Vector{Int}
     last::Union{Vector{Int}, Nothing}
 
-    function QMCState{S, T, K, V}(
+    trialstate::Union{P, Nothing}
+
+    function QMCState{S, T, K, V, P}(
             left_config::V, right_config::V, propagated_config::V,
             operator_list,
             link_list, leg_types, associates, flipping_weights,
             in_cluster, cstack, current_cluster,
-            first, last
-        ) where {S, K, T, V}
+            first, last, trialstate
+        ) where {S, K, T, V, P}
 
         if S isa Type{<:Thermal}
             @assert last isa Vector{Int}
+            @assert P == Nothing
         else
             @assert last === nothing
+            @assert P <: AbstractTrialState
         end
 
-        new{S, T, K, V}(
+        new{S, T, K, V, P}(
             left_config, right_config, propagated_config,
             operator_list,
             link_list, leg_types, associates, flipping_weights,
             in_cluster, cstack, current_cluster,
-            first, last
+            first, last, trialstate
         )
     end
 
@@ -63,8 +67,11 @@ struct QMCState{S,T,K,V <: AbstractVector{T}} <: AbstractQMCState{S,T,K}
 
         if S isa Type{<:Ground}
             len = 2*length(left_config) + 4*length(operator_list)
+            # trialstate = ProductState{Float64, T}(Dict(true => 0.85, false => 0.15))
+            trialstate = PlusState{Float64, T}()
         else
             len = 4*length(operator_list)
+            trialstate = nothing
         end
         link_list = zeros(Int, len)
         leg_types = similar(left_config, T, len)
@@ -82,10 +89,10 @@ struct QMCState{S,T,K,V <: AbstractVector{T}} <: AbstractQMCState{S,T,K}
             operator_list,
             link_list, leg_types, associates, flipping_weights,
             in_cluster, cstack, current_cluster,
-            first, last
+            first, last, trialstate
         ]
 
-        QMCState{S, T, K, V}(args...)
+        QMCState{S, T, K, V, typeof(trialstate)}(args...)
     end
 end
 
@@ -122,6 +129,7 @@ function convert(::Type{QMCState{S′, T, K, V}}, state::QMCState{S, T, K, V}) w
     elseif S′ isa Type{<:Thermal}
         len = 4*length(state.operator_list)
         last = copy(state.first)
+        trialstate = nothing
     else
         # make the operator list length even by adding one identity operator
         if isodd(length(state.operator_list))
@@ -129,6 +137,7 @@ function convert(::Type{QMCState{S′, T, K, V}}, state::QMCState{S, T, K, V}) w
         end
         len = 2*length(state.left_config) + 4*length(state.operator_list)
         last = nothing
+        trialstate = PlusState()
     end
 
     resize!(state.linked_list, len)
@@ -139,5 +148,5 @@ function convert(::Type{QMCState{S′, T, K, V}}, state::QMCState{S, T, K, V}) w
 
     args = [getfield(state, field) for field in fieldnames(typeof(state))]
 
-    return QMCState{S′, T, K, V}(args[1:end-1]..., last)
+    return QMCState{S′, T, K, V}(args[1:end-2]..., last, trialstate)
 end
