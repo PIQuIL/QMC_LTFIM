@@ -19,8 +19,6 @@ end
 struct PlusState{T, C} <: AbstractProductState{T, C}; end
 weightchange(psi::PlusState{T, Bool}, initial::Bool) where T = one(T)
 logweightchange(psi::PlusState{T, Bool}, initial::Bool) where T = zero(T)
-# weightchange(psi::PlusState{T, Bool}, initial::AbstractArray{Bool}, sites::AbstractVector{Int}) where T = one(T)
-# logweightchange(psi::PlusState{T, Bool}, initial::AbstractArray{Bool}, sites::AbstractVector{Int}) where T = zero(T)
 
 
 struct BoolDict{T} <: AbstractDict{Bool, T}

@@ -38,7 +38,7 @@ end
 #    spin_config(t) = divrem(t - 1, 2)
 @inline getbondtype(::AbstractLTFIM, s1::Bool, s2::Bool) = (s1<<1 | s2) + 1
 @inline spin_config(::AbstractLTFIM, t::Int)::NTuple{2,Int} = divrem(t - 1, 2)
-@inline spin_config(H::AbstractLTFIM, op::NTuple{3, Int}) = @inbounds spin_config(H, op[1])
+@inline spin_config(H::AbstractLTFIM, op::NTuple{4, Int}) = @inbounds spin_config(H, op[1])
 
 ###############################################################################
 
@@ -68,8 +68,8 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::Abst
         end
     end
 
-    Z = [-1 0; 0 1]  # since 0 maps to spin down
-    I = [1 0; 0 1]
+    Z = interactionoperator(AbstractLTFIM)  # since 0 maps to spin down
+    I = Diagonal(LinearAlgebra.I, 2)
 
     # add fictitious bonds if there's a z-field on an "unbonded" site
     while any(i -> iszero(coordination_numbers[i]) && !iszero(hz[i]), 1:Ns)

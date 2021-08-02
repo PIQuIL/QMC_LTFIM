@@ -9,7 +9,7 @@ function sample(H::AbstractIsing, qmc_state::BinaryQMCState, M::Int=length(qmc_s
     @inbounds for i in 1:M
         op = operator_list[i]
         if !isdiagonal(H, op)
-            spin_prop[op[3]] ⊻= 1 #spinflip
+            spin_prop[getsite(H, op)] ⊻= 1 #spinflip
         end
     end
     return spin_prop
@@ -24,7 +24,7 @@ function simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState, r::Ordinal
 
     @inbounds for (n, op) in enumerate(operator_list)
         if !isdiagonal(H, op)
-            spin_prop[op[3]] ⊻= 1 #spinflip
+            spin_prop[getsite(H, op)] ⊻= 1 #spinflip
         end
         if n in r
             copy!(view(cell, :, c), spin_prop)

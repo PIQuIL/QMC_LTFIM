@@ -37,6 +37,8 @@ end
 @inline issiteoperator(H::AbstractIsing, op::NTuple{4,Int}) = issiteoperator(typeof(H), op)
 @inline isbondoperator(H::AbstractIsing, op::NTuple{4,Int}) = isbondoperator(typeof(H), op)
 
+@inline getsite(::Type{<:AbstractIsing}, op::NTuple{4, Int}) = @inbounds op[3]
+@inline getsite(H::AbstractIsing, op::NTuple{4, Int}) = getsite(typeof(H), op)
 @inline getbondsites(::Type{<:AbstractIsing}, op::NTuple{4, Int}) = @inbounds (op[3], op[4])
 @inline getbondsites(H::AbstractIsing, op::NTuple{4, Int}) = getbondsites(typeof(H), op)
 
@@ -48,6 +50,11 @@ end
 @inline makeoffdiagonalsiteop(H::AbstractIsing, i::Int) = makeoffdiagonalsiteop(typeof(H), i)
 
 @inline getbondtype(::AbstractTFIM, s1::Bool, s2::Bool) = 1
+
+
+@inline interactionoperator(::Type{<:AbstractIsing}) = Diagonal([0, 1])
+@inline interactionoperator(H::AbstractIsing) = interactionoperator(typeof(H))
+
 
 ###############################################################################
 

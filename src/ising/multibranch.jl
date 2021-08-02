@@ -38,7 +38,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for op in qmc_state.operator_list
         if issiteoperator(H, op)
-            site = op[3]
+            site = getsite(H, op)
             # lower or left leg
             idx += 1
             F = First[site]
@@ -172,9 +172,9 @@ multibranch_link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()
             ocount += 4
         elseif issiteoperator(H, op)
             if LegType[ocount] == LegType[ocount+1]  # diagonal
-                operator_list[n] = makediagonalsiteop(H, op[3])
+                operator_list[n] = makediagonalsiteop(H, getsite(H, op))
             else  # off-diagonal
-                operator_list[n] = makeoffdiagonalsiteop(H, op[3])
+                operator_list[n] = makeoffdiagonalsiteop(H, getsite(H, op))
             end
             ocount += 2
         end
@@ -244,12 +244,11 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
 
             empty!(current_cluster)
             push!(current_cluster, i)
-            # if qmc_state.trialstate isa AbstractProductState
-            #     lnA = flipping_weights[i]
-            # else
-            #     lnA = 0.0
-            # end
-            lnA = 0.0
+            if qmc_state.trialstate isa AbstractProductState
+                lnA = flipping_weights[i]
+            else
+                lnA = 0.0
+            end
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
@@ -271,7 +270,7 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                     end
                 end
             end
-            # any trial state considerations would go here
+
             if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
                 left_flips = empty!(qmc_state.trialstate.left_flips)
                 right_flips = empty!(qmc_state.trialstate.right_flips)

@@ -14,7 +14,7 @@ include("operatordict.jl")
 struct OperatorSampler{K, T, P} <: AbstractOperatorSampler{K, T, P}
     operators::Vector{NTuple{K, Int}}
     pvec::P
-    op_log_weights::Vector{T} #OperatorDict{K, T}
+    op_log_weights::Vector{T}
 end
 
 

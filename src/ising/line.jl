@@ -19,6 +19,13 @@ function line_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abs
             LegType[i] = spin_left[i]
             Associates[i] = 0
             First[i] = i
+            if H isa AbstractLTFIM
+                if qmc_state.trialstate isa AbstractProductState
+                    flipping_weights[i] = logweightchange(qmc_state.trialstate, spin_left[i])
+                else
+                    flipping_weights[i] = 0.0
+                end
+            end
         end
         idx = Ns
     else
@@ -32,7 +39,7 @@ function line_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abs
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for op in qmc_state.operator_list
         if issiteoperator(H, op)
-            site = op[3]
+            site = getsite(H, op)
             # lower or left leg
             idx += 1
             F = First[site]
@@ -117,7 +124,11 @@ function line_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abs
             LegType[idx] = spin_prop[i]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
+                if qmc_state.trialstate isa AbstractProductState
+                    flipping_weights[idx] = logweightchange(qmc_state.trialstate, spin_prop[i])
+                else
+                    flipping_weights[idx] = 0.0
+                end
             end
         end
     else
@@ -171,7 +182,11 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
 
             empty!(current_cluster)
             push!(current_cluster, i)
-            lnA = 0.0
+            if qmc_state.trialstate isa AbstractProductState
+                lnA = flipping_weights[i]
+            else
+                lnA = 0.0
+            end
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
@@ -207,11 +222,22 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
                     )
                 end
             end
-            # heat bath: inv(1 + inv(A))) = W2/(W1 + W2) not good
-            # metropolis: A (equiv to min(A, 1)) pretty good
-            # scaled metropolis: min(A, 1)/2 also good
-            # |M| and M^2 seem to converge better to 99% CIs
-            #  when using metropolis (not the scaled variant)
+
+            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
+                left_flips = empty!(qmc_state.trialstate.left_flips)
+                right_flips = empty!(qmc_state.trialstate.right_flips)
+                for i in current_cluster
+                    if i <= Ns
+                        push!(left_flips, i)
+                    elseif i > (lsize - Ns)
+                        push!(right_flips, i - lsize + Ns)
+                    end
+                end
+
+                lnA += logweightchange(qmc_state.trialstate, qmc_state.left_config, left_flips)
+                lnA += logweightchange(qmc_state.trialstate, qmc_state.right_config, right_flips)
+            end
+
             A = exp(min(lnA, zero(lnA)))
             flip = rand(rng) < A
 

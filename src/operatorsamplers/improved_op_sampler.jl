@@ -3,7 +3,7 @@ abstract type AbstractImprovedOperatorSampler{K, T, P} <: AbstractOperatorSample
 struct ImprovedOperatorSampler{K, T, P} <: AbstractImprovedOperatorSampler{K, T, P}
     operators::Vector{NTuple{K, Int}}
     pvec::P
-    op_log_weights::Vector{T} #OperatorDict{K, T}
+    op_log_weights::Vector{T}
 end
 
 # only supports the LTFIM/Rydberg cases for now

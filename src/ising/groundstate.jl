@@ -79,7 +79,7 @@ function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H
 
     for (n, op) in enumerate(qmc_state.operator_list)
         if !isdiagonal(H, op)
-            @inbounds spin_prop[op[3]] ⊻= 1  # spinflip
+            @inbounds spin_prop[getsite(H, op)] ⊻= 1  # spinflip
         else
             op = nothing
             if !(runstats isa NoStats); i = -1; end

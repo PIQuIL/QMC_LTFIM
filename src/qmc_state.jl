@@ -13,7 +13,7 @@ abstract type AbstractQMCState{S<:AbstractStateType,T,K} end
 const AbstractGroundState = AbstractQMCState{Ground}
 const AbstractThermalState = AbstractQMCState{Thermal}
 
-struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{<:Real, T}} <: AbstractQMCState{S,T,K}
+struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{Float64, T}} <: AbstractQMCState{S,T,K}
     left_config::V
     right_config::V
     propagated_config::V
@@ -60,15 +60,17 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{<:Real, T}}
     end
 
     function QMCState{S, T, K, V}(
-        left_config::V, right_config::V, operator_list::Vector{NTuple{K,Int}}
+        left_config::V, right_config::V, operator_list::Vector{NTuple{K,Int}},
+        trialstate::Union{Nothing, AbstractTrialState{Float64, T}}=nothing
     ) where {S, T, K, V <: AbstractVector{T}}
         @assert left_config !== right_config "left_config and right_config can't be the same array!"
         @assert size(left_config) === size(right_config) "left_config and right_config must have the same size!"
 
         if S isa Type{<:Ground}
             len = 2*length(left_config) + 4*length(operator_list)
-            # trialstate = ProductState{Float64, T}(Dict(true => 0.85, false => 0.15))
-            trialstate = PlusState{Float64, T}()
+            if trialstate === nothing
+                trialstate = PlusState{Float64, T}()
+            end
         else
             len = 4*length(operator_list)
             trialstate = nothing
@@ -96,23 +98,23 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{<:Real, T}}
     end
 end
 
-QMCState{S, T, K, V}(left_config::V, operator_list) where {S, T, K, V} =
-    QMCState{S, T, K, V}(left_config, copy(left_config), operator_list)
+QMCState{S, T, K, V}(left_config::V, operator_list, trialstate::Union{Nothing, AbstractTrialState{Float64, T}}=nothing) where {S, T, K, V} =
+    QMCState{S, T, K, V}(left_config, copy(left_config), operator_list, trialstate)
 
-QMCState{S, T, K}(left_config::V, right_config::V, operator_list) where {S, T, K, V} =
-    QMCState{S, T, K, V}(left_config, right_config, operator_list)
-QMCState{S, T, K}(left_config::V, operator_list) where {S, T, K, V} =
-    QMCState{S, T, K, V}(left_config, operator_list)
+QMCState{S, T, K}(left_config::V, right_config::V, operator_list, trialstate::Union{Nothing, AbstractTrialState{Float64, T}}=nothing) where {S, T, K, V} =
+    QMCState{S, T, K, V}(left_config, right_config, operator_list, trialstate)
+QMCState{S, T, K}(left_config::V, operator_list, trialstate::Union{Nothing, AbstractTrialState{Float64, T}}=nothing) where {S, T, K, V} =
+    QMCState{S, T, K, V}(left_config, operator_list, trialstate)
 
-QMCState{S, T}(left_config, right_config, operator_list::Vector{NTuple{K,Int}}) where {S, T, K} =
-    QMCState{S, T, K}(left_config, right_config, operator_list)
-QMCState{S, T}(left_config, operator_list::Vector{NTuple{K,Int}}) where {S, T, K} =
-    QMCState{S, T, K}(left_config, operator_list)
+QMCState{S, T}(left_config::V, right_config::V, operator_list::Vector{NTuple{K,Int}}, trialstate::Union{Nothing, AbstractTrialState{Float64, T}}=nothing) where {S, T, K, V} =
+    QMCState{S, T, K}(left_config, right_config, operator_list, trialstate)
+QMCState{S, T}(left_config, operator_list::Vector{NTuple{K,Int}}, trialstate::Union{Nothing, AbstractTrialState{Float64, T}}=nothing) where {S, T, K} =
+    QMCState{S, T, K}(left_config, operator_list, trialstate)
 
-QMCState{S}(left_config, right_config, operator_list) where S =
-    QMCState{S, eltype(left_config)}(left_config, right_config, operator_list)
-QMCState{S}(left_config, operator_list) where S =
-    QMCState{S, eltype(left_config)}(left_config, operator_list)
+QMCState{S}(left_config::V, right_config::V, operator_list, trialstate::Union{Nothing, AbstractTrialState}=nothing) where {S, V} =
+    QMCState{S, eltype(left_config)}(left_config, right_config, operator_list, trialstate)
+QMCState{S}(left_config, operator_list, trialstate::Union{Nothing, AbstractTrialState}=nothing) where S =
+    QMCState{S, eltype(left_config)}(left_config, operator_list, trialstate)
 
 
 const GroundState{T,K,V} = QMCState{Ground,T,K,V}
