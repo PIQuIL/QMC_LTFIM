@@ -45,7 +45,7 @@ end
 function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::AbstractVector{T}; epsilon=0.0) where T
     @assert length(hx) == length(hz) == size(J, 1) == size(J, 2)
 
-    ops = Vector{NTuple{3, Int}}()
+    ops = Vector{NTuple{4, Int}}()
     p = Vector{T}()
     energy_shift = zero(T)
 
@@ -103,10 +103,8 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::Abst
         energy_shift += C
 
         for (t, p_t) in enumerate(p_spins)
-            if !iszero(p_t)
-                push!(ops, (t, site1, site2))
-                push!(p, p_t)
-            end
+            push!(p, p_t)
+            push!(ops, (t, length(p), site1, site2))
         end
     end
 

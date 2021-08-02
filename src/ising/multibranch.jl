@@ -38,7 +38,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for op in qmc_state.operator_list
         if issiteoperator(H, op)
-            site = op[2]
+            site = op[3]
             # lower or left leg
             idx += 1
             F = First[site]
@@ -105,7 +105,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             if H isa AbstractLTFIM
                 lw1 = getlogweight(H.op_sampler, op)
                 flip_t = getbondtype(H, !spin1, !spin2)
-                lw2 = getlogweight(H.op_sampler, (flip_t, site1, site2))
+                lw2 = getlogweight(H.op_sampler, (flip_t, op[2] - op[1] + flip_t, site1, site2))
                 flipping_weights[idx + 1] = lw2 - lw1
             end
 
@@ -167,14 +167,14 @@ multibranch_link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()
                 s1, s2 = LegType[ocount], LegType[ocount+1]
                 t = getbondtype(H, s1, s2)
                 site1, site2 = getbondsites(H, op)
-                operator_list[n] = (t, site1, site2)
+                operator_list[n] = (t, op[2] - op[1] + t, site1, site2)
             end
             ocount += 4
         elseif issiteoperator(H, op)
             if LegType[ocount] == LegType[ocount+1]  # diagonal
-                operator_list[n] = makediagonalsiteop(H, op[2])
+                operator_list[n] = makediagonalsiteop(H, op[3])
             else  # off-diagonal
-                operator_list[n] = makeoffdiagonalsiteop(H, op[2])
+                operator_list[n] = makeoffdiagonalsiteop(H, op[3])
             end
             ocount += 2
         end

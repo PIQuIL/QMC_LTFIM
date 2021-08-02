@@ -41,7 +41,7 @@ function full_diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalSt
 
     @inbounds for (n, op) in enumerate(qmc_state.operator_list)
         if !isdiagonal(H, op)
-            spin_prop[op[2]] ⊻= 1  # spinflip
+            spin_prop[op[3]] ⊻= 1  # spinflip
         elseif !isidentity(H, op)
             if rand(rng)*P_norm < (num_ids + 1)
                 qmc_state.operator_list[n] = makeidentity(H)

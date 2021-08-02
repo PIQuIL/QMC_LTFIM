@@ -247,7 +247,7 @@ nspins(H::Rydberg) = nspins(H.lattice)
 function make_prob_vector(::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω::AbstractVector{T}, δ::AbstractVector{T}; epsilon=0.0) where T
     @assert length(Ω) == length(δ) == size(V, 1) == size(V, 2)
 
-    ops = Vector{NTuple{3, Int}}()
+    ops = Vector{NTuple{4, Int}}()
     p = Vector{T}()
     energy_shift = zero(T)
 
@@ -286,10 +286,8 @@ function make_prob_vector(::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω::
         energy_shift += C
 
         for (t, p_t) in enumerate(p_spins)
-            if !iszero(p_t)
-                push!(ops, (t, site1, site2))
-                push!(p, p_t)
-            end
+            push!(p, p_t)
+            push!(ops, (t, length(p), site1, site2))
         end
     end
 

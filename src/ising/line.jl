@@ -32,7 +32,7 @@ function line_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abs
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for op in qmc_state.operator_list
         if issiteoperator(H, op)
-            site = op[2]
+            site = op[3]
             # lower or left leg
             idx += 1
             F = First[site]
@@ -98,7 +98,7 @@ function line_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abs
 
             if H isa AbstractLTFIM
                 @simd for i in 1:num_legs
-                    lw = getlogweight(H.op_sampler, (i, site1, site2))
+                    lw = getlogweight(H.op_sampler, (i, op[2] - op[1] + i, site1, site2))
                     flipping_weights[idx + i] = lw
                 end
             end
