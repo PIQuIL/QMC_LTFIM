@@ -62,10 +62,9 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
                     push!(current_cluster, straight_thru)
 
                     w = flipping_weights[leg]
-
                     lnA += (
-                        H.op_sampler.op_log_weights[w - preflip_bond_type + postflip_bond_type]
-                        - H.op_sampler.op_log_weights[w]
+                        H.op_sampler.op_log_weights[w + postflip_bond_type]
+                        - H.op_sampler.op_log_weights[w + preflip_bond_type]
                     )
                 end
             end

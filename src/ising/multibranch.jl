@@ -94,7 +94,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
                 LegType[v] = spins[mod(i, 1:num_sites)]
                 Associates[v] = v + 1
                 if H isa AbstractLTFIM
-                    flipping_weights[v] = op[2]
+                    flipping_weights[v] = op[2] - op[1]
                 end
             end
             Associates[idx + num_legs] = idx + 1
@@ -261,8 +261,8 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                     end
 
                     lnA += (
-                        H.op_sampler.op_log_weights[w - preflip_bond_type + postflip_bond_type]
-                        - H.op_sampler.op_log_weights[w]
+                        H.op_sampler.op_log_weights[w + postflip_bond_type]
+                        - H.op_sampler.op_log_weights[w + preflip_bond_type]
                     )
 
                 end
