@@ -30,10 +30,17 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
             if !(runstats isa NoStats); ccount += 1; end
             push!(cstack, i)
             in_cluster[i] = true
+            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
+                left_flips = empty!(qmc_state.trialstate.left_flips)
+                right_flips = empty!(qmc_state.trialstate.right_flips)
+            end
 
             empty!(current_cluster)
             push!(current_cluster, i)
             lnA = 0.0
+            if qmc_state isa BinaryGroundState
+                lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
+            end
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
@@ -41,6 +48,9 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
                 if !in_cluster[leg]
                     in_cluster[leg] = true  # add the new leg and flip it
                     push!(current_cluster, leg)
+                    if qmc_state isa BinaryGroundState
+                        lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
+                    end
                     a = Associates[leg]
 
                     a == 0 && continue
@@ -70,16 +80,6 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
             end
 
             if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
-                left_flips = empty!(qmc_state.trialstate.left_flips)
-                right_flips = empty!(qmc_state.trialstate.right_flips)
-                for i in current_cluster
-                    if i <= Ns
-                        push!(left_flips, i)
-                    elseif i > (lsize - Ns)
-                        push!(right_flips, i - lsize + Ns)
-                    end
-                end
-
                 lnA += logweightchange(qmc_state.trialstate, qmc_state.left_config, left_flips)
                 lnA += logweightchange(qmc_state.trialstate, qmc_state.right_config, right_flips)
             end

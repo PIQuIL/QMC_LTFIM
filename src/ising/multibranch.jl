@@ -200,6 +200,26 @@ end
 end
 
 
+function trialstate_weight_change(qmc_state::BinaryGroundState, lsize::Int, Ns::Int, i::Int)
+    if !(qmc_state.trialstate isa AbstractProductState)
+        if i <= Ns
+            push!(qmc_state.trialstate.left_flips, i)
+        elseif i > (lsize - Ns)
+            push!(qmc_state.trialstate.right_flips, i - lsize + Ns)
+        end
+        return 0.0
+    else
+        if i <= Ns
+            return logweightchange(qmc_state.trialstate, qmc_state.left_config[i])
+        elseif i > (lsize - Ns)
+            return logweightchange(qmc_state.trialstate, qmc_state.right_config[i])
+        else
+            return 0.0
+        end
+    end
+end
+trialstate_weight_change(qmc_state::BinaryThermalState, lsize::Int, Ns::Int, i::Int) = 0.0
+
 #############################################################################
 
 
@@ -226,10 +246,17 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
             if !(runstats isa NoStats); ccount += 1; end
             push!(cstack, i)
             in_cluster[i] = true
+            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
+                left_flips = empty!(qmc_state.trialstate.left_flips)
+                right_flips = empty!(qmc_state.trialstate.right_flips)
+            end
 
             empty!(current_cluster)
             push!(current_cluster, i)
             lnA = 0.0
+            if qmc_state isa BinaryGroundState
+                lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
+            end
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
@@ -237,6 +264,9 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                 if iszero(in_cluster[leg])
                     in_cluster[leg] = true  # add the new leg and flip it
                     push!(current_cluster, leg)
+                    if qmc_state isa BinaryGroundState
+                        lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
+                    end
                     a = Associates[leg]
 
                     a == 0 && continue
@@ -251,7 +281,6 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                         postflip_bond_type = getbondtype(H, !LegType[a], !LegType[leg])
                     end
 
-                    w = flipping_weights[leg]
                     # now check all associates and add them to the cluster
                     while a != 0 && iszero(in_cluster[a])
                         push!(cstack, a)
@@ -260,6 +289,7 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                         a = Associates[a]
                     end
 
+                    w = flipping_weights[leg]
                     lnA += (
                         H.op_sampler.op_log_weights[w + postflip_bond_type]
                         - H.op_sampler.op_log_weights[w + preflip_bond_type]
@@ -269,16 +299,6 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
             end
 
             if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
-                left_flips = empty!(qmc_state.trialstate.left_flips)
-                right_flips = empty!(qmc_state.trialstate.right_flips)
-                for i in current_cluster
-                    if i <= Ns
-                        push!(left_flips, i)
-                    elseif i > (lsize - Ns)
-                        push!(right_flips, i - lsize + Ns)
-                    end
-                end
-
                 lnA += logweightchange(qmc_state.trialstate, qmc_state.left_config, left_flips)
                 lnA += logweightchange(qmc_state.trialstate, qmc_state.right_config, right_flips)
             end
