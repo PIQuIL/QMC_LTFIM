@@ -68,7 +68,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::Abst
         end
     end
 
-    Z = interactionoperator(AbstractLTFIM)  # since 0 maps to spin down
+    Z = diagonaloperator(AbstractLTFIM)  # since 0 maps to spin down
     I = Diagonal(LinearAlgebra.I, 2)
 
     # add fictitious bonds if there's a z-field on an "unbonded" site

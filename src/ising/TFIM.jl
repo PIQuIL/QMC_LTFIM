@@ -52,8 +52,8 @@ end
 @inline getbondtype(::AbstractTFIM, s1::Bool, s2::Bool) = 1
 
 
-@inline interactionoperator(::Type{<:AbstractIsing}) = Diagonal([0, 1])
-@inline interactionoperator(H::AbstractIsing) = interactionoperator(typeof(H))
+@inline diagonaloperator(::Type{<:AbstractIsing}) = Diagonal([-1, 1])
+@inline diagonaloperator(H::AbstractIsing) = interactionoperator(typeof(H))
 
 
 ###############################################################################

@@ -23,7 +23,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{Float64, T}
     linked_list::Vector{Int}
     leg_types::V
     associates::Vector{Int}
-    flipping_weights::Vector{Float64}
+    flipping_weights::Vector{Int}
 
     in_cluster::V
     cstack::PushVector{Int, Vector{Int}}
@@ -78,7 +78,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{Float64, T}
         link_list = zeros(Int, len)
         leg_types = similar(left_config, T, len)
         associates = zeros(Int, len)
-        flipping_weights = zeros(len)
+        flipping_weights = zeros(Int, len)
 
         in_cluster = similar(left_config, T, len)
         cstack = PushVector{Int}(nextpow(2, length(left_config)))

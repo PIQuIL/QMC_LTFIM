@@ -1,154 +1,5 @@
-function line_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, ::AbstractRunStats=NoStats())
-    Ns = nspins(H)
-    spin_left = qmc_state.left_config
-
-    # retrieve linked list data structures
-    LinkList = qmc_state.linked_list  # needed for cluster update
-    LegType = qmc_state.leg_types
-
-    # A diagonal bond operator has non trivial associates for cluster building
-    Associates = qmc_state.associates
-
-    flipping_weights = qmc_state.flipping_weights
-
-    if qmc_state isa BinaryGroundState
-        First = qmc_state.first
-
-        # The first N elements of the linked list are the spins of the LHS basis state
-        @inbounds for i in 1:Ns
-            LegType[i] = spin_left[i]
-            Associates[i] = 0
-            First[i] = i
-            if H isa AbstractLTFIM
-                if qmc_state.trialstate isa AbstractProductState
-                    flipping_weights[i] = logweightchange(qmc_state.trialstate, spin_left[i])
-                else
-                    flipping_weights[i] = 0.0
-                end
-            end
-        end
-        idx = Ns
-    else
-        First = fill!(qmc_state.first, 0)  #initialize the First list
-        Last = fill!(qmc_state.last, 0)   #initialize the Last list
-        idx = 0
-    end
-
-    spin_prop = copyto!(qmc_state.propagated_config, spin_left)  # the propagated spin state
-
-    # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
-    @inbounds for op in qmc_state.operator_list
-        if issiteoperator(H, op)
-            site = getsite(H, op)
-            # lower or left leg
-            idx += 1
-            F = First[site]
-            LinkList[idx] = F
-            if qmc_state isa BinaryGroundState || !iszero(F)
-                LinkList[F] = idx  # completes backwards link
-            else
-                Last[site] = idx
-            end
-
-            LegType[idx] = spin_prop[site]
-            Associates[idx] = 0
-            if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
-            end
-
-            if !isdiagonal(H, op)  # off-diagonal site operator
-                spin_prop[site] ⊻= 1  # spinflip
-            end
-
-            # upper or right leg
-            idx += 1
-            First[site] = idx
-            LegType[idx] = spin_prop[site]
-            Associates[idx] = 0
-            if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
-            end
-        elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
-            site1, site2 = bond = getbondsites(H, op)
-            spins = spin_prop[site1], spin_prop[site2]
-            num_sites = 2  # length(bond)
-            num_legs = 4   # 2*num_sites
-
-            # vertex leg indices
-            # thinking of imaginary time as increasing as we move upward,
-            # these indices refer to the
-            # lower left, lower right, upper left, upper right legs respectively
-            # v1, v2, v3, v4 = idx + 1, idx + 2, idx + 3, idx + 4
-
-            @simd for i in 1:num_sites
-                v = idx + i
-                st = bond[i]
-                F = First[st]
-                LinkList[v] = F
-                if qmc_state isa BinaryGroundState || !iszero(F)
-                    LinkList[F] = v  # completes backwards link
-                else
-                    Last[st] = v
-                end
-                First[st] = v + num_sites
-            end
-
-            @simd for i in 1:num_legs
-                v = idx + i
-                LegType[v] = spins[mod(i, 1:num_sites)]
-                Associates[v] = v + 1
-                if H isa AbstractLTFIM
-                    flipping_weights[v] = 0.0
-                end
-            end
-            Associates[idx + num_legs] = idx + 1
-
-            if H isa AbstractLTFIM
-                @simd for i in 1:num_legs
-                    lw = getlogweight(H.op_sampler, (i, op[2] - op[1] + i, site1, site2))
-                    flipping_weights[idx + i] = lw
-                end
-            end
-
-            idx += num_legs
-        end
-    end
-
-    if qmc_state isa BinaryGroundState
-        # The last N elements of the linked list are the final spin state
-        @inbounds for i in 1:Ns
-            idx += 1
-            F = First[i]
-            LinkList[idx] = F
-            LinkList[F] = idx
-            LegType[idx] = spin_prop[i]
-            Associates[idx] = 0
-            if H isa AbstractLTFIM
-                if qmc_state.trialstate isa AbstractProductState
-                    flipping_weights[idx] = logweightchange(qmc_state.trialstate, spin_prop[i])
-                else
-                    flipping_weights[idx] = 0.0
-                end
-            end
-        end
-    else
-        #Periodic boundary conditions for finite-beta
-        @inbounds for i in 1:Ns
-            F = First[i]
-            if !iszero(F)  #This might be encountered at high temperatures
-                L = Last[i]
-                LinkList[F] = L
-                LinkList[L] = F
-            end
-        end
-    end
-    # @debug statements are not run unless debug logging is enabled
-    @debug("Link List basis state propagation status: $(spin_prop == qmc_state.right_config)",
-           spin_prop,
-           qmc_state.right_config)
-
-    return idx
-end
+line_link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats()) =
+    multibranch_link_list_update!(rng, qmc_state, H, runstats)
 line_link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
     line_link_list_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
 
@@ -182,11 +33,7 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
 
             empty!(current_cluster)
             push!(current_cluster, i)
-            if qmc_state.trialstate isa AbstractProductState
-                lnA = flipping_weights[i]
-            else
-                lnA = 0.0
-            end
+            lnA = 0.0
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
@@ -214,11 +61,11 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
                     push!(cstack, straight_thru)
                     push!(current_cluster, straight_thru)
 
-                    min_assoc = min(leg, a, straight_thru, Associates[straight_thru])
+                    w = flipping_weights[leg]
 
                     lnA += (
-                        flipping_weights[min_assoc - 1 + postflip_bond_type]
-                        - flipping_weights[min_assoc - 1 + preflip_bond_type]
+                        H.op_sampler.op_log_weights[w - preflip_bond_type + postflip_bond_type]
+                        - H.op_sampler.op_log_weights[w]
                     )
                 end
             end

@@ -13,8 +13,8 @@ struct Rydberg{O,M <: UpperTriangular{Float64},UΩ <: AbstractVector{Float64}, U
 end
 nspins(H::Rydberg) = nspins(H.lattice)
 
-@inline interactionoperator(::Type{<:AbstractRydberg}) = Diagonal([0, 1])
-@inline interactionoperator(H::AbstractRydberg) = interactionoperator(typeof(H))
+@inline diagonaloperator(::Type{<:AbstractRydberg}) = Diagonal([0, 1])
+@inline diagonaloperator(H::AbstractRydberg) = interactionoperator(typeof(H))
 
 
 function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω::AbstractVector{T}, δ::AbstractVector{T}; epsilon=0.0) where T
@@ -43,7 +43,7 @@ function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω:
         end
     end
 
-    n = interactionoperator(H)
+    n = diagonaloperator(H)
     I = Diagonal(LinearAlgebra.I, 2)
 
     # TODO: add fictitious bonds if there's a z-field on an "unbonded" site

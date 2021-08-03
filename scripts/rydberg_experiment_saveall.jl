@@ -8,7 +8,7 @@ using QMC
 
 using Random
 using RandomNumbers
-
+using LinearAlgebra
 using Measurements
 using BinningAnalysis
 using Statistics
@@ -27,16 +27,36 @@ using Printf
 using ArgParse
 
 
-# SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
-SCRATCH_PATH = "/scratch/ejaazm/"
+SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/trialstate_experiments/"
+# SCRATCH_PATH = "/scratch/ejaazm/"
 
 ###############################################################################
+
+function setup_trialstate(type::String, delta::Float64, omega::Float64, V::UpperTriangular{Float64})
+    if type == "fields"
+        H = Hermitian(-delta*[0 0; 0 1] - omega*[0 1; 1 0]/2)
+
+        E, V = eigen(H)
+        psi = V[:, 1]
+        @assert all(x -> signbit(x) == signbit(psi[1]), psi)
+
+        P = abs2.(psi)
+        return ProductState{Float64, Bool}(Dict(false => P[1], true => P[2]))
+    elseif type == "mft"
+        error("Not yet supported!")
+    else
+        return nothing
+    end
+end
+
 
 function init_mc_cli(parsed_args)
     Ω = parsed_args["omega"]
     δ = parsed_args["delta"]
     R_b = parsed_args["radius"]
     seed = parsed_args["seed"]
+
+    ts_type = parsed_args["trialstate"]
 
     nY = parsed_args["nY"]
     nX = nY
@@ -58,7 +78,7 @@ function init_mc_cli(parsed_args)
         SCRATCH_PATH, "qmc_sims",
         "histograms_redo_delta_sweep",
         "groundstate",
-        "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M", "p=$mb_prob")
+        "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M", "p=$mb_prob", "ts=$ts_type")
     mkpath(path)
 
     res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)
@@ -67,7 +87,7 @@ function init_mc_cli(parsed_args)
         if M == 0
             qmc_state = BinaryThermalState(H, 2000)
         else
-            qmc_state = BinaryGroundState(H, M)
+            qmc_state = BinaryGroundState(H, M, setup_trialstate(ts_type, δ, Ω, H.V))
         end
 
         rng = Xorshifts.Xoroshiro128Plus(seed)
@@ -125,7 +145,7 @@ function continue_simulation(path, sname, parsed_args)
             if parsed_args["runstats"] > 2
                 runstats2 = RunStatsHistogram(parsed_args["runstats"])
             elseif 0 < parsed_args["runstats"] <= 2
-                runstats2 = RunStats(parsed_args["runstats"])
+                runstats2 = RunStats()
             elseif parsed_args["runstats"] == 0
                 runstats2 = runstats
             else
@@ -279,6 +299,11 @@ end
         help = "Probability of performing a multibranch cluster update"
         arg_type = Float64
         default = 0.0
+
+    "--trialstate"
+        help = "Trial state type"
+        arg_type = String
+        default = "plus"
 
     "--runstats"
         help = """Number of histogram bins for runstats.

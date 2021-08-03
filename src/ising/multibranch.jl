@@ -17,13 +17,10 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
         # The first N elements of the linked list are the spins of the LHS basis state
         @inbounds for i in 1:Ns
             LegType[i] = spin_left[i]
+            Associates[i] = 0
             First[i] = i
             if H isa AbstractLTFIM
-                if qmc_state.trialstate isa AbstractProductState
-                    flipping_weights[i] = logweightchange(qmc_state.trialstate, spin_left[i])
-                else
-                    flipping_weights[i] = 0.0
-                end
+                flipping_weights[i] = 0
             end
         end
         idx = Ns
@@ -52,7 +49,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[site]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
+                flipping_weights[idx] = 0
             end
 
             if !isdiagonal(H, op)  # off-diagonal site operator
@@ -65,7 +62,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[site]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
+                flipping_weights[idx] = 0
             end
         elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = bond = getbondsites(H, op)
@@ -97,18 +94,10 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
                 LegType[v] = spins[mod(i, 1:num_sites)]
                 Associates[v] = v + 1
                 if H isa AbstractLTFIM
-                    flipping_weights[v] = 0.0
+                    flipping_weights[v] = op[2]
                 end
             end
             Associates[idx + num_legs] = idx + 1
-
-            if H isa AbstractLTFIM
-                lw1 = getlogweight(H.op_sampler, op)
-                flip_t = getbondtype(H, !spin1, !spin2)
-                lw2 = getlogweight(H.op_sampler, (flip_t, op[2] - op[1] + flip_t, site1, site2))
-                flipping_weights[idx + 1] = lw2 - lw1
-            end
-
             idx += num_legs
         end
     end
@@ -123,11 +112,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[i]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                if qmc_state.trialstate isa AbstractProductState
-                    flipping_weights[idx] = logweightchange(qmc_state.trialstate, spin_prop[i])
-                else
-                    flipping_weights[idx] = 0.0
-                end
+                flipping_weights[idx] = 0
             end
         end
     else
@@ -244,30 +229,42 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
 
             empty!(current_cluster)
             push!(current_cluster, i)
-            if qmc_state.trialstate isa AbstractProductState
-                lnA = flipping_weights[i]
-            else
-                lnA = 0.0
-            end
+            lnA = 0.0
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
 
                 if iszero(in_cluster[leg])
                     in_cluster[leg] = true  # add the new leg and flip it
-
                     push!(current_cluster, leg)
-                    lnA += flipping_weights[leg]
-
-                    # now check all associates and add them to the cluster
                     a = Associates[leg]
+
+                    a == 0 && continue
+                    # from this point on, we know we're on a bond op
+
+                    # TODO: check if this is inputting the spins in the correct order
+                    if isodd(leg - Ns)
+                        preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
+                        postflip_bond_type = getbondtype(H, !LegType[leg], !LegType[a])
+                    else
+                        preflip_bond_type = getbondtype(H, LegType[a], LegType[leg])
+                        postflip_bond_type = getbondtype(H, !LegType[a], !LegType[leg])
+                    end
+
+                    w = flipping_weights[leg]
+                    # now check all associates and add them to the cluster
                     while a != 0 && iszero(in_cluster[a])
                         push!(cstack, a)
                         in_cluster[a] = true
                         push!(current_cluster, a)
-                        lnA += flipping_weights[a]
                         a = Associates[a]
                     end
+
+                    lnA += (
+                        H.op_sampler.op_log_weights[w - preflip_bond_type + postflip_bond_type]
+                        - H.op_sampler.op_log_weights[w]
+                    )
+
                 end
             end
 

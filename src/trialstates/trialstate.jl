@@ -29,6 +29,7 @@ Base.haskey(d::BoolDict, key::Bool) = true
 Base.haskey(d::BoolDict, key) = false
 Base.getindex(d::BoolDict{T}, key::Bool) where T = (@inbounds d.a[key + 1])
 Base.get(d::BoolDict{T}, key::Bool) where T = (@inbounds d.a[key + 1])
+Base.isempty(d::BoolDict) = false
 
 
 struct ProductState{T, C, D <: AbstractDict{C, T}} <: AbstractProductState{T, C}
