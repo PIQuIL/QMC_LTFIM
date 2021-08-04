@@ -1,4 +1,4 @@
-function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, ::AbstractRunStats=NoStats())
+function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, ::AbstractRunStats=NoStats())
     Ns = nspins(H)
     spin_left = qmc_state.left_config
 
@@ -9,7 +9,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
     # A diagonal bond operator has non trivial associates for cluster building
     Associates = qmc_state.associates
 
-    flipping_weights = qmc_state.flipping_weights
+    op_indices = qmc_state.op_indices
 
     if qmc_state isa BinaryGroundState
         First = qmc_state.first
@@ -20,7 +20,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             Associates[i] = 0
             First[i] = i
             if H isa AbstractLTFIM
-                flipping_weights[i] = 0
+                op_indices[i] = 0
             end
         end
         idx = Ns
@@ -33,7 +33,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
     spin_prop = copyto!(qmc_state.propagated_config, spin_left)  # the propagated spin state
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
-    @inbounds for op in qmc_state.operator_list
+    @inbounds for (n, op) in enumerate(qmc_state.operator_list)
         if issiteoperator(H, op)
             site = getsite(H, op)
             # lower or left leg
@@ -49,7 +49,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[site]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0
+                op_indices[idx] = n
             end
 
             if !isdiagonal(H, op)  # off-diagonal site operator
@@ -62,7 +62,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[site]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0
+                op_indices[idx] = n
             end
         elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = bond = getbondsites(H, op)
@@ -94,7 +94,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
                 LegType[v] = spins[mod(i, 1:num_sites)]
                 Associates[v] = v + 1
                 if H isa AbstractLTFIM
-                    flipping_weights[v] = op[2] - op[1]
+                    op_indices[v] = n
                 end
             end
             Associates[idx + num_legs] = idx + 1
@@ -112,7 +112,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[i]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0
+                op_indices[idx] = 0
             end
         end
     else
@@ -133,8 +133,8 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
 
     return idx
 end
-multibranch_link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
-    multibranch_link_list_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
+    link_list_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
 
 
 #############################################################################
@@ -152,7 +152,7 @@ multibranch_link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()
                 s1, s2 = LegType[ocount], LegType[ocount+1]
                 t = getbondtype(H, s1, s2)
                 site1, site2 = getbondsites(H, op)
-                operator_list[n] = (t, op[2] - op[1] + t, site1, site2)
+                operator_list[n] = (t, getweightindex(H, op) - getoperatortype(H, op) + t, site1, site2)
             end
             ocount += 4
         elseif issiteoperator(H, op)
@@ -230,7 +230,7 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
     LinkList = qmc_state.linked_list
     LegType = qmc_state.leg_types
     Associates = qmc_state.associates
-    flipping_weights = qmc_state.flipping_weights
+    op_indices = qmc_state.op_indices
 
     in_cluster = fill!(qmc_state.in_cluster, false)
     cstack = qmc_state.cstack # This is the stack of vertices in a cluster
@@ -271,15 +271,17 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
 
                     a == 0 && continue
                     # from this point on, we know we're on a bond op
+                    op = operator_list[op_indices[leg]]
 
-                    # TODO: check if this is inputting the spins in the correct order
-                    if isodd(leg - Ns)
-                        preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
-                        postflip_bond_type = getbondtype(H, !LegType[leg], !LegType[a])
-                    else
-                        preflip_bond_type = getbondtype(H, LegType[a], LegType[leg])
-                        postflip_bond_type = getbondtype(H, !LegType[a], !LegType[leg])
-                    end
+                    # if isodd(leg - Ns)
+                    #     preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
+                    #     postflip_bond_type = getbondtype(H, !LegType[leg], !LegType[a])
+                    # else
+                    #     preflip_bond_type = getbondtype(H, LegType[a], LegType[leg])
+                    #     postflip_bond_type = getbondtype(H, !LegType[a], !LegType[leg])
+                    # end
+                    preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
+                    postflip_bond_type = getbondtype(H, !LegType[leg], !LegType[a])
 
                     # now check all associates and add them to the cluster
                     while a != 0 && iszero(in_cluster[a])
@@ -289,12 +291,11 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                         a = Associates[a]
                     end
 
-                    w = flipping_weights[leg]
+                    w = getweightindex(H, op) - getoperatortype(H, op)
                     lnA += (
                         H.op_sampler.op_log_weights[w + postflip_bond_type]
                         - H.op_sampler.op_log_weights[w + preflip_bond_type]
                     )
-
                 end
             end
 
@@ -415,7 +416,7 @@ multibranch_cluster_update!(lsize, qmc_state, H, runstats::AbstractRunStats=NoSt
 
 
 function multibranch_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
-    lsize = multibranch_link_list_update!(rng, qmc_state, H, runstats)
+    lsize = link_list_update!(rng, qmc_state, H, runstats)
     return multibranch_cluster_update!(rng, lsize, qmc_state, H, runstats)
 end
 multibranch_update!(qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats()) =

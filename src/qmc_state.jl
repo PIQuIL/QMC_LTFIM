@@ -13,7 +13,7 @@ abstract type AbstractQMCState{S<:AbstractStateType,T,K} end
 const AbstractGroundState = AbstractQMCState{Ground}
 const AbstractThermalState = AbstractQMCState{Thermal}
 
-struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{Float64, T}} <: AbstractQMCState{S,T,K}
+struct QMCState{S,T,K,V <: AbstractVector{T},P <: Union{Nothing, AbstractTrialState{Float64, T}}} <: AbstractQMCState{S,T,K}
     left_config::V
     right_config::V
     propagated_config::V
@@ -23,7 +23,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{Float64, T}
     linked_list::Vector{Int}
     leg_types::V
     associates::Vector{Int}
-    flipping_weights::Vector{Int}
+    op_indices::Vector{Int}
 
     in_cluster::V
     cstack::PushVector{Int, Vector{Int}}
@@ -32,12 +32,12 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{Float64, T}
     first::Vector{Int}
     last::Union{Vector{Int}, Nothing}
 
-    trialstate::Union{P, Nothing}
+    trialstate::P
 
     function QMCState{S, T, K, V, P}(
             left_config::V, right_config::V, propagated_config::V,
             operator_list,
-            link_list, leg_types, associates, flipping_weights,
+            link_list, leg_types, associates, op_indices,
             in_cluster, cstack, current_cluster,
             first, last, trialstate
         ) where {S, K, T, V, P}
@@ -53,7 +53,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{Float64, T}
         new{S, T, K, V, P}(
             left_config, right_config, propagated_config,
             operator_list,
-            link_list, leg_types, associates, flipping_weights,
+            link_list, leg_types, associates, op_indices,
             in_cluster, cstack, current_cluster,
             first, last, trialstate
         )
@@ -78,7 +78,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{Float64, T}
         link_list = zeros(Int, len)
         leg_types = similar(left_config, T, len)
         associates = zeros(Int, len)
-        flipping_weights = zeros(Int, len)
+        op_indices = zeros(Int, len)
 
         in_cluster = similar(left_config, T, len)
         cstack = PushVector{Int}(nextpow(2, length(left_config)))
@@ -89,7 +89,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: AbstractTrialState{Float64, T}
         args = [
             left_config, right_config, copy(left_config),
             operator_list,
-            link_list, leg_types, associates, flipping_weights,
+            link_list, leg_types, associates, op_indices,
             in_cluster, cstack, current_cluster,
             first, last, trialstate
         ]
@@ -145,7 +145,7 @@ function convert(::Type{QMCState{S′, T, K, V}}, state::QMCState{S, T, K, V}) w
     resize!(state.linked_list, len)
     resize!(state.leg_types, len)
     resize!(state.associates, len)
-    resize!(state.flipping_weights, len)
+    resize!(state.op_indices, len)
     resize!(state.in_cluster, len)
 
     args = [getfield(state, field) for field in fieldnames(typeof(state))]

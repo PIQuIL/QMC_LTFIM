@@ -1,12 +1,3 @@
-line_link_list_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats()) =
-    multibranch_link_list_update!(rng, qmc_state, H, runstats)
-line_link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
-    line_link_list_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
-
-
-#############################################################################
-
-
 function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
@@ -14,7 +5,7 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
     LinkList = qmc_state.linked_list
     LegType = qmc_state.leg_types
     Associates = qmc_state.associates
-    flipping_weights = qmc_state.flipping_weights
+    op_indices = qmc_state.op_indices
 
     in_cluster = fill!(qmc_state.in_cluster, false)
     cstack = qmc_state.cstack # This is the stack of vertices in a cluster
@@ -55,15 +46,24 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
 
                     a == 0 && continue
                     # from this point on, we know we're on a bond op
+                    op = operator_list[op_indices[leg]]
 
                     # TODO: check if this is inputting the spins in the correct order
-                    if isodd(leg - Ns)
-                        preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
-                        postflip_bond_type = getbondtype(H, !LegType[leg], LegType[a])
-                    else
-                        preflip_bond_type = getbondtype(H, LegType[a], LegType[leg])
-                        postflip_bond_type = getbondtype(H, LegType[a], !LegType[leg])
-                    end
+                    # if isodd(leg - Ns)
+                    #     preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
+                    #     postflip_bond_type = getbondtype(H, !LegType[leg], LegType[a])
+                    # else
+                    #     preflip_bond_type = getbondtype(H, LegType[a], LegType[leg])
+                    #     postflip_bond_type = getbondtype(H, LegType[a], !LegType[leg])
+                    # end
+                    # ^using circshift for this is too slow, gonna have to manually expand out
+                    #  a bunch of ifs for k-local (might need to do some metaprogramming!)
+                    # also, should short-circuit if order doesn't matter, i.e.
+                    #  the longitudinal field is uniform
+
+                    preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
+                    postflip_bond_type = getbondtype(H, !LegType[leg], LegType[a])
+
 
                     # now add the straight-through leg to the cluster
                     straight_thru = Associates[a]
@@ -71,7 +71,7 @@ function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMC
                     push!(cstack, straight_thru)
                     push!(current_cluster, straight_thru)
 
-                    w = flipping_weights[leg]
+                    w = getweightindex(H, op) - getoperatortype(H, op)
                     lnA += (
                         H.op_sampler.op_log_weights[w + postflip_bond_type]
                         - H.op_sampler.op_log_weights[w + preflip_bond_type]
@@ -117,7 +117,7 @@ line_cluster_update!(lsize, qmc_state, H, runstats::AbstractRunStats=NoStats()) 
 
 
 function line_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
-    lsize = line_link_list_update!(rng, qmc_state, H, runstats)
+    lsize = link_list_update!(rng, qmc_state, H, runstats)
     return line_cluster_update!(rng, lsize, qmc_state, H, runstats)
 end
 line_update!(qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats()) = line_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)

@@ -24,27 +24,31 @@ end
 ###############################################################################
 
 # TFIM ops:
-#  (-2,0,i,i) is an off-diagonal site operator h*sigma^x_i
-#  (-1,0,i,i) is a diagonal site operator h
+#  (-2,1,0,i) is an off-diagonal site operator h*sigma^x_i
+#  (-1,1,0,i) is a diagonal site operator h
 #  (0,0,0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
-#  (1,0,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
-@inline isdiagonal(::Type{<:AbstractIsing}, op::NTuple{4,Int}) = @inbounds (op[1] != -2)
-@inline isidentity(::Type{<:AbstractIsing}, op::NTuple{4,Int}) = @inbounds (op[1] == 0)
-@inline issiteoperator(::Type{<:AbstractIsing}, op::NTuple{4,Int}) = @inbounds (op[1] < 0)
-@inline isbondoperator(::Type{<:AbstractIsing}, op::NTuple{4,Int}) = @inbounds (op[1] > 0)
+#  (1,w,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
+@inline getoperatortype(::Type{<:AbstractIsing}, op::NTuple{4, Int}) = @inbounds op[1]
+@inline getoperatortype(H::AbstractIsing, op::NTuple{4, Int}) = getoperatortype(typeof(H), op)
+@inline getweightindex(::Type{<:AbstractIsing}, op::NTuple{4, Int}) = @inbounds op[2]
+@inline getweightindex(H::AbstractIsing, op::NTuple{4, Int}) = getweightindex(typeof(H), op)
+@inline getsite(::Type{<:AbstractIsing}, op::NTuple{4, Int}) = @inbounds op[end]
+@inline getsite(H::AbstractIsing, op::NTuple{4, Int}) = getsite(typeof(H), op)
+@inline getbondsites(::Type{<:AbstractIsing}, op::NTuple{4, Int}) = @inbounds (op[end-1], op[end])
+@inline getbondsites(H::AbstractIsing, op::NTuple{4, Int}) = getbondsites(typeof(H), op)
+
+@inline isdiagonal(H::Type{<:AbstractIsing}, op::NTuple{4,Int}) = (getoperatortype(H, op) != -2)
+@inline isidentity(H::Type{<:AbstractIsing}, op::NTuple{4,Int}) = (getoperatortype(H, op) == 0)
+@inline issiteoperator(H::Type{<:AbstractIsing}, op::NTuple{4,Int}) = (getoperatortype(H, op) < 0)
+@inline isbondoperator(H::Type{<:AbstractIsing}, op::NTuple{4,Int}) = (getoperatortype(H, op) > 0)
 @inline isdiagonal(H::AbstractIsing, op::NTuple{4,Int}) = isdiagonal(typeof(H), op)
 @inline isidentity(H::AbstractIsing, op::NTuple{4,Int}) = isidentity(typeof(H), op)
 @inline issiteoperator(H::AbstractIsing, op::NTuple{4,Int}) = issiteoperator(typeof(H), op)
 @inline isbondoperator(H::AbstractIsing, op::NTuple{4,Int}) = isbondoperator(typeof(H), op)
 
-@inline getsite(::Type{<:AbstractIsing}, op::NTuple{4, Int}) = @inbounds op[3]
-@inline getsite(H::AbstractIsing, op::NTuple{4, Int}) = getsite(typeof(H), op)
-@inline getbondsites(::Type{<:AbstractIsing}, op::NTuple{4, Int}) = @inbounds (op[3], op[4])
-@inline getbondsites(H::AbstractIsing, op::NTuple{4, Int}) = getbondsites(typeof(H), op)
-
 @inline makeidentity(::Type{<:AbstractIsing}) = (0, 0, 0, 0)
-@inline makediagonalsiteop(::Type{<:AbstractIsing}, i::Int) = (-1, 1, i, i)
-@inline makeoffdiagonalsiteop(::Type{<:AbstractIsing}, i::Int) = (-2, 1, i, i)
+@inline makediagonalsiteop(::Type{<:AbstractIsing}, i::Int) = (-1, 1, 0, i)
+@inline makeoffdiagonalsiteop(::Type{<:AbstractIsing}, i::Int) = (-2, 1, 0, i)
 @inline makeidentity(H::AbstractIsing) = makeidentity(typeof(H))
 @inline makediagonalsiteop(H::AbstractIsing, i::Int) = makediagonalsiteop(typeof(H), i)
 @inline makeoffdiagonalsiteop(H::AbstractIsing, i::Int) = makeoffdiagonalsiteop(typeof(H), i)
