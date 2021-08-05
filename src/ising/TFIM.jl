@@ -37,6 +37,10 @@ end
 @inline getbondsites(::Type{<:AbstractIsing}, op::NTuple{4, Int}) = @inbounds (op[end-1], op[end])
 @inline getbondsites(H::AbstractIsing, op::NTuple{4, Int}) = getbondsites(typeof(H), op)
 
+@inline convertoperatortype(H::Type{<:AbstractIsing}, op::NTuple{4, Int}, new_t::Int) =
+    @inbounds (new_t, getweightindex(H, op) - getoperatortype(H, op) + new_t, op[3], op[4])
+@inline convertoperatortype(H::AbstractIsing, op::NTuple{4, Int}, new_t::Int) = convertoperatortype(typeof(H), op, new_t)
+
 @inline isdiagonal(H::Type{<:AbstractIsing}, op::NTuple{4,Int}) = (getoperatortype(H, op) != -2)
 @inline isidentity(H::Type{<:AbstractIsing}, op::NTuple{4,Int}) = (getoperatortype(H, op) == 0)
 @inline issiteoperator(H::Type{<:AbstractIsing}, op::NTuple{4,Int}) = (getoperatortype(H, op) < 0)
@@ -55,10 +59,10 @@ end
 
 @inline getbondtype(::AbstractTFIM, s1::Bool, s2::Bool) = 1
 
-
 @inline diagonaloperator(::Type{<:AbstractIsing}) = Diagonal([-1, 1])
 @inline diagonaloperator(H::AbstractIsing) = interactionoperator(typeof(H))
 
+@inline getlogweight(H::AbstractIsing, op::NTuple{4, Int}) = @inbounds getlogweight(H.op_sampler, getweightindex(H, op))
 
 ###############################################################################
 

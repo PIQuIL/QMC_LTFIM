@@ -48,7 +48,7 @@ function init_mc_cli(parsed_args)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
     println("Running Rydberg(R_b=$R_b, Ω=$Ω, δ=$δ)")
-    H = Rydberg(nX, R_b, Ω, δ, isone(Dim) ? PBC : (false, true))
+    H = Rydberg(nX, R_b, Ω, δ; pbc = (isone(Dim) ? PBC : (false, true)))
     d = @ntuple Dim nX BC_name R_b Ω δ skip M
 
     mc_opts = @ntuple M MCS EQ_MCS skip
@@ -200,7 +200,7 @@ function groundstate(parsed_args)
     end
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
-        output = mc_step!(rng, qmc_state, H, runstats) do lsize, qmc_state, H
+        output = mc_step!(rng, qmc_state, H) do lsize, qmc_state, H
             spin_prop = sample(H, qmc_state)
             measurements[i, :] = spin_prop
 

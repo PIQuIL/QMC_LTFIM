@@ -151,8 +151,7 @@ link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
             if H isa AbstractLTFIM
                 s1, s2 = LegType[ocount], LegType[ocount+1]
                 t = getbondtype(H, s1, s2)
-                site1, site2 = getbondsites(H, op)
-                operator_list[n] = (t, getweightindex(H, op) - getoperatortype(H, op) + t, site1, site2)
+                operator_list[n] = convertoperatortype(H, op, t)
             end
             ocount += 4
         elseif issiteoperator(H, op)
@@ -303,8 +302,8 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
                     w = getweightindex(H, op) - getoperatortype(H, op)
                     preflip_bond_type, postflip_bond_type = update_kernel!(qmc_state, H, ccount, leg, a)
                     lnA += (
-                        H.op_sampler.op_log_weights[w + postflip_bond_type]
-                        - H.op_sampler.op_log_weights[w + preflip_bond_type]
+                        getlogweight(H.op_sampler, w + postflip_bond_type)
+                        - getlogweight(H.op_sampler, w + preflip_bond_type)
                     )
                 end
             end
