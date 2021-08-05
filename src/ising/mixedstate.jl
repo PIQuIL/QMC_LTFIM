@@ -41,16 +41,13 @@ function full_diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalSt
 
     @inbounds for (n, op) in enumerate(qmc_state.operator_list)
         if !isdiagonal(H, op)
-            spin_prop[op[2]] ⊻= 1  # spinflip
+            spin_prop[getsite(H, op)] ⊻= 1  # spinflip
         elseif !isidentity(H, op)
             if rand(rng)*P_norm < (num_ids + 1)
                 qmc_state.operator_list[n] = makeidentity(H)
                 num_ids += 1
             end
         else
-            # TODO: for the improved diagonal update, the thermal acceptance ratio
-            #       needs to be combined with the matrix element ratio; can't have it
-            #       be a two-step process
             if rand(rng)*num_ids < P_norm
                 op, _ = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
                 if op !== nothing

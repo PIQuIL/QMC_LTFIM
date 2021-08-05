@@ -18,10 +18,10 @@ mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstat
 mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats::AbstractRunStats=NoStats(); kw...) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats; kw...)
 
 
-Base.@propagate_inbounds alignment_check(H::AbstractTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
+Base.@propagate_inbounds alignment_check(H::AbstractTFIM, op::NTuple{K, Int}, s1::Bool, s2::Bool) where K =
     xor(isferromagnetic(H, getbondsites(H, op)), s1, s2)
 
-Base.@propagate_inbounds alignment_check(H::AbstractLTFIM, op::NTuple{3, Int}, s1::Bool, s2::Bool) =
+Base.@propagate_inbounds alignment_check(H::AbstractLTFIM, op::NTuple{K, Int}, s1::Bool, s2::Bool) where K =
     (op[1] == getbondtype(H, s1, s2))
 
 
@@ -45,14 +45,15 @@ function insert_diagonal_operator!(rng::AbstractRNG, qmc_state::BinaryQMCState{K
         qmc_state.operator_list[n] = op
         return op, zero(lw1)
     else
-        t, site1, site2 = op
+        t = @inbounds op[1]
+        site1, site2 = getbondsites(H, op)
         real_t = getbondtype(H, spin_prop[site1], spin_prop[site2])
         if t == real_t
             qmc_state.operator_list[n] = op
             return op, lw1
         end
 
-        op2 = (real_t, site1, site2)
+        op2 = @inbounds (real_t, op[2] - t + real_t, site1, site2)
         lw2 = getlogweight(H.op_sampler, op2)
 
         if rand(rng) < exp(lw2 - lw1)
@@ -78,7 +79,7 @@ function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H
 
     for (n, op) in enumerate(qmc_state.operator_list)
         if !isdiagonal(H, op)
-            @inbounds spin_prop[op[2]] ⊻= 1  # spinflip
+            @inbounds spin_prop[getsite(H, op)] ⊻= 1  # spinflip
         else
             op = nothing
             if !(runstats isa NoStats); i = -1; end

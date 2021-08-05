@@ -9,7 +9,7 @@ function sample(H::AbstractIsing, qmc_state::BinaryQMCState, M::Int=length(qmc_s
     @inbounds for i in 1:M
         op = operator_list[i]
         if !isdiagonal(H, op)
-            spin_prop[op[2]] ⊻= 1 #spinflip
+            spin_prop[getsite(H, op)] ⊻= 1 #spinflip
         end
     end
     return spin_prop
@@ -24,7 +24,7 @@ function simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState, r::Ordinal
 
     @inbounds for (n, op) in enumerate(operator_list)
         if !isdiagonal(H, op)
-            spin_prop[op[2]] ⊻= 1 #spinflip
+            spin_prop[getsite(H, op)] ⊻= 1 #spinflip
         end
         if n in r
             copy!(view(cell, :, c), spin_prop)
@@ -43,7 +43,7 @@ function staggered_magnetization(H::AbstractRydberg, spin_prop)
     M = 0.0
 
     if H.lattice isa Rectangle
-        spin_prop = reshape(spin_prop, H.lattice.nX, H.lattice.nY)
+        spin_prop = reshape(spin_prop, H.lattice.n1, H.lattice.n2)
 
         for j in axes(spin_prop, 2), i in axes(spin_prop, 1)
             M += ((-1)^(i + j)) * (spin_prop[i, j] - 0.5)
@@ -59,13 +59,13 @@ end
 
 function domain_wall_density(H::AbstractRydberg, spin_prop)
     # Currently set up for 1D + open boundary conditions
-    #= 
-    From https://www.nature.com/articles/nature24622: 
+    #=
+    From https://www.nature.com/articles/nature24622:
 
-    Domain walls are identified as either two neighbouring atoms 
+    Domain walls are identified as either two neighbouring atoms
     in the same state or a ground-state atom at the edge of the array.
     =#
-    
+
     L = nspins(H)
     dwd = 0.0
 

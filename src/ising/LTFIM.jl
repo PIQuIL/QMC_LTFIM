@@ -38,14 +38,14 @@ end
 #    spin_config(t) = divrem(t - 1, 2)
 @inline getbondtype(::AbstractLTFIM, s1::Bool, s2::Bool) = (s1<<1 | s2) + 1
 @inline spin_config(::AbstractLTFIM, t::Int)::NTuple{2,Int} = divrem(t - 1, 2)
-@inline spin_config(H::AbstractLTFIM, op::NTuple{3, Int}) = @inbounds spin_config(H, op[1])
+@inline spin_config(H::AbstractLTFIM, op::NTuple{4, Int}) = @inbounds spin_config(H, op[1])
 
 ###############################################################################
 
 function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::AbstractVector{T}; epsilon=0.0) where T
     @assert length(hx) == length(hz) == size(J, 1) == size(J, 2)
 
-    ops = Vector{NTuple{3, Int}}()
+    ops = Vector{NTuple{4, Int}}()
     p = Vector{T}()
     energy_shift = zero(T)
 
@@ -68,8 +68,8 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::Abst
         end
     end
 
-    Z = [-1 0; 0 1]  # since 0 maps to spin down
-    I = [1 0; 0 1]
+    Z = diagonaloperator(AbstractLTFIM)  # since 0 maps to spin down
+    I = Diagonal(LinearAlgebra.I, 2)
 
     # add fictitious bonds if there's a z-field on an "unbonded" site
     while any(i -> iszero(coordination_numbers[i]) && !iszero(hz[i]), 1:Ns)
@@ -103,10 +103,8 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::Abst
         energy_shift += C
 
         for (t, p_t) in enumerate(p_spins)
-            if !iszero(p_t)
-                push!(ops, (t, site1, site2))
-                push!(p, p_t)
-            end
+            push!(p, p_t)
+            push!(ops, (t, length(p), site1, site2))
         end
     end
 

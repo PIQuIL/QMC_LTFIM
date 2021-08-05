@@ -14,6 +14,7 @@ nbonds(H::Hamiltonian) = H.Nb
 @inline isidentity(H) = op -> isidentity(H, op)
 @inline issiteoperator(H) = op -> issiteoperator(H, op)
 @inline isbondoperator(H) = op -> isbondoperator(H, op)
+@inline getsite(H) = op -> getsite(H, op)
 @inline getbondsites(H) = op -> getbondsites(H, op)
 
 @inline diag_update_normalization(H::Hamiltonian) = normalization(H.op_sampler)
@@ -31,9 +32,9 @@ energy_density(S::Type{<:BinaryQMCState}, H::Hamiltonian, args...; kwargs...) =
 
 energy_density(qmc_state::BinaryQMCState, args...; kwargs...) = energy_density(typeof(qmc_state), args...; kwargs...)
 
-function BinaryGroundState(H::Hamiltonian{2,O}, M::Int) where {K, O <: AbstractOperatorSampler{K}}
+function BinaryGroundState(H::Hamiltonian{2,O}, M::Int, trialstate::Union{Nothing, AbstractTrialState}=nothing) where {K, O <: AbstractOperatorSampler{K}}
     z = zero(H)
-    BinaryGroundState(z, init_op_list(2*M, Val{K}()))::BinaryGroundState{K, typeof(z)}
+    BinaryGroundState(z, init_op_list(2*M, Val{K}()), trialstate)::BinaryGroundState{K, typeof(z)}
 end
 
 

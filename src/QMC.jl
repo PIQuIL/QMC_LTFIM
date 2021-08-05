@@ -38,10 +38,11 @@ export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         num_single_site_diag, num_single_site_offdiag,
         num_single_site, num_two_site_diag, autocorrelation, correlation_time, jackknife, bootstrap, mean_and_stderr,
         Lattice, OneDLattice, BravaisLattice, PolyLattice,
-        Triangle, Rectangle, Kagome, Ruby, Custom, lattice_bond_spins, distance_matrix, 
+        Triangle, Rectangle, Kagome, Ruby, Custom, lattice_bond_spins, distance_matrix,
         ProbabilityAlias, ProbabilityHeap, ProbabilityVector, probability_vector
 
 export Bootstrap, AbstractRunStats, NoStats, RunStats, RunStatsHistogram
+export ProductState, PlusState, AbstractProductState, AbstractTrialState
 
 @inline function pop!(v::PushVector)
     @boundscheck isempty(v) && throw(ArgumentError("vector must be non-empty"))
@@ -52,9 +53,10 @@ end
 
 
 include("lattices/bond_spins.jl")
-include("lattices/lattices.jl")
+include("lattices/Lattices.jl")
 include("probabilityvectors/probabilityvector.jl")
 include("operatorsamplers/operatorsampler.jl")
+include("trialstates/trialstate.jl")
 include("qmc_state.jl")
 include("hamiltonian.jl")
 include("operatorsamplers/improved_op_sampler.jl")

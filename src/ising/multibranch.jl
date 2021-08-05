@@ -17,7 +17,11 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
         # The first N elements of the linked list are the spins of the LHS basis state
         @inbounds for i in 1:Ns
             LegType[i] = spin_left[i]
+            Associates[i] = 0
             First[i] = i
+            if H isa AbstractLTFIM
+                flipping_weights[i] = 0
+            end
         end
         idx = Ns
     else
@@ -31,7 +35,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
     @inbounds for op in qmc_state.operator_list
         if issiteoperator(H, op)
-            site = op[2]
+            site = getsite(H, op)
             # lower or left leg
             idx += 1
             F = First[site]
@@ -45,7 +49,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[site]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
+                flipping_weights[idx] = 0
             end
 
             if !isdiagonal(H, op)  # off-diagonal site operator
@@ -58,7 +62,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[site]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
+                flipping_weights[idx] = 0
             end
         elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = bond = getbondsites(H, op)
@@ -90,18 +94,10 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
                 LegType[v] = spins[mod(i, 1:num_sites)]
                 Associates[v] = v + 1
                 if H isa AbstractLTFIM
-                    flipping_weights[v] = 0.0
+                    flipping_weights[v] = op[2] - op[1]
                 end
             end
             Associates[idx + num_legs] = idx + 1
-
-            if H isa AbstractLTFIM
-                lw1 = getlogweight(H.op_sampler, op)
-                flip_t = getbondtype(H, !spin1, !spin2)
-                lw2 = getlogweight(H.op_sampler, (flip_t, site1, site2))
-                flipping_weights[idx + 1] = lw2 - lw1
-            end
-
             idx += num_legs
         end
     end
@@ -116,7 +112,7 @@ function multibranch_link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState,
             LegType[idx] = spin_prop[i]
             Associates[idx] = 0
             if H isa AbstractLTFIM
-                flipping_weights[idx] = 0.0
+                flipping_weights[idx] = 0
             end
         end
     else
@@ -156,14 +152,14 @@ multibranch_link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()
                 s1, s2 = LegType[ocount], LegType[ocount+1]
                 t = getbondtype(H, s1, s2)
                 site1, site2 = getbondsites(H, op)
-                operator_list[n] = (t, site1, site2)
+                operator_list[n] = (t, op[2] - op[1] + t, site1, site2)
             end
             ocount += 4
         elseif issiteoperator(H, op)
             if LegType[ocount] == LegType[ocount+1]  # diagonal
-                operator_list[n] = makediagonalsiteop(H, op[2])
+                operator_list[n] = makediagonalsiteop(H, getsite(H, op))
             else  # off-diagonal
-                operator_list[n] = makeoffdiagonalsiteop(H, op[2])
+                operator_list[n] = makeoffdiagonalsiteop(H, getsite(H, op))
             end
             ocount += 2
         end
@@ -204,6 +200,26 @@ end
 end
 
 
+function trialstate_weight_change(qmc_state::BinaryGroundState, lsize::Int, Ns::Int, i::Int)
+    if !(qmc_state.trialstate isa AbstractProductState)
+        if i <= Ns
+            push!(qmc_state.trialstate.left_flips, i)
+        elseif i > (lsize - Ns)
+            push!(qmc_state.trialstate.right_flips, i - lsize + Ns)
+        end
+        return 0.0
+    else
+        if i <= Ns
+            return logweightchange(qmc_state.trialstate, qmc_state.left_config[i])
+        elseif i > (lsize - Ns)
+            return logweightchange(qmc_state.trialstate, qmc_state.right_config[i])
+        else
+            return 0.0
+        end
+    end
+end
+trialstate_weight_change(qmc_state::BinaryThermalState, lsize::Int, Ns::Int, i::Int) = 0.0
+
 #############################################################################
 
 
@@ -230,40 +246,62 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
             if !(runstats isa NoStats); ccount += 1; end
             push!(cstack, i)
             in_cluster[i] = true
+            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
+                left_flips = empty!(qmc_state.trialstate.left_flips)
+                right_flips = empty!(qmc_state.trialstate.right_flips)
+            end
 
             empty!(current_cluster)
             push!(current_cluster, i)
-            # flipping_weights[i] = 0 since we start clusters on a site op
             lnA = 0.0
+            if qmc_state isa BinaryGroundState
+                lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
+            end
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
 
                 if iszero(in_cluster[leg])
                     in_cluster[leg] = true  # add the new leg and flip it
-
                     push!(current_cluster, leg)
-                    lnA += flipping_weights[leg]
+                    if qmc_state isa BinaryGroundState
+                        lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
+                    end
+                    a = Associates[leg]
+
+                    a == 0 && continue
+                    # from this point on, we know we're on a bond op
+
+                    # TODO: check if this is inputting the spins in the correct order
+                    if isodd(leg - Ns)
+                        preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
+                        postflip_bond_type = getbondtype(H, !LegType[leg], !LegType[a])
+                    else
+                        preflip_bond_type = getbondtype(H, LegType[a], LegType[leg])
+                        postflip_bond_type = getbondtype(H, !LegType[a], !LegType[leg])
+                    end
 
                     # now check all associates and add them to the cluster
-                    a = Associates[leg]
                     while a != 0 && iszero(in_cluster[a])
                         push!(cstack, a)
                         in_cluster[a] = true
                         push!(current_cluster, a)
-                        lnA += flipping_weights[a]
                         a = Associates[a]
                     end
+
+                    w = flipping_weights[leg]
+                    lnA += (
+                        H.op_sampler.op_log_weights[w + postflip_bond_type]
+                        - H.op_sampler.op_log_weights[w + preflip_bond_type]
+                    )
+
                 end
             end
-            # any trial state considerations would go here
-            # if qmc_state isa BinaryGroundState
-            #         && trial state is not a |+>-state #short-circuit
-            #     get i in current_cluster <= Ns (left config)
-            #                           or >= lsize-Ns (right config)
-            #     query trial state for weight change of left & right
-            #         configs separately
-            #     accumulate weight changes into lnA
+
+            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
+                lnA += logweightchange(qmc_state.trialstate, qmc_state.left_config, left_flips)
+                lnA += logweightchange(qmc_state.trialstate, qmc_state.right_config, right_flips)
+            end
 
             # heat bath: inv(1 + inv(A))) = W2/(W1 + W2) not good
             # metropolis: A (equiv to min(A, 1)) pretty good
