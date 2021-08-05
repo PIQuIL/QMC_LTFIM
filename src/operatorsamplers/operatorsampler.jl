@@ -3,14 +3,6 @@ firstindex(::AbstractOperatorSampler) = 1
 lastindex(os::AbstractOperatorSampler) = length(os)
 @inline normalization(os::AbstractOperatorSampler) = normalization(os.pvec)
 
-# function getlogweight(os::AbstractOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T}
-#     return @inbounds os.op_log_weights[conv_op_to_idx(op, os.strides, os.shifts)]
-# end
-
-###############################################################################
-include("operatordict.jl")
-###############################################################################
-
 struct OperatorSampler{K, T, P} <: AbstractOperatorSampler{K, T, P}
     operators::Vector{NTuple{K, Int}}
     pvec::P
@@ -44,4 +36,4 @@ end
 
 ##############################################################################
 
-include("hierarchical_op_sampler.jl")
+# include("hierarchical_op_sampler.jl")
