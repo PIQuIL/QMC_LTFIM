@@ -221,9 +221,39 @@ end
 trialstate_weight_change(qmc_state::BinaryThermalState, lsize::Int, Ns::Int, i::Int) = 0.0
 
 #############################################################################
+@inline function multibranch_kernel!(qmc_state::BinaryQMCState, H::AbstractIsing, ccount::Int, leg::Int, a::Int)
+    Ns = nspins(H)
+    LegType, Associates = qmc_state.leg_types, qmc_state.associates
+    in_cluster, cstack, current_cluster = qmc_state.in_cluster, qmc_state.cstack, qmc_state.current_cluster
 
+    # TODO: check if this is inputting the spins in the correct order
+    ll, la = LegType[leg], LegType[a]
+    if isodd(leg - Ns)
+        preflip_bond_type = getbondtype(H, ll, la)
+        postflip_bond_type = getbondtype(H, !ll, !la)
+    else
+        preflip_bond_type = getbondtype(H, la, ll)
+        postflip_bond_type = getbondtype(H, !la, !ll)
+    end
 
-function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
+    # now check all associates and add them to the cluster
+    while a != 0 && iszero(in_cluster[a])
+        push!(cstack, a)
+        in_cluster[a] = ccount
+        push!(current_cluster, a)
+        a = Associates[a]
+    end
+
+    return preflip_bond_type, postflip_bond_type
+end
+
+multibranch_acceptance(H::AbstractIsing, lnA::T) where {T <: Real} =
+    haslongitudinalfield(H) ? exp(min(lnA, zero(lnA))) : T(0.5)
+multibranch_acceptance(H::AbstractRydberg, lnA::T) where {T <: Real} = exp(min(lnA, zero(T)))
+# in the TFIM case, acceptance rate is exactly 1 so we set it to 1/2 to ensure ergodicity
+multibranch_acceptance(H::AbstractTFIM, lnA::T) where {T <: Real} = T(0.5)
+
+function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance::Function, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
 
@@ -232,20 +262,18 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
     Associates = qmc_state.associates
     op_indices = qmc_state.op_indices
 
-    in_cluster = fill!(qmc_state.in_cluster, false)
+    in_cluster = fill!(qmc_state.in_cluster, 0)
     cstack = qmc_state.cstack # This is the stack of vertices in a cluster
     current_cluster = qmc_state.current_cluster
 
-    if !(runstats isa NoStats)
-        ccount = 0  # cluster number counter
-    end
+    ccount = 0  # cluster number counter
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
-        if (iszero(in_cluster[i]) && Associates[i] == 0)
-            if !(runstats isa NoStats); ccount += 1; end
+        if iszero(in_cluster[i]) && iszero(Associates[i])
+            ccount += 1
             push!(cstack, i)
-            in_cluster[i] = true
+            in_cluster[i] = ccount
             if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
                 left_flips = empty!(qmc_state.trialstate.left_flips)
                 right_flips = empty!(qmc_state.trialstate.right_flips)
@@ -262,7 +290,7 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                 leg = LinkList[pop!(cstack)]
 
                 if iszero(in_cluster[leg])
-                    in_cluster[leg] = true  # add the new leg and flip it
+                    in_cluster[leg] = ccount  # add the new leg and flip it
                     push!(current_cluster, leg)
                     if qmc_state isa BinaryGroundState
                         lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
@@ -272,26 +300,8 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                     a == 0 && continue
                     # from this point on, we know we're on a bond op
                     op = operator_list[op_indices[leg]]
-
-                    # if isodd(leg - Ns)
-                    #     preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
-                    #     postflip_bond_type = getbondtype(H, !LegType[leg], !LegType[a])
-                    # else
-                    #     preflip_bond_type = getbondtype(H, LegType[a], LegType[leg])
-                    #     postflip_bond_type = getbondtype(H, !LegType[a], !LegType[leg])
-                    # end
-                    preflip_bond_type = getbondtype(H, LegType[leg], LegType[a])
-                    postflip_bond_type = getbondtype(H, !LegType[leg], !LegType[a])
-
-                    # now check all associates and add them to the cluster
-                    while a != 0 && iszero(in_cluster[a])
-                        push!(cstack, a)
-                        in_cluster[a] = true
-                        push!(current_cluster, a)
-                        a = Associates[a]
-                    end
-
                     w = getweightindex(H, op) - getoperatortype(H, op)
+                    preflip_bond_type, postflip_bond_type = update_kernel!(qmc_state, H, ccount, leg, a)
                     lnA += (
                         H.op_sampler.op_log_weights[w + postflip_bond_type]
                         - H.op_sampler.op_log_weights[w + preflip_bond_type]
@@ -304,22 +314,12 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
                 lnA += logweightchange(qmc_state.trialstate, qmc_state.right_config, right_flips)
             end
 
-            # heat bath: inv(1 + inv(A))) = W2/(W1 + W2) not good
-            # metropolis: A (equiv to min(A, 1)) pretty good
-            # scaled metropolis: min(A, 1)/2 also good
-            # |M| and M^2 seem to converge better to 99% CIs
-            #  when using metropolis (not the scaled variant)
-
-            # in the TFIM case, acceptance rate is exactly 1
-            #   so we set it to 1/2 to ensure ergodicity
-            A = (H isa AbstractRydberg || haslongitudinalfield(H)) ? exp(min(lnA, zero(lnA))) : 0.5
-            flip = rand(rng) < A
-
+            A = acceptance(H, lnA)
             fit!(runstats, :cluster_update_accept, A)
 
-            if flip
-                @inbounds for i in current_cluster
-                    LegType[i] ⊻= 1  # spinflip
+            if rand(rng) < A
+                @inbounds for j in current_cluster
+                    LegType[j] ⊻= 1  # spinflip
                 end
             end
 
@@ -331,7 +331,6 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
         fit!(runstats, :cluster_count, float(ccount))
     end
 
-
     # map back basis states and operator list
     ocount = _map_back_basis_states!(rng, lsize, qmc_state, H)
     _map_back_operator_list!(ocount, qmc_state, H)
@@ -339,6 +338,9 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
     return lsize
 end
 
+function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
+    return cluster_update!(rng, multibranch_kernel!, multibranch_acceptance, lsize, qmc_state, H, runstats)
+end
 
 function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractTFIM, runstats::AbstractRunStats=NoStats())
     Ns = nspins(H)

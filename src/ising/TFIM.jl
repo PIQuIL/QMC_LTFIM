@@ -123,8 +123,8 @@ function TFIM(bond_spin, Ns::Int, Nb::Int, hx::Float64, J::Float64)
 end
 
 abstract type HXField; end
-struct ConstantHX; end
-struct VaryingHX; end
+struct ConstantHX <: HXField; end
+struct VaryingHX <: HXField; end
 
 hxfield(::AbstractIsing) = VaryingHX()
 hxfield(::NearestNeighbourTFIM) = ConstantHX()

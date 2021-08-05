@@ -25,7 +25,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: Union{Nothing, AbstractTrialSt
     associates::Vector{Int}
     op_indices::Vector{Int}
 
-    in_cluster::V
+    in_cluster::Vector{Int}
     cstack::PushVector{Int, Vector{Int}}
     current_cluster::PushVector{Int, Vector{Int}}
 
@@ -80,12 +80,12 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: Union{Nothing, AbstractTrialSt
         associates = zeros(Int, len)
         op_indices = zeros(Int, len)
 
-        in_cluster = similar(left_config, T, len)
+        in_cluster = zeros(Int, len)
         cstack = PushVector{Int}(nextpow(2, length(left_config)))
         current_cluster = PushVector{Int}(nextpow(2, length(left_config)))
 
         first = zeros(Int, length(left_config))
-        last =  (S isa Type{<:Thermal}) ? copy(first) : nothing
+        last = (S isa Type{<:Thermal}) ? copy(first) : nothing
         args = [
             left_config, right_config, copy(left_config),
             operator_list,
