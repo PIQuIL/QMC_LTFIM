@@ -302,7 +302,7 @@ end
 # function BlockadeRydberg(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
 # end
 
-function Rydberg(dims::NTuple{D, Int}, R_b, Ω, δ, pbc=true) where D
+function Rydberg(dims::NTuple{D, Int}, R_b, Ω, δ; pbc=true) where D
     if D == 1
         lat = Chain(dims[1], 1.0, pbc)
     elseif D == 2
