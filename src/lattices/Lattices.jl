@@ -340,7 +340,6 @@ function create_distance_matrix(n1::Int, n2::Int, a1::Vector{Float64}, a2::Vecto
         ys = []
     end
     
-
     # NOT ENDING ON num_cells-1 BECAUSE WE NEED INTER-CELL BONDS
     for i in 1:num_cells
         cellp1_x = rem(i, n1) > 0 ? rem(i, n1) - 1 : n1 - 1
@@ -362,14 +361,12 @@ function create_distance_matrix(n1::Int, n2::Int, a1::Vector{Float64}, a2::Vecto
             for site_i in 1:length(r)
                 site_num_i = site_i + length(r)*(i-1)
                 ri = r[site_i] + cell1
-
                 
                 if plotting
                     push!(xs, ri[1])
                     push!(ys, ri[2])
                 end
                 
-
                 for site_j in 1:length(r)
                     site_num_j = site_j + length(r)*(j-1)
 
@@ -389,57 +386,81 @@ function create_distance_matrix(n1::Int, n2::Int, a1::Vector{Float64}, a2::Vecto
 
                     Δ = ri - rj
                     Δx, Δy = Δ[1], Δ[2]
+                    d_np = sqrt(Δx^2 + Δy^2)
 
                     # checks for PBCs
                     if PBC1 & PBC2
-                        # non-periodic
-                        d_np = sqrt(Δx^2 + Δy^2)
+                        # periodic in both lattice directions
+                        # essentially, find smallest distance
 
-                        # periodic in a1 only
-                        rj[1] -= a1[1]*n1
+                        # distances for periodicity in a1
+                        rj .+= a1 * n1
                         Δ = ri - rj
                         Δx, Δy = Δ[1], Δ[2]
-                        d_p1 = sqrt(Δx^2 + Δy^2)
+                        d_1 = sqrt(Δx^2 + Δy^2)
 
-                        # periodic in a1 and a2
-                        rj[1] -= a2_length*n2*cos(θ)
-                        rj[2] -= a2_length*n2*sin(θ)
+                        rj .-= 2 * a1 * n1
                         Δ = ri - rj
                         Δx, Δy = Δ[1], Δ[2]
-                        d_p12 = sqrt(Δx^2 + Δy^2)
+                        d_2 = sqrt(Δx^2 + Δy^2)
 
-                        # periodic in a2 only
-                        rj[1] += a1[1]*n1
-                        Δ = ri .- rj
+                        # undo change
+                        rj .+= a1 * n1
+
+                        # distances for periodicity in a2
+                        rj .+= a2 * n1
+                        Δ = ri - rj
                         Δx, Δy = Δ[1], Δ[2]
-                        d_p2 = sqrt(Δx^2 + Δy^2)
+                        d_3 = sqrt(Δx^2 + Δy^2)
+
+                        rj .-= 2 * a2 * n1
+                        Δ = ri - rj
+                        Δx, Δy = Δ[1], Δ[2]
+                        d_4 = sqrt(Δx^2 + Δy^2)
+
+                        # undo change
+                        rj .+= a2 * n1
 
                         # take the minimum distance
-                        d = min(d_np, d_p1, d_p2, d_p12)
+                        d = min(d_np, d_1, d_2, d_3, d_4)
 
                     elseif PBC1 & !PBC2
-                        if abs(Δx) > 0.5*n1*a1[1]
-                            rj[1] -= a1[1]*n1
-                            Δ = ri - rj
-                            Δx, Δy = Δ[1], Δ[2]
-                            d = sqrt(Δx^2 + Δy^2)
-                        end
+                        # distances for periodicity in a1
+                        rj .+= a1 * n1
+                        Δ = ri - rj
+                        Δx, Δy = Δ[1], Δ[2]
+                        d_1 = sqrt(Δx^2 + Δy^2)
+
+                        rj .-= 2 * a1 * n1
+                        Δ = ri - rj
+                        Δx, Δy = Δ[1], Δ[2]
+                        d_2 = sqrt(Δx^2 + Δy^2)
+
+                        # undo change
+                        rj .+= a1 * n1
+
+                        d = min(d_np, d_1, d_2)
 
                     elseif PBC2 & !PBC1
-                        # rotate lattice by -θ to lay along a2
-                        yi = ri[1]*cos(θ) + ri[2]*sin(θ)
-                        yj = rj[1]*cos(θ) + rj[2]*sin(θ)
+                        # distances for periodicity in a2
+                        rj .+= a2 * n1
+                        Δ = ri - rj
+                        Δx, Δy = Δ[1], Δ[2]
+                        d_3 = sqrt(Δx^2 + Δy^2)
 
-                        if abs(yi - yj) > 0.5*n2*a2_length
-                            rj[1] -= a2_length*n2*cos(θ)
-                            rj[2] -= a2_length*n2*sin(θ)
-                            Δ = ri - rj
-                            Δx, Δy = Δ[1], Δ[2]
-                            d = sqrt(Δx^2 + Δy^2)
-                        end
+                        rj .-= 2 * a2 * n1
+                        Δ = ri - rj
+                        Δx, Δy = Δ[1], Δ[2]
+                        d_4 = sqrt(Δx^2 + Δy^2)
+
+                        # undo change
+                        rj .+= a2 * n1
+
+                        # take the minimum distance
+                        d = min(d_np, d_3, d_4)
 
                     else
-                        d = sqrt(Δx^2 + Δy^2)
+                        d = d_np
                     end
 
                     dij[site_num_i, site_num_j] = d <= trunc ? d : 0.0
@@ -449,7 +470,6 @@ function create_distance_matrix(n1::Int, n2::Int, a1::Vector{Float64}, a2::Vecto
         end
     end
 
-    
     if plotting
         plot(xs, ys, seriestype = :scatter)
         savefig(plotname * ".png")
