@@ -57,25 +57,9 @@ function ImprovedOperatorSampler(H::Type{<:Hamiltonian{2, <:AbstractOperatorSamp
     return ImprovedOperatorSampler{4, T, typeof(pvec)}(max_mel_ops, pvec, op_log_weights)
 end
 
-@inline getlogweight(os::ImprovedOperatorSampler{K, T}, op::NTuple{K, Int}) where {K, T} =
-    @inbounds os.op_log_weights[op[2]]
+@inline rand(rng::AbstractRNG, os::ImprovedOperatorSampler) = @inbounds os.operators[rand(rng, os.pvec)]
 
-@inline rand(rng::AbstractRNG, os::ImprovedOperatorSampler{K}) where K =
-    @inbounds os.operators[rand(rng, os.pvec)]
-
-function rand_with_logweight(rng::AbstractRNG, os::ImprovedOperatorSampler{K}) where K
-    i = rand(rng, os.pvec)
-    op = @inbounds os.operators[i]
-    return @inbounds (op, os.op_log_weights[op[2]])
-end
-
-
-function rand_with_weight(rng::AbstractRNG, os::ImprovedOperatorSampler{K}) where K
-    i = rand(rng, os.pvec)
-    # can retrieve logweight straight from pvec since the indices line up
-    # in this case; skips the index computation for op_sampler's getlogweight
-    return @inbounds (os.operators[i], getweight(os.pvec, i))
-end
+Base.@propagate_inbounds getlogweight(os::ImprovedOperatorSampler, w::Int) = os.op_log_weights[w]
 
 @inline length(os::ImprovedOperatorSampler) = length(os.operators)
 
