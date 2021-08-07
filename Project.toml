@@ -61,6 +61,7 @@ Query = "1.0"
 RandomNumbers = "1.4"
 StatsPlots = "0.14"
 TOML = "1.0"
+Tables = "1"
 julia = "1.5"
 
 [extras]
