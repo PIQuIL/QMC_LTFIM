@@ -1,5 +1,9 @@
 using QMC
 using LinearAlgebra
+using JSON
+
+using CSV
+using Tables
 
 function make_hamiltonian_matrix(H::Union{AbstractLTFIM, AbstractTFIM})
     if !haslongitudinalfield(H)
@@ -89,25 +93,75 @@ function make_hamiltonian_matrix(H::AbstractRydberg)
 end
 
 R_b = 1.7
-δ = 3.3
+delta = 3.3
 Ω = 1.0
 n1 = 2
 n2 = 2
 t = 1.0
-p = false
 
-lat = Kagome(t, n1, n2, p; trunc=2.0)
-H = Rydberg(lat, R_b, Ω, δ)
+
+lat = Kagome(t, n1, n2, (false, true); trunc=Inf)
+@show lat.distance_matrix
+CSV.write("BC=(false,true).csv", Tables.table(lat.distance_matrix), writeheader=false)
+println()
+lat = Kagome(t, n1, n2, (true, false); trunc=Inf)
+CSV.write("BC=(true,false).csv", Tables.table(lat.distance_matrix), writeheader=false)
+@show lat.distance_matrix
+println()
+lat = Kagome(t, n1, n2, (true, true); trunc=Inf)
+CSV.write("BC=(true,true).csv", Tables.table(lat.distance_matrix), writeheader=false)
+@show lat.distance_matrix
+println()
+
+@show R_b, delta
+H = Rydberg(lat, R_b, Ω, delta)
 N = nspins(H)
 
+Dim = 2^N
+
+SumSz = dropdims(sum(@. (2 * (((0:Dim-1) >> (0:N-1)') & 1) - 1); dims=2); dims=2)
+H_mat = make_hamiltonian_matrix(H)
+diag = eigen(H_mat)
+
+magnetization = SumSz' * abs2.(diag.vectors)
+
+mag_density = magnetization[1] / N
+E_density = diag.values[1] / N
+@show E_density
+@show mag_density
+
+d = Dict{Symbol, Float64}(:energy_density => E_density, :mag_density => mag_density)
+open("../../qmc_data/kagome_nematic_staggered/exact_energy_magnetization_Rb=$(R_b)_delta=$(delta).json", "w") do f
+    JSON.print(f, Dict([k => d[k] for k in keys(d)]), 2)
+end
+
+println()
+
 #=
-for i in 1:(N-1)
-    for j in (i+1):N
-        println("i,j = $i, $j,   d = ", lat.distance_matrix[i,j])
+for R_b in R_bs
+    for delta in δ
+        @show R_b, delta
+        H = Rydberg(lat, R_b, Ω, delta)
+        N = nspins(H)
+
+        Dim = 2^N
+
+        SumSz = dropdims(sum(@. (2 * (((0:Dim-1) >> (0:N-1)') & 1) - 1); dims=2); dims=2)
+        H_mat = make_hamiltonian_matrix(H)
+        diag = eigen(H_mat)
+        
+        magnetization = SumSz' * abs2.(diag.vectors)
+
+        mag_density = magnetization[1] / N
+        E_density = diag.values[1] / N
+
+        d = Dict{Symbol, Float64}(:energy_density => E_density, :mag_density => mag_density)
+        open("../../qmc_data/kagome_nematic_staggered/exact_energy_magnetization_Rb=$(R_b)_delta=$(delta).json", "w") do f
+            JSON.print(f, Dict([k => d[k] for k in keys(d)]), 2)
+        end
+
+        println()
+
     end
 end
 =#
-
-H_mat = make_hamiltonian_matrix(H)
-diag = eigen(H_mat)
-@show diag.values[1] / N

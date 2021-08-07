@@ -57,6 +57,37 @@ function staggered_magnetization(H::AbstractRydberg, spin_prop)
     return M / nspins(H)
 end
 
+function kagome_nematic(lattice::Kagome, sublattice::Vector{Int}, spin_prop)
+    # https://www.pnas.org/content/pnas/118/4/e2015785118.full.pdf
+    # page 4  
+
+    N2 = lattice.n2 * 2
+    Nc = 3 * (N2^2)
+    phase = exp((2*π/3)*im)
+    spin_prop_A = spin_prop[findall(x -> x == 1, sublattice)]
+    spin_prop_B = spin_prop[findall(x -> x == 2, sublattice)]
+    spin_prop_C = spin_prop[findall(x -> x == 0, sublattice)]
+
+    Φ = sum(spin_prop_A) + phase * sum(spin_prop_B) + phase^2 * sum(spin_prop_C)
+    Φ *= 3/Nc
+
+    return Φ
+end
+
+function correlation_functions(spin_prop)
+    N = size(spin_prop)[1]
+
+    correlations = zeros(N, N)
+    for i in 1:(N-1)
+        for j in (i+1):N
+            correlations[i,j] = spin_prop[i] * spin_prop[j]
+        end
+    end
+
+    return correlations
+end
+
+
 function domain_wall_density(H::AbstractRydberg, spin_prop)
     # Currently set up for 1D + open boundary conditions
     #=
