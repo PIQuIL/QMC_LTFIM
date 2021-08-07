@@ -27,6 +27,7 @@ function resize_op_list!(qmc_state::BinaryThermalState{K}, H::AbstractIsing, new
     resize!(qmc_state.linked_list, len)
     resize!(qmc_state.leg_types, len)
     resize!(qmc_state.associates, len)
+    resize!(state.leg_sites, len)
     resize!(qmc_state.op_indices, len)
     resize!(qmc_state.in_cluster, len)
 end

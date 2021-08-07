@@ -3,12 +3,13 @@
 #       into the body of the cluster update
 @inline function line_kernel!(qmc_state::BinaryQMCState, H::AbstractIsing, ccount::Int, leg::Int, a::Int)
     Ns = nspins(H)
-    LegType, Associates = qmc_state.leg_types, qmc_state.associates
+    LegType, Associates, leg_sites = qmc_state.leg_types, qmc_state.associates, qmc_state.leg_sites
     in_cluster, cstack, current_cluster = qmc_state.in_cluster, qmc_state.cstack, qmc_state.current_cluster
 
+    @inbounds ll, la = LegType[leg], LegType[a]
+    @inbounds sl, sa = leg_sites[leg], leg_sites[a]
     # TODO: check if this is inputting the spins in the correct order
-    ll, la = LegType[leg], LegType[a]
-    if isodd(leg - Ns)
+    if sl > sa
         preflip_bond_type = getbondtype(H, ll, la)
         postflip_bond_type = getbondtype(H, !ll, la)
     else
@@ -17,12 +18,13 @@
     end
     # ^using circshift for this is too slow, gonna have to manually expand out
     #  a bunch of ifs for k-local (might need to do some metaprogramming!)
+    # using SVectors and sortperm should work (it's super fast!) and is easier
     # also, should short-circuit if order doesn't matter, i.e.
     #  the longitudinal field is uniform + coordination numbers are all equal
 
     # now add the straight-through leg to the cluster
-    straight_thru = Associates[a]
-    in_cluster[straight_thru] = ccount
+    @inbounds straight_thru = Associates[a]
+    @inbounds in_cluster[straight_thru] = ccount
     push!(cstack, straight_thru)
     push!(current_cluster, straight_thru)
 

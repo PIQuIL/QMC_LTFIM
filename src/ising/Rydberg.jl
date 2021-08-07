@@ -73,7 +73,7 @@ end
 # function BlockadeRydberg(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
 # end
 
-function Rydberg(dims::NTuple{D, Int}, R_b, Ω, δ; pbc=true) where D
+function Rydberg(dims::NTuple{D, Int}, R_b, Ω, δ; pbc=true, trunc::Int=0) where D
     if D == 1
         lat = Chain(dims[1], 1.0, pbc)
     elseif D == 2
@@ -81,18 +81,39 @@ function Rydberg(dims::NTuple{D, Int}, R_b, Ω, δ; pbc=true) where D
     else
         error("Unsupported number of dimensions. 1- and 2-dimensional lattices are supported.")
     end
-    return Rydberg(lat, R_b, Ω, δ)
+    return Rydberg(lat, R_b, Ω, δ; trunc=trunc)
 end
 
 
-function Rydberg(lat::Lattice, R_b::Float64, Ω::Float64, δ::Float64)
+function Rydberg(lat::Lattice, R_b::Float64, Ω::Float64, δ::Float64; trunc::Int=0)
     Ns = nspins(lat)
     V = zeros(Float64, Ns, Ns)
+
+    if trunc > 0
+        _dist = sort!(collect(Set(lat.distance_matrix)))
+        uniq_dist = Vector{Float64}(undef, 0)
+        for i in eachindex(_dist)
+            if length(uniq_dist) == 0
+                push!(uniq_dist, _dist[i])
+            elseif !(last(uniq_dist) ≈ _dist[i])
+                push!(uniq_dist, _dist[i])
+            end
+        end
+        smallest_k = sort!(uniq_dist)[1:(trunc+1)]
+        dist = copy(lat.distance_matrix)
+        for i in eachindex(dist)
+            if dist[i] > last(smallest_k) && !(dist[i] ≈ last(smallest_k))
+                dist[i] = zero(dist[i])
+            end
+        end
+    else
+        dist = lat.distance_matrix
+    end
 
     @inbounds for i in 1:(Ns-1)
         for j in (i+1):Ns
             # a zero entry in distance_matrix means there should be no bond
-            V[i, j] = lat.distance_matrix[i, j] != 0.0 ? Ω * (R_b / lat.distance_matrix[i, j])^6 : 0.0
+            V[i, j] = dist[i, j] != 0.0 ? Ω * (R_b / dist[i, j])^6 : 0.0
         end
     end
     V = UpperTriangular(triu!(V, 1))

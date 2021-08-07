@@ -10,6 +10,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
     Associates = qmc_state.associates
 
     op_indices = qmc_state.op_indices
+    leg_sites = qmc_state.leg_sites
 
     if qmc_state isa BinaryGroundState
         First = qmc_state.first
@@ -21,6 +22,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
             First[i] = i
             if H isa AbstractLTFIM
                 op_indices[i] = 0
+                leg_sites[i] = 0
             end
         end
         idx = Ns
@@ -50,6 +52,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
             Associates[idx] = 0
             if H isa AbstractLTFIM
                 op_indices[idx] = n
+                leg_sites[idx] = 1
             end
 
             if !isdiagonal(H, op)  # off-diagonal site operator
@@ -63,6 +66,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
             Associates[idx] = 0
             if H isa AbstractLTFIM
                 op_indices[idx] = n
+                leg_sites[idx] = 1
             end
         elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = bond = getbondsites(H, op)
@@ -91,10 +95,12 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
 
             @simd for i in 1:num_legs
                 v = idx + i
-                LegType[v] = spins[mod(i, 1:num_sites)]
+                m = mod(i, 1:num_sites)
+                LegType[v] = spins[m]
                 Associates[v] = v + 1
                 if H isa AbstractLTFIM
                     op_indices[v] = n
+                    leg_sites[v] = m
                 end
             end
             Associates[idx + num_legs] = idx + 1
@@ -113,6 +119,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
             Associates[idx] = 0
             if H isa AbstractLTFIM
                 op_indices[idx] = 0
+                leg_sites[idx] = 0
             end
         end
     else
@@ -222,12 +229,13 @@ trialstate_weight_change(qmc_state::BinaryThermalState, lsize::Int, Ns::Int, i::
 #############################################################################
 @inline function multibranch_kernel!(qmc_state::BinaryQMCState, H::AbstractIsing, ccount::Int, leg::Int, a::Int)
     Ns = nspins(H)
-    LegType, Associates = qmc_state.leg_types, qmc_state.associates
+    LegType, Associates, leg_sites = qmc_state.leg_types, qmc_state.associates, qmc_state.leg_sites
     in_cluster, cstack, current_cluster = qmc_state.in_cluster, qmc_state.cstack, qmc_state.current_cluster
 
+    @inbounds ll, la = LegType[leg], LegType[a]
+    @inbounds sl, sa = leg_sites[leg], leg_sites[a]
     # TODO: check if this is inputting the spins in the correct order
-    ll, la = LegType[leg], LegType[a]
-    if isodd(leg - Ns)
+    if sl > sa
         preflip_bond_type = getbondtype(H, ll, la)
         postflip_bond_type = getbondtype(H, !ll, !la)
     else
@@ -236,7 +244,7 @@ trialstate_weight_change(qmc_state::BinaryThermalState, lsize::Int, Ns::Int, i::
     end
 
     # now check all associates and add them to the cluster
-    while a != 0 && iszero(in_cluster[a])
+    @inbounds while a != 0 && iszero(in_cluster[a])
         push!(cstack, a)
         in_cluster[a] = ccount
         push!(current_cluster, a)

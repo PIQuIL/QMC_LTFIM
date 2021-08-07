@@ -23,6 +23,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: Union{Nothing, AbstractTrialSt
     linked_list::Vector{Int}
     leg_types::V
     associates::Vector{Int}
+    leg_sites::Vector{Int}
     op_indices::Vector{Int}
 
     in_cluster::Vector{Int}
@@ -37,7 +38,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: Union{Nothing, AbstractTrialSt
     function QMCState{S, T, K, V, P}(
             left_config::V, right_config::V, propagated_config::V,
             operator_list,
-            link_list, leg_types, associates, op_indices,
+            link_list, leg_types, associates, leg_sites, op_indices,
             in_cluster, cstack, current_cluster,
             first, last, trialstate
         ) where {S, K, T, V, P}
@@ -53,7 +54,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: Union{Nothing, AbstractTrialSt
         new{S, T, K, V, P}(
             left_config, right_config, propagated_config,
             operator_list,
-            link_list, leg_types, associates, op_indices,
+            link_list, leg_types, associates, leg_sites, op_indices,
             in_cluster, cstack, current_cluster,
             first, last, trialstate
         )
@@ -78,6 +79,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: Union{Nothing, AbstractTrialSt
         link_list = zeros(Int, len)
         leg_types = similar(left_config, T, len)
         associates = zeros(Int, len)
+        leg_sites = zeros(Int, len)
         op_indices = zeros(Int, len)
 
         in_cluster = zeros(Int, len)
@@ -89,7 +91,7 @@ struct QMCState{S,T,K,V <: AbstractVector{T},P <: Union{Nothing, AbstractTrialSt
         args = [
             left_config, right_config, copy(left_config),
             operator_list,
-            link_list, leg_types, associates, op_indices,
+            link_list, leg_types, associates, leg_sites, op_indices,
             in_cluster, cstack, current_cluster,
             first, last, trialstate
         ]
@@ -145,6 +147,7 @@ function convert(::Type{QMCState{S′, T, K, V}}, state::QMCState{S, T, K, V}) w
     resize!(state.linked_list, len)
     resize!(state.leg_types, len)
     resize!(state.associates, len)
+    resize!(state.leg_sites, len)
     resize!(state.op_indices, len)
     resize!(state.in_cluster, len)
 

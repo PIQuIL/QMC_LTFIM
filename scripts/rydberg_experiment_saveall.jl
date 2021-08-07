@@ -33,14 +33,14 @@ SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/trialstate_experim
 ###############################################################################
 
 function setup_trialstate(type::String, delta::Float64, omega::Float64, V::UpperTriangular{Float64})
-    if type == "fields"
+    if type == "fields" || type == "fields2"
         H = Hermitian(-delta*[0 0; 0 1] - omega*[0 1; 1 0]/2)
 
         E, V = eigen(H)
         psi = V[:, 1]
         @assert all(x -> signbit(x) == signbit(psi[1]), psi)
 
-        P = abs2.(psi)
+        P = (type == "fields2") ? abs2.(psi) : abs.(psi)
         return ProductState{Float64, Bool}(Dict(false => P[1], true => P[2]))
     elseif type == "mft"
         error("Not yet supported!")
@@ -58,6 +58,8 @@ function init_mc_cli(parsed_args)
 
     ts_type = parsed_args["trialstate"]
 
+    truncation = parsed_args["trunc"]
+
     nY = parsed_args["nY"]
     nX = nY
 
@@ -67,7 +69,7 @@ function init_mc_cli(parsed_args)
     batches = parsed_args["batches"]
     mb_prob = parsed_args["mb-prob"]
 
-    println("Running Rydberg(($nX, $nY), R_b=$R_b, Ω=$Ω, δ=$δ)")
+    println("Running Rydberg(($nX, $nY), R_b=$R_b, Ω=$Ω, δ=$δ; trunc=$truncation)")
 
     d = (nX=nX, nY=nY, R_b=R_b, Ω=Ω, δ=δ, seed=seed)
 
@@ -76,14 +78,14 @@ function init_mc_cli(parsed_args)
     sname = savename(d; digits = 4)
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "histograms_redo_delta_sweep",
         "groundstate",
-        "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M", "p=$mb_prob", "ts=$ts_type")
+        "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M",
+        "p=$mb_prob", "ts=$ts_type", "trunc=$truncation")
     mkpath(path)
 
     res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)
     if res === nothing
-        H = Rydberg((nX, nY), R_b, Ω, δ, (false, false))
+        H = Rydberg((nX, nY), R_b, Ω, δ; pbc=(false, false), trunc=truncation)
         if M == 0
             qmc_state = BinaryThermalState(H, 2000)
         else
@@ -99,7 +101,10 @@ function init_mc_cli(parsed_args)
         observables = DataFrame(
             batch = zeros(Int, MCS),
             n_ssd = zeros(MCS),
-            smags = zeros(MCS),
+            checkerboard = zeros(MCS),
+            striated = zeros(MCS),
+            star_p = zeros(ComplexF64, MCS),
+            star_m = zeros(ComplexF64, MCS),
             mags = zeros(MCS),
         )
 
@@ -183,7 +188,7 @@ function groundstate(parsed_args)
 
         # there's still a lot of identity elements left over, no need to make the simulation cell bigger
         resize_op_list!(qmc_state, H, max_ns)
-        qmc_state = convert(BinaryGroundState{3, typeof(qmc_state.left_config)}, qmc_state)
+        qmc_state = convert(BinaryGroundState{4, typeof(qmc_state.left_config)}, qmc_state)
         println("final operator list length: ", length(qmc_state.operator_list))
         println("max ops: ", max_ns)
     end
@@ -199,8 +204,22 @@ function groundstate(parsed_args)
                 spin_prop = sample(H, qmc_state)
 
                 observables[i, :n_ssd] = num_single_site_diag(H, qmc_state.operator_list)
+
                 observables[i, :mags] = magnetization(spin_prop)
-                observables[i, :smags] = staggered_magnetization(H, spin_prop)
+                checkerboard, striated = 0.0, 0.0
+                star_p, star_m = 0.0im, 0.0im
+                spin_prop = reshape(spin_prop, H.lattice.n1, H.lattice.n2)
+                @inbounds for j in axes(spin_prop, 2), i in axes(spin_prop, 1)
+                    s = spin_prop[i, j]
+                    checkerboard += ((-1)^(i+j)) * s
+                    striated += ((-1)^i) * s
+                    star_p += exp((π*i/2 + π*j)*im) * s
+                    star_m += exp(-(π*i/2 + π*j)*im) * s
+                end
+                observables[i, :checkerboard] = checkerboard / nspins(H)
+                observables[i, :striated] = striated / nspins(H)
+                observables[i, :star_p] = star_p / nspins(H)
+                observables[i, :star_m] = star_m / nspins(H)
 
                 observables[i, :batch] = b
             end
@@ -215,8 +234,8 @@ function groundstate(parsed_args)
               observables=observables,
               runstats=runstats)
 
-        data_file = path * "_raw_observables.csv"
-        CSV.write(data_file, observables; append = (b > 0))
+        data_file = path * "_batch_$(lpad(b, l, "0"))_raw_observables.csv"
+        CSV.write(data_file, observables)
 
         # delete the previous saved state, if it exists
         old_qmc_state = path * "_batch_$(lpad(b-1, l, "0"))_state.jld2"
@@ -279,6 +298,14 @@ end
         help = "Rydberg blockade radius (in units of the lattice spacing). Controls the strength of the interaction."
         arg_type = Float64
         default = 1.2
+
+    "--trunc"
+        help = """Interaction truncation.
+                Passing K > 0 will keep interactions upto and including the K'th nearest neighbour interactions.
+                Passing K <= 0 will keep all interactions.
+               """
+        arg_type = Int
+        default = 0
 
     "-M"
         help = "Projector length. If zero, will perform a thermal equilibration at beta=20 to select M."
