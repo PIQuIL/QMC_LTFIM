@@ -42,6 +42,8 @@ function init_mc_cli(parsed_args)
     MCS = parsed_args["measurements"] # the number of samples to record
     EQ_MCS = div(MCS, 10)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
+    mb_prob = parsed_args["mb-prob"]
+
 
     if J isa Number || tryparse(Float64, J) !== nothing
         J = J isa Number ? J : parse(Float64, J)
@@ -97,7 +99,7 @@ function init_mc_cli(parsed_args)
         runstats = NoStats()
     end
 
-    return H, qmc_state, savename(d; digits = 4), mc_opts, rng, runstats
+    return H, qmc_state, savename(d; digits = 4), mc_opts, rng, runstats, mb_prob
 end
 
 
@@ -166,7 +168,7 @@ measurementtodict(V::OnlineStats.Variance) = Dict("value" => mean(V), "error" =>
 
 
 function mixedstate(parsed_args)
-    H, qmc_state, sname, mc_opts, rng, runstats = init_mc_cli(parsed_args)
+    H, qmc_state, sname, mc_opts, rng, runstats, mb_prob = init_mc_cli(parsed_args)
     beta = parsed_args["beta"]
 
     M, MCS, EQ_MCS, skip = mc_opts
@@ -180,12 +182,12 @@ function mixedstate(parsed_args)
     sqr_mags = LogBinner(capacity=binner_capacity)
     energy = LogBinner(capacity=binner_capacity)
 
-    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
+    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:EQ_MCS])
 
     resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
-        n = mc_step_beta!(rng, qmc_state, H, beta, runstats) do lsize, qmc_state, H
+        n = mc_step_beta!(rng, qmc_state, H, beta, runstats; p=mb_prob) do lsize, qmc_state, H
             m = magnetization(sample(H, qmc_state))
             push!(mags, m)
             push!(abs_mags, abs(m))
@@ -195,7 +197,7 @@ function mixedstate(parsed_args)
         push!(energy, energy_density(qmc_state, H, beta, n))
 
         for _ in 1:skip
-            mc_step_beta!(rng, qmc_state, H, beta)
+            mc_step_beta!(rng, qmc_state, H, beta; p=mb_prob)
         end
     end
 
@@ -213,7 +215,7 @@ end
 
 
 function groundstate(parsed_args)
-    H, qmc_state, sname, mc_opts, rng, runstats = init_mc_cli(parsed_args)
+    H, qmc_state, sname, mc_opts, rng, runstats, mb_prob = init_mc_cli(parsed_args)
 
     M, MCS, EQ_MCS, skip = mc_opts
 
@@ -224,24 +226,38 @@ function groundstate(parsed_args)
     mags = LogBinner(capacity=binner_capacity)
     abs_mags = LogBinner(capacity=binner_capacity)
     sqr_mags = LogBinner(capacity=binner_capacity)
+
+    smags = LogBinner(capacity=binner_capacity)
+    abs_smags = LogBinner(capacity=binner_capacity)
+    sqr_smags = LogBinner(capacity=binner_capacity)
     ns = zeros(MCS)
 
-    @showprogress "Warm up..." for i in 1:EQ_MCS
-        mc_step!(rng, qmc_state, H)
+    for i in 1:EQ_MCS
+        mc_step!(rng, qmc_state, H; p=mb_prob)
     end
 
-    @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
-        mc_step!(rng, qmc_state, H, runstats) do lsize, qmc_state, H
-            m = magnetization(sample(H, qmc_state))
+    for i in 1:MCS # Monte Carlo Production Steps
+        mc_step!(rng, qmc_state, H, runstats; p=mb_prob) do lsize, qmc_state, H
+            spin_prop = sample(H, qmc_state)
+
+            m = magnetization(spin_prop)
             push!(mags, m)
             push!(abs_mags, abs(m))
             push!(sqr_mags, m ^ 2)
+
+            sm = 0.0
+            for i in eachindex(spin_prop)
+                sm += ((-1) ^ i) * (spin_prop[i] - 0.5)
+            end
+            push!(smags, sm)
+            push!(abs_smags, abs(sm))
+            push!(sqr_smags, sm ^ 2)
 
             ns[i] = num_single_site_diag(H, qmc_state.operator_list)
         end
 
         for _ in 1:skip
-            mc_step!(rng, qmc_state, H)
+            mc_step!(rng, qmc_state, H; p=mb_prob)
         end
     end
 
@@ -254,7 +270,17 @@ function groundstate(parsed_args)
         "energy" => measurementtodict(energy_density(qmc_state, H, ns))
     )
 
-    save_data(path, mc_opts, qmc_state, observables, runtime_stats)
+    @show tau(mags)
+    @show tau(abs_mags)
+    @show tau(sqr_mags)
+
+    @show tau(smags)
+    @show tau(abs_smags)
+    @show tau(sqr_smags)
+
+    println()
+
+    # save_data(path, mc_opts, qmc_state, observables, runtime_stats)
 end
 
 
@@ -294,6 +320,11 @@ end
     "--interaction", "-J"
         help = "Strength of the interaction or the path of a text file containing an interaction matrix"
         arg_type = Union{Float64, String}
+        default = 1.0
+
+    "--mb-prob"
+        help = "Multibranch probability"
+        arg_type = Float64
         default = 1.0
 
     "-M"

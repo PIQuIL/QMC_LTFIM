@@ -70,7 +70,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
             end
         elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = bond = getbondsites(H, op)
-            spin1, spin2 = spins = spin_prop[site1], spin_prop[site2]
+            spins = spin_prop[site1], spin_prop[site2]
             num_sites = 2  # length(bond)
             num_legs = 4   # 2*num_sites
 

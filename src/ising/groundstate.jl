@@ -1,7 +1,6 @@
-cluster_update!(rng, qmc_state, H::Hamiltonian, runstats; kw...) = multibranch_update!(rng, qmc_state, H, runstats)
-function cluster_update!(rng, qmc_state, H::AbstractRydberg, runstats; p::Float64=0.0, kw...)
+# cluster_update!(rng, qmc_state, H::Hamiltonian, runstats; kw...) = multibranch_update!(rng, qmc_state, H, runstats)
+function cluster_update!(rng, qmc_state, H::Hamiltonian, runstats; p::Float64=0.0, kw...)
     if rand(rng) < p
-        # occasionally do a multibranch update to maintain ergodicity
         multibranch_update!(rng, qmc_state, H, runstats)
     else
         line_update!(rng, qmc_state, H, runstats)
