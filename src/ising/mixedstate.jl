@@ -1,7 +1,7 @@
 
 ########################## finite-beta #######################################
 
-function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real, runstats::AbstractRunStats=NoStats(); eq::Bool = false, kw...)
+function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryQMCState{Exponential}, H::AbstractIsing, beta::Real, runstats::AbstractRunStats=NoStats(); eq::Bool = false, kw...)
     num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq=eq)
     lsize = cluster_update!(rng, qmc_state, H, runstats; kw...)
     f(lsize, qmc_state, H)
@@ -12,7 +12,7 @@ mc_step_beta!(f::Function, qmc_state, H, beta, runstats::AbstractRunStats=NoStat
 mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta, runstats::AbstractRunStats=NoStats(); eq = false, kw...) = mc_step_beta!((args...) -> nothing, rng, qmc_state, H, beta, runstats; eq = eq, kw...)
 mc_step_beta!(qmc_state, H, beta, runstats::AbstractRunStats=NoStats(); eq = false, kw...) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta, runstats; eq = eq, kw...)
 
-function resize_op_list!(qmc_state::BinaryThermalState{K}, H::AbstractIsing, new_size::Int) where {K}
+function resize_op_list!(qmc_state::BinaryQMCState{P, K}, H::AbstractIsing, new_size::Int) where {P, K}
     operator_list = filter!(!isidentity(H), qmc_state.operator_list)
     len = length(operator_list)
 
@@ -24,16 +24,11 @@ function resize_op_list!(qmc_state::BinaryThermalState{K}, H::AbstractIsing, new
     len = 4*length(operator_list)
     # these are going to be overwritten by the cluster update which will be
     # called right after the diagonal update that called this function
-    resize!(qmc_state.linked_list, len)
-    resize!(qmc_state.leg_types, len)
-    resize!(qmc_state.associates, len)
-    resize!(qmc_state.leg_sites, len)
-    resize!(qmc_state.op_indices, len)
-    resize!(qmc_state.in_cluster, len)
+    resize!(qmc_state.cluster_data, len)
 end
 
 
-function full_diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real; eq::Bool = false)
+function full_diagonal_update_beta!(rng::AbstractRNG, qmc_state::BinaryQMCState{Exponential}, H::AbstractIsing, beta::Real; eq::Bool = false)
     P_norm = beta * diag_update_normalization(H)
 
     num_ids = count(isidentity(H), qmc_state.operator_list)

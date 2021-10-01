@@ -145,7 +145,7 @@ haslongitudinalfield(::AbstractTFIM) = false
 ###############################################################################
 
 
-function energy(::Type{<:BinaryGroundState}, H::AbstractIsing, ns::Vector{<:Real}; resampler::Function=jackknife)
+function energy(::Type{<:BinaryQMCState{Power}}, H::AbstractIsing, ns::Vector{<:Real}; resampler::Function=jackknife)
     hx = total_hx(H)
 
     if !iszero(hx)
@@ -157,7 +157,7 @@ function energy(::Type{<:BinaryGroundState}, H::AbstractIsing, ns::Vector{<:Real
     return H.energy_shift + E
 end
 
-function energy(::Type{<:BinaryGroundState}, H::AbstractIsing, ns_mean::Real)
+function energy(::Type{<:BinaryQMCState{Power}}, H::AbstractIsing, ns_mean::Real)
     hx = total_hx(H)
 
     if !iszero(hx)

@@ -29,7 +29,7 @@ import BinningAnalysis: varN, std_error
 
 using Plots
 
-export BinaryQMCState, BinaryGroundState, BinaryThermalState,
+export QMCState, Power, Exponential,
         Hamiltonian, AbstractIsing, AbstractTFIM, TFIM, AbstractLTFIM, LTFIM, GeneralLTFIM, AbstractRydberg, Rydberg,
         haslongitudinalfield,
         nspins, nbonds, energy, energy_density, mc_step!, mc_step_beta!,
