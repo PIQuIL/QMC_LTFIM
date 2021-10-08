@@ -141,3 +141,19 @@ const BinaryQMCState{P,K,B,V <: AbstractVector{Bool}} = QMCState{P, Bool, K, B, 
 #         operator_list, cluster_data, trialstate
 #     )
 # end
+
+struct QMCStateSerialization{P, T, K, B, V}
+    left_config::V
+    operator_list::Vector{NTuple{K,Int}}
+    trialstate::B
+end
+
+JLD2.writeas(::Type{QMCState{P, T, K, B, V}}) where {P, T, K, B, V} = QMCStateSerialization{P, T, K, B, V}
+
+function JLD2.wconvert(::Type{QMCStateSerialization{P, T, K, B, V}}, state::QMCState{P, T, K, B, V}) where {P, T, K, B, V}
+    QMCStateSerialization{P, T, K, B, V}(state.left_config, state.operator_list, state.trialstate)
+end
+
+function JLD2.rconvert(::Type{QMCState{P, T, K, B, V}}, saved_state::QMCStateSerialization{P, T, K, B, V}) where {P, T, K, B, V}
+    QMCState{P, T, K, B, V}(saved_state.left_config, saved_state.operator_list, saved_state.trialstate)
+end
