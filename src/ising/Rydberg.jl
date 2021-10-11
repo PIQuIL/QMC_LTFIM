@@ -106,6 +106,27 @@ function Rydberg(lat::Lattice, R_b::Float64, Ω::Float64, δ::Float64; trunc::In
                 dist[i] = zero(dist[i])
             end
         end
+    elseif lat isa Rectangle && all(lat.PBC)
+        V = zeros(Ns, Ns)
+        K = 3  # figure out an efficient way to set this dynamically
+
+        dist = zeros(Ns, Ns)
+        for v2 in -K:K, v1 in -K:K
+            dV = zeros(Ns, Ns)
+            for x2 in axes(dV, 2), x1 in axes(dV, 1)
+                i1, j1 = divrem(x1 - 1, lat.n1)
+                i2, j2 = divrem(x2 - 1, lat.n1)
+                r = [i2 - i1 + v1*lat.n1, j2 - j1 + v2*lat.n2]
+                dV[x1, x2] += Ω * (R_b/norm(r, 2))^6
+            end
+            # @show v2, v1, maximum(abs, dV)
+
+            V += dV
+        end
+
+        V = (V + V') / 2  # should already be symmetric but just in case
+
+        return Rydberg(UpperTriangular(triu!(V, 1)), Ω*ones(Ns), δ*ones(Ns), lat)
     else
         dist = lat.distance_matrix
     end
