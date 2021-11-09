@@ -48,7 +48,7 @@ function init_mc_cli(parsed_args)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
     println("Running Rydberg(R_b=$R_b, Ω=$Ω, δ=$δ)")
-    H = Rydberg(nX, R_b, Ω, δ; pbc = (isone(Dim) ? PBC : (true, true)))
+    H = Rydberg(nX, R_b, Ω, δ; pbc = (isone(Dim) ? PBC : (false, false)))
     d = @ntuple Dim nX BC_name R_b Ω δ skip M
 
     mc_opts = @ntuple M MCS EQ_MCS skip
@@ -121,6 +121,8 @@ function save_data(path, mc_opts, qmc_state, measurements, observables, corr_tim
 end
 
 
+using BinningAnalysis
+
 function mixedstate(parsed_args)
     H, qmc_state, sname, mc_opts, rng, _ = init_mc_cli(parsed_args)
     beta = parsed_args["beta"]
@@ -135,14 +137,14 @@ function mixedstate(parsed_args)
     smags = zeros(MCS)
     ns = zeros(MCS)
 
-    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true) for i in 1:EQ_MCS])
+    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=0.0) for i in 1:EQ_MCS])
 
     # TODO: bug with 3//2. Using 1.5 instead
     #resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
     resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
 
-    @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
-        ns[i] = mc_step_beta!(rng, qmc_state, H, beta) do lsize, qmc_state, H
+    @showprogress "MCMC...   " for i in 1:MCS  # Monte Carlo Steps
+        ns[i] = mc_step_beta!(rng, qmc_state, H, beta; p=0.0) do lsize, qmc_state, H
             spin_prop = qmc_state.left_config
             measurements[i, :] = spin_prop
             mags[i] = magnetization(spin_prop)
@@ -158,14 +160,21 @@ function mixedstate(parsed_args)
     abs_mag = mean_and_stderr(abs, smags)
     mag_sqr = mean_and_stderr(abs2, smags)
 
-    energy = energy_density(qmc_state, H, beta, ns)
+    # energy = energy_density(qmc_state, H, beta, ns)
 
-    binder_cumulant = jackknife(smags .^ 4, smags .^ 2) do M4, M2
+    binder_cumulant = QMC.jackknife(smags .^ 4, smags .^ 2) do M4, M2
         3 - (M4 / (M2 ^ 2))
     end
     binder_cumulant /= 2
 
-    observables = (mag, abs_mag, mag_sqr, binder_cumulant, energy)
+
+    # @show correlation_time(energy_density.(qmc_state, H, beta, ns))
+
+    lb = LogBinner([(H.energy_shift - (n / beta))/nspins(H) for n in ns])
+    @show tau(lb) #, std_error(lb)
+    # @show mean(lb)
+
+    observables = (mag, abs_mag, mag_sqr, binder_cumulant, mean(lb) ± std_error(lb))
 
     # measure correlation time from equilibriation samples
     corr_time = correlation_time(smags .^ 2)
