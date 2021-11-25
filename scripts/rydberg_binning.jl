@@ -106,7 +106,7 @@ function groundstate(parsed_args)
 
         data_file = path * "_occupations.csv"
         open(data_file, (b > 1) ? "a" : "w") do io
-            writedlm(io, occupations, " ")
+            writedlm(io, occupations', ",")
         end
 
         data_file = path * "_energy.csv"
