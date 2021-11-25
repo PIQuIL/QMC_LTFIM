@@ -4,7 +4,7 @@
 
 function sample(H::AbstractIsing, qmc_state::BinaryQMCState, M::Int=length(qmc_state.operator_list) ÷ 2)
     operator_list = qmc_state.operator_list
-    spin_prop = copy(qmc_state.left_config)
+    spin_prop = copy!(qmc_state.propagated_config, qmc_state.left_config)
 
     @inbounds for i in 1:M
         op = operator_list[i]
@@ -59,7 +59,7 @@ end
 
 function kagome_nematic(lattice::Kagome, sublattice::Vector{Int}, spin_prop)
     # https://www.pnas.org/content/pnas/118/4/e2015785118.full.pdf
-    # page 4  
+    # page 4
 
     N2 = lattice.n2 * 2
     Nc = 3 * (N2^2)
