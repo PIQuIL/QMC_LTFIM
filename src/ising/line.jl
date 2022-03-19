@@ -3,8 +3,9 @@
 #       into the body of the cluster update
 @inline function line_kernel!(qmc_state::BinaryQMCState, H::AbstractIsing, ccount::Int, leg::Int, a::Int)
     Ns = nspins(H)
-    LegType, Associates, leg_sites = qmc_state.leg_types, qmc_state.associates, qmc_state.leg_sites
-    in_cluster, cstack, current_cluster = qmc_state.in_cluster, qmc_state.cstack, qmc_state.current_cluster
+    cluster_data = qmc_state.cluster_data
+    LegType, Associates, leg_sites = cluster_data.leg_types, cluster_data.associates, cluster_data.leg_sites
+    in_cluster, cstack, current_cluster = cluster_data.in_cluster, cluster_data.cstack, cluster_data.current_cluster
 
     @inbounds ll, la = LegType[leg], LegType[a]
     @inbounds sl, sa = leg_sites[leg], leg_sites[a]

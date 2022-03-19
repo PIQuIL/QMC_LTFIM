@@ -54,9 +54,9 @@ function init_mc_cli(parsed_args)
     mc_opts = @ntuple M MCS EQ_MCS skip
 
     if haskey(parsed_args, "beta")
-        qmc_state = BinaryThermalState(H, M)
+        qmc_state = QMCState{Exponential}(H, 2M)
     else
-        qmc_state = BinaryGroundState(H, M)
+        qmc_state = QMCState{Power}(H, M, PlusState{Float64, Bool}())
     end
 
     rng = Xorshifts.Xoroshiro128Plus(parsed_args["seed"])

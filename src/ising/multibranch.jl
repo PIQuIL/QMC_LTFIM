@@ -1,19 +1,20 @@
 function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, ::AbstractRunStats=NoStats())
     Ns = nspins(H)
     spin_left = qmc_state.left_config
+    cluster_data = qmc_state.cluster_data
 
     # retrieve linked list data structures
-    LinkList = qmc_state.linked_list  # needed for cluster update
-    LegType = qmc_state.leg_types
+    LinkList = cluster_data.linked_list  # needed for cluster update
+    LegType = cluster_data.leg_types
 
     # A diagonal bond operator has non trivial associates for cluster building
-    Associates = qmc_state.associates
+    Associates = cluster_data.associates
 
-    op_indices = qmc_state.op_indices
-    leg_sites = qmc_state.leg_sites
+    op_indices = cluster_data.op_indices
+    leg_sites = cluster_data.leg_sites
 
-    if qmc_state isa BinaryGroundState
-        First = qmc_state.first
+    if qmc_state.trialstate !== nothing
+        First = cluster_data.first
 
         # The first N elements of the linked list are the spins of the LHS basis state
         @inbounds for i in 1:Ns
@@ -27,8 +28,8 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
         end
         idx = Ns
     else
-        First = fill!(qmc_state.first, 0)  #initialize the First list
-        Last = fill!(qmc_state.last, 0)   #initialize the Last list
+        First = fill!(cluster_data.first, 0)  #initialize the First list
+        Last = fill!(cluster_data.last, 0)   #initialize the Last list
         idx = 0
     end
 
@@ -42,7 +43,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
             idx += 1
             F = First[site]
             LinkList[idx] = F
-            if qmc_state isa BinaryGroundState || !iszero(F)
+            if qmc_state.trialstate !== nothing || !iszero(F)
                 LinkList[F] = idx  # completes backwards link
             else
                 Last[site] = idx
@@ -68,7 +69,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
                 op_indices[idx] = n
                 leg_sites[idx] = 1
             end
-        elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
+        elseif qmc_state isa BinaryQMCState{Power} || isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = bond = getbondsites(H, op)
             spins = spin_prop[site1], spin_prop[site2]
             num_sites = 2  # length(bond)
@@ -85,7 +86,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
                 st = bond[i]
                 F = First[st]
                 LinkList[v] = F
-                if qmc_state isa BinaryGroundState || !iszero(F)
+                if qmc_state.trialstate !== nothing || !iszero(F)
                     LinkList[F] = v  # completes backwards link
                 else
                     Last[st] = v
@@ -108,7 +109,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
         end
     end
 
-    if qmc_state isa BinaryGroundState
+    if qmc_state.trialstate !== nothing
         # The last N elements of the linked list are the final spin state
         @inbounds for i in 1:Ns
             idx += 1
@@ -149,7 +150,7 @@ link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
 
 @inline function _map_back_operator_list!(ocount::Int, qmc_state::BinaryQMCState, H::AbstractIsing)
     operator_list = qmc_state.operator_list
-    LegType = qmc_state.leg_types
+    LegType = qmc_state.cluster_data.leg_types
 
     # if we build an array that maps n to ocount, this loop will become
     #   very easy to parallelize
@@ -173,10 +174,10 @@ link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
 end
 
 
-@inline function _map_back_basis_states!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryGroundState, H::AbstractIsing)
+@inline function _map_back_basis_states!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, trialstate::AbstractTrialState, H::AbstractIsing)
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
-    LegType = qmc_state.leg_types
+    LegType = qmc_state.cluster_data.leg_types
 
     @inbounds for i in 1:Ns
         spin_left[i] = LegType[i]  # left basis state
@@ -185,13 +186,13 @@ end
     return Ns + 1  # next one is leg Ns + 1
 end
 
-@inline function _map_back_basis_states!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryThermalState, H::AbstractIsing)
+@inline function _map_back_basis_states!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, trialstate::Nothing, H::AbstractIsing)
     Ns = nspins(H)
     spin_left, spin_right = qmc_state.left_config, qmc_state.right_config
-    LegType = qmc_state.leg_types
+    LegType = qmc_state.cluster_data.leg_types
 
-    First = qmc_state.first
-    Last = qmc_state.last
+    First = qmc_state.cluster_data.first
+    Last = qmc_state.cluster_data.last
     @inbounds for i in 1:Ns
         F = First[i]
         if !iszero(F)
@@ -206,7 +207,12 @@ end
 end
 
 
-function trialstate_weight_change(qmc_state::BinaryGroundState, lsize::Int, Ns::Int, i::Int)
+@inline function _map_back_basis_states!(rng, lsize, qmc_state::BinaryQMCState, H::AbstractIsing)
+    return _map_back_basis_states!(rng, lsize, qmc_state, qmc_state.trialstate, H)
+end
+
+
+function trialstate_weight_change(qmc_state::BinaryQMCState, lsize::Int, Ns::Int, i::Int)
     if !(qmc_state.trialstate isa AbstractProductState)
         if i <= Ns
             push!(qmc_state.trialstate.left_flips, i)
@@ -224,13 +230,14 @@ function trialstate_weight_change(qmc_state::BinaryGroundState, lsize::Int, Ns::
         end
     end
 end
-trialstate_weight_change(qmc_state::BinaryThermalState, lsize::Int, Ns::Int, i::Int) = 0.0
+# trialstate_weight_change(qmc_state::BinaryQMCState, lsize::Int, Ns::Int, i::Int) = 0.0
 
 #############################################################################
 @inline function multibranch_kernel!(qmc_state::BinaryQMCState, H::AbstractIsing, ccount::Int, leg::Int, a::Int)
     Ns = nspins(H)
-    LegType, Associates, leg_sites = qmc_state.leg_types, qmc_state.associates, qmc_state.leg_sites
-    in_cluster, cstack, current_cluster = qmc_state.in_cluster, qmc_state.cstack, qmc_state.current_cluster
+    cluster_data = qmc_state.cluster_data
+    LegType, Associates, leg_sites = cluster_data.leg_types, cluster_data.associates, cluster_data.leg_sites
+    in_cluster, cstack, current_cluster = cluster_data.in_cluster, cluster_data.cstack, cluster_data.current_cluster
 
     @inbounds ll, la = LegType[leg], LegType[a]
     @inbounds sl, sa = leg_sites[leg], leg_sites[a]
@@ -264,14 +271,14 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
 
-    LinkList = qmc_state.linked_list
-    LegType = qmc_state.leg_types
-    Associates = qmc_state.associates
-    op_indices = qmc_state.op_indices
+    LinkList = qmc_state.cluster_data.linked_list
+    LegType = qmc_state.cluster_data.leg_types
+    Associates = qmc_state.cluster_data.associates
+    op_indices = qmc_state.cluster_data.op_indices
 
-    in_cluster = fill!(qmc_state.in_cluster, 0)
-    cstack = qmc_state.cstack # This is the stack of vertices in a cluster
-    current_cluster = qmc_state.current_cluster
+    in_cluster = fill!(qmc_state.cluster_data.in_cluster, 0)
+    cstack = qmc_state.cluster_data.cstack # This is the stack of vertices in a cluster
+    current_cluster = qmc_state.cluster_data.current_cluster
 
     ccount = 0  # cluster number counter
 
@@ -281,7 +288,7 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
             ccount += 1
             push!(cstack, i)
             in_cluster[i] = ccount
-            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
+            if qmc_state.trialstate !== nothing && !(qmc_state.trialstate isa AbstractProductState)
                 left_flips = empty!(qmc_state.trialstate.left_flips)
                 right_flips = empty!(qmc_state.trialstate.right_flips)
             end
@@ -289,7 +296,7 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
             empty!(current_cluster)
             push!(current_cluster, i)
             lnA = 0.0
-            if qmc_state isa BinaryGroundState
+            if qmc_state.trialstate !== nothing
                 lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
             end
 
@@ -299,7 +306,7 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
                 if iszero(in_cluster[leg])
                     in_cluster[leg] = ccount  # add the new leg and flip it
                     push!(current_cluster, leg)
-                    if qmc_state isa BinaryGroundState
+                    if qmc_state !== nothing
                         lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
                     end
                     a = Associates[leg]
@@ -316,7 +323,7 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
                 end
             end
 
-            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
+            if qmc_state !== nothing && !(qmc_state.trialstate isa AbstractProductState)
                 lnA += logweightchange(qmc_state.trialstate, qmc_state.left_config, left_flips)
                 lnA += logweightchange(qmc_state.trialstate, qmc_state.right_config, right_flips)
             end
@@ -353,12 +360,12 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
 
-    LinkList = qmc_state.linked_list
-    LegType = qmc_state.leg_types
-    Associates = qmc_state.associates
+    LinkList = qmc_state.cluster_data.linked_list
+    LegType = qmc_state.cluster_data.leg_types
+    Associates = qmc_state.cluster_data.associates
 
-    in_cluster = fill!(qmc_state.in_cluster, false)
-    cstack = qmc_state.cstack  # This is the stack of vertices in a cluster
+    in_cluster = fill!(qmc_state.cluster_data.in_cluster, false)
+    cstack = qmc_state.cluster_data.cstack  # This is the stack of vertices in a cluster
 
     if !(runstats isa NoStats)
         ccount = 0  # cluster number counter

@@ -84,9 +84,9 @@ function init_mc_cli(parsed_args)
 
     # NOTE: why is this 2M?
     if haskey(parsed_args, "beta")
-        qmc_state = BinaryThermalState(H, 2M)
+        qmc_state = QMCState{Exponential}(H, 2M)
     else
-        qmc_state = BinaryGroundState(H, M)
+        qmc_state = QMCState{Power}(H, M, PlusState{Float64, Bool}())
     end
 
     rng = Xorshifts.Xoroshiro128Plus(parsed_args["seed"])
@@ -280,7 +280,7 @@ function groundstate(parsed_args)
 
     println()
 
-    # save_data(path, mc_opts, qmc_state, observables, runtime_stats)
+    save_data(path, mc_opts, qmc_state, observables, runtime_stats)
 end
 
 

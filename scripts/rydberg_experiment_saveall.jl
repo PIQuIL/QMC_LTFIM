@@ -65,6 +65,8 @@ function init_mc_cli(parsed_args)
 
     # MC parameters
     M = parsed_args["M"]
+    @assert M > 0
+
     MCS = parsed_args["measurements"] # the number of samples to record per batch
     batches = parsed_args["batches"]
     mb_prob = parsed_args["mb-prob"]
@@ -86,11 +88,7 @@ function init_mc_cli(parsed_args)
     res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)
     if res === nothing
         H = Rydberg((nX, nY), R_b, Ω, δ; pbc=(false, false), trunc=truncation)
-        if M == 0
-            qmc_state = BinaryThermalState(H, 2000)
-        else
-            qmc_state = BinaryGroundState(H, M, setup_trialstate(ts_type, δ, Ω, H.V))
-        end
+        qmc_state = QMCState{Power}(H, M, setup_trialstate(ts_type, δ, Ω, H.V))
 
         rng = Xorshifts.Xoroshiro128Plus(seed)
         rand!(rng, qmc_state.left_config)
@@ -182,16 +180,6 @@ function groundstate(parsed_args)
         init_mc_cli(parsed_args)
 
     M, MCS, batches, mb_prob = mc_opts
-    if starting_batch == 0 && M == 0
-        beta = 20.0
-        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:MCS])
-
-        # there's still a lot of identity elements left over, no need to make the simulation cell bigger
-        resize_op_list!(qmc_state, H, max_ns)
-        qmc_state = convert(BinaryGroundState{4, typeof(qmc_state.left_config)}, qmc_state)
-        println("final operator list length: ", length(qmc_state.operator_list))
-        println("max ops: ", max_ns)
-    end
 
     l = floor(Int, log10(batches) + 1)
 
