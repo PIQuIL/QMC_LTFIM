@@ -7,12 +7,12 @@ struct ImprovedOperatorSampler{K, T, P} <: AbstractImprovedOperatorSampler{K, T,
 end
 
 # only supports the LTFIM/Rydberg cases for now
-function ImprovedOperatorSampler(H::Type{<:Hamiltonian{2, <:AbstractOperatorSampler}}, operators::Vector{NTuple{4, Int}}, p::Vector{T}) where {T <: AbstractFloat}
+function ImprovedOperatorSampler(H::Type{<:Hamiltonian{2, <:AbstractOperatorSampler}}, operators::Vector{NTuple{K, Int}}, p::Vector{T}) where {T <: AbstractFloat, K}
     @assert length(operators) == length(p) "Given vectors must have the same length!"
 
     op_log_weights = log.(p)
 
-    max_mel_ops = Vector{NTuple{4, Int}}()
+    max_mel_ops = Vector{NTuple{K, Int}}()
     p_modified = Vector{T}()
 
     # fill with all the site operators first
@@ -30,7 +30,7 @@ function ImprovedOperatorSampler(H::Type{<:Hamiltonian{2, <:AbstractOperatorSamp
     ops = ops[perm]
     p_mod = p_mod[perm]
 
-    op_groups = Dict{NTuple{2, Int}, Vector{NTuple{4, Int}}}()
+    op_groups = Dict{NTuple{2, Int}, Vector{NTuple{K, Int}}}()
     p_groups = Dict{NTuple{2, Int}, Vector{T}}()
 
     while !isempty(ops)
@@ -54,7 +54,7 @@ function ImprovedOperatorSampler(H::Type{<:Hamiltonian{2, <:AbstractOperatorSamp
     end
 
     pvec = probability_vector(p_modified)
-    return ImprovedOperatorSampler{4, T, typeof(pvec)}(max_mel_ops, pvec, op_log_weights)
+    return ImprovedOperatorSampler{K, T, typeof(pvec)}(max_mel_ops, pvec, op_log_weights)
 end
 
 @inline rand(rng::AbstractRNG, os::ImprovedOperatorSampler) = @inbounds os.operators[rand(rng, os.pvec)]

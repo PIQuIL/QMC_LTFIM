@@ -14,13 +14,13 @@ end
 nspins(H::Rydberg) = nspins(H.lattice)
 
 @inline diagonaloperator(::Type{<:AbstractRydberg}) = Diagonal([0, 1])
-@inline diagonaloperator(H::AbstractRydberg) = interactionoperator(typeof(H))
+@inline diagonaloperator(H::AbstractRydberg) = diagonaloperator(typeof(H))
 
 
 function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω::AbstractVector{T}, δ::AbstractVector{T}; epsilon=0.0) where T
     @assert length(Ω) == length(δ) == size(V, 1) == size(V, 2)
 
-    ops = Vector{NTuple{4, Int}}()
+    ops = Vector{NTuple{ISING_OP_SIZE, Int}}()
     p = Vector{T}()
     energy_shift = zero(T)
 
@@ -60,7 +60,7 @@ function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω:
 
         for (t, p_t) in enumerate(p_spins)
             push!(p, p_t)
-            push!(ops, (t, length(p), site1, site2))
+            push!(ops, (2, t, length(p), site1, site2))
         end
     end
 

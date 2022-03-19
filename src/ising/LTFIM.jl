@@ -38,14 +38,14 @@ end
 #    spin_config(t) = divrem(t - 1, 2)
 @inline getbondtype(::AbstractLTFIM, s1::Bool, s2::Bool) = (s1<<1 | s2) + 1
 @inline spin_config(::AbstractLTFIM, t::Int)::NTuple{2,Int} = divrem(t - 1, 2)
-@inline spin_config(H::AbstractLTFIM, op::NTuple{4, Int}) = @inbounds spin_config(H, op[1])
+@inline spin_config(H::AbstractLTFIM, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds spin_config(H, getoperatortype(H, op))
 
 ###############################################################################
 
 function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::AbstractVector{T}; epsilon=0.0) where T
     @assert length(hx) == length(hz) == size(J, 1) == size(J, 2)
 
-    ops = Vector{NTuple{4, Int}}()
+    ops = Vector{NTuple{ISING_OP_SIZE, Int}}()
     p = Vector{T}()
     energy_shift = zero(T)
 
@@ -104,7 +104,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::Abst
 
         for (t, p_t) in enumerate(p_spins)
             push!(p, p_t)
-            push!(ops, (t, length(p), site1, site2))
+            push!(ops, (2, t, length(p), site1, site2))
         end
     end
 
