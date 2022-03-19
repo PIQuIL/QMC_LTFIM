@@ -4,15 +4,13 @@
 #           for these types of probability vectors
 
 struct ProbabilityAlias{T} <: AbstractProbabilityVector{T}
-    weights::Vector{T}
-    log_weights::Vector{T}
     normalization::T
 
     cutoffs::Vector{T}
     alias::Vector{Int}
 
     # initialize using Vose's algorithm
-    function ProbabilityAlias{T}(weights::Vector{T}) where {T <: Real}
+    function ProbabilityAlias{T}(weights::Vector{T}) where {T <: AbstractFloat}
         if length(weights) == 0
             throw(ArgumentError("weight vector must have non-zero length!"))
         end
@@ -20,7 +18,7 @@ struct ProbabilityAlias{T} <: AbstractProbabilityVector{T}
             throw(ArgumentError("weights must be non-negative!"))
         end
 
-        weights_ = float.(copy(weights))
+        weights_ = copy(weights)
         normalization = sum(weights)
         N = length(weights)
         avg = normalization / N
@@ -66,7 +64,7 @@ struct ProbabilityAlias{T} <: AbstractProbabilityVector{T}
 
         cutoffs /= normalization
 
-        new{float(T)}(copy(weights), log.(weights), sum(weights), cutoffs, alias)
+        new{T}(sum(weights), cutoffs, alias)
     end
 end
 
@@ -75,7 +73,7 @@ ProbabilityAlias(p::Vector{T}) where T = ProbabilityAlias{T}(p)
 @inline normalization(pvec::ProbabilityAlias) = pvec.normalization
 
 function show(io::IO, p::ProbabilityAlias{T}) where T
-    r = repr(p.weights; context=IOContext(io, :limit=>true))
+    r = repr(p.normalization; context=IOContext(io, :limit=>true))
     print(io, "ProbabilityAlias{$T}($r)")
 end
 
@@ -84,30 +82,9 @@ end
 #     return @inbounds (u < pvec.cutoffs[i]) ? i : pvec.alias[i]
 # end
 
-# xorshifts seem to be noticably faster if you just sample from it twice
+# xorshift prngs seem to be noticably faster if you just sample from them twice
 function Base.rand(rng::AbstractRNG, pvec::ProbabilityAlias{T}) where T
     u = rand(rng)
     i = rand(rng, 1:length(pvec))
     return @inbounds (u < pvec.cutoffs[i]) ? i : pvec.alias[i]
-end
-
-
-@inline function getweight(pvec::ProbabilityAlias, i::Int)
-    @boundscheck checkbounds(pvec.weights, i)
-    return @inbounds pvec.weights[i]
-end
-
-@inline function getweight(pvec::ProbabilityAlias, r::AbstractArray{Int})
-    @boundscheck checkbounds(pvec.weights, r)
-    return @inbounds pvec.weights[r]
-end
-
-@inline function getlogweight(pvec::ProbabilityAlias, i::Int)
-    @boundscheck checkbounds(pvec.log_weights, i)
-    return @inbounds pvec.log_weights[i]
-end
-
-@inline function getlogweight(pvec::ProbabilityAlias, r::AbstractArray{Int})
-    @boundscheck checkbounds(pvec.log_weights, r)
-    return @inbounds pvec.log_weights[r]
 end
