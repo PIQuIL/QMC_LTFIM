@@ -41,7 +41,8 @@ export BinaryQMCState, BinaryGroundState, BinaryThermalState,
         Triangle, Rectangle, Kagome, Ruby, Custom, lattice_bond_spins, distance_matrix,
         ProbabilityAlias, ProbabilityHeap, ProbabilityVector, probability_vector
 
-export Bootstrap, AbstractRunStats, NoStats, RunStats, RunStatsHistogram
+export Bootstrap, AbstractRunStats, NoStats, RunStats, RunStatsHistogram, Diagnostics
+export NoTransitionMatrix, TransitionMatrix, PositionDependentTransitionMatrix, CombinedTransitionMatrix
 export ProductState, PlusState, AbstractProductState, AbstractTrialState
 
 @inline function pop!(v::PushVector)
@@ -60,6 +61,7 @@ include("trialstates/trialstate.jl")
 include("qmc_state.jl")
 include("hamiltonian.jl")
 include("operatorsamplers/improved_op_sampler.jl")
+include("diagnostics/Diagnostics.jl")
 include("ising/Ising.jl")
 include("measurements.jl")
 include("error.jl")

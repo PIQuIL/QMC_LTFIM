@@ -1,4 +1,3 @@
-include("runstats.jl")
 include("TFIM.jl")
 include("LTFIM.jl")
 include("Rydberg.jl")

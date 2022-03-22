@@ -33,18 +33,18 @@ end
 
 line_acceptance(H::AbstractIsing, lnA::T) where {T <: Real} = exp(min(lnA, zero(T)))
 
-function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
-    return cluster_update!(rng, line_kernel!, line_acceptance, lsize, qmc_state, H, runstats)
+function line_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, d::Diagnostics)
+    return cluster_update!(rng, line_kernel!, line_acceptance, lsize, qmc_state, H, d)
 end
 
-line_cluster_update!(lsize, qmc_state, H, runstats::AbstractRunStats=NoStats()) = line_cluster_update!(Random.GLOBAL_RNG, lsize, qmc_state, H, runstats)
+line_cluster_update!(lsize, qmc_state, H, d::Diagnostics) = line_cluster_update!(Random.GLOBAL_RNG, lsize, qmc_state, H, d)
 
 
 #############################################################################
 
 
-function line_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
-    lsize = link_list_update!(rng, qmc_state, H, runstats)
-    return line_cluster_update!(rng, lsize, qmc_state, H, runstats)
+function line_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, d::Diagnostics)
+    lsize = link_list_update!(rng, qmc_state, H, d)
+    return line_cluster_update!(rng, lsize, qmc_state, H, d)
 end
-line_update!(qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats()) = line_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+line_update!(qmc_state::BinaryQMCState, H::AbstractIsing, d::Diagnostics) = line_update!(Random.GLOBAL_RNG, qmc_state, H, d)

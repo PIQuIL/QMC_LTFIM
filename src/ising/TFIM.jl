@@ -53,8 +53,8 @@ const ISING_OP_SIZE = 5
 @inline isdiagonal(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = isdiagonal(typeof(H), op)
 
 @inline makeidentity(::Type{<:AbstractIsing})::NTuple{ISING_OP_SIZE, Int} = (0, 0, 0, 0, 0)
-@inline makediagonalsiteop(::Type{<:AbstractIsing}, i::Int)::NTuple{ISING_OP_SIZE, Int} = (1, 1, 1, 0, i)
-@inline makeoffdiagonalsiteop(::Type{<:AbstractIsing}, i::Int)::NTuple{ISING_OP_SIZE, Int} = (1, -2, 1, 0, i)
+@inline makediagonalsiteop(::Type{<:AbstractIsing}, i::Int)::NTuple{ISING_OP_SIZE, Int} = (1, 1, i, 0, i)
+@inline makeoffdiagonalsiteop(::Type{<:AbstractIsing}, i::Int)::NTuple{ISING_OP_SIZE, Int} = (1, -2, i, 0, i)
 @inline makeidentity(H::AbstractIsing) = makeidentity(typeof(H))
 @inline makediagonalsiteop(H::AbstractIsing, i::Int) = makediagonalsiteop(typeof(H), i)
 @inline makeoffdiagonalsiteop(H::AbstractIsing, i::Int) = makeoffdiagonalsiteop(typeof(H), i)

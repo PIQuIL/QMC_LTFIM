@@ -48,7 +48,7 @@ function init_mc_cli(parsed_args)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
     println("Running Rydberg(R_b=$R_b, Ω=$Ω, δ=$δ)")
-    H = Rydberg(nX, R_b, Ω, δ; pbc = (isone(Dim) ? PBC : (false, false)))
+    H = Rydberg(nX, R_b, Ω, δ; pbc = (isone(Dim) ? PBC : (false, false)), epsilon=0.0)
     d = @ntuple Dim nX BC_name R_b Ω δ skip M
 
     mc_opts = @ntuple M MCS EQ_MCS skip
@@ -124,9 +124,14 @@ end
 using BinningAnalysis
 
 function mixedstate(parsed_args)
-    H, qmc_state, sname, mc_opts, rng, _ = init_mc_cli(parsed_args)
+    H, qmc_state, sname, mc_opts, rng, runstats = init_mc_cli(parsed_args)
     beta = parsed_args["beta"]
 
+    if runstats isa Val{true}
+        d = Diagnostics(RunStats(), CombinedTransitionMatrix(nspins(H), 1:length(H.op_sampler.op_log_weights)))
+    else
+        d = Diagnostics()
+    end
     M, MCS, EQ_MCS, skip = mc_opts
 
     mkpath(datadir("sims", "mixedstate"))
@@ -137,14 +142,14 @@ function mixedstate(parsed_args)
     smags = zeros(MCS)
     ns = zeros(MCS)
 
-    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=0.0) for i in 1:EQ_MCS])
+    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); eq=true, p=0.0) for i in 1:EQ_MCS])
 
     # TODO: bug with 3//2. Using 1.5 instead
     #resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
     resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS  # Monte Carlo Steps
-        ns[i] = mc_step_beta!(rng, qmc_state, H, beta; p=0.0) do lsize, qmc_state, H
+        ns[i] = mc_step_beta!(rng, qmc_state, H, beta, d; p=0.0) do lsize, qmc_state, H
             spin_prop = qmc_state.left_config
             measurements[i, :] = spin_prop
             mags[i] = magnetization(spin_prop)
@@ -152,7 +157,7 @@ function mixedstate(parsed_args)
         end
 
         for _ in 1:skip
-            mc_step_beta!(rng, qmc_state, H, beta)
+            mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); p=0.0)
         end
     end
 
@@ -167,6 +172,15 @@ function mixedstate(parsed_args)
     end
     binder_cumulant /= 2
 
+    # pd = normalize(d.tmatrix.pdmatrix)
+    # # t = normalize(d.tmatrix.tmatrix)
+
+    # # @show eigvals(pd)
+    # @show eigvals(pd)
+
+    # # @show pd
+    # @show d.tmatrix.pdmatrix
+    @show d.tmatrix.tmatrix
 
     # @show correlation_time(energy_density.(qmc_state, H, beta, ns))
 
@@ -202,14 +216,15 @@ function groundstate(parsed_args)
         num_clusters = zeros(Int, MCS)
         cluster_sizes = zeros(MCS)
         abort_rates = zeros(MCS)
+        d = Diagnostics(RunStats(), NoTransitionMatrix())
     end
 
     @showprogress "Warm up..." for i in 1:EQ_MCS
-        mc_step!(rng, qmc_state, H)
+        mc_step!(rng, qmc_state, H, Diagnostics())
     end
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
-        output = mc_step!(rng, qmc_state, H) do lsize, qmc_state, H
+        output = mc_step!(rng, qmc_state, H, d) do lsize, qmc_state, H
             spin_prop = sample(H, qmc_state)
             measurements[i, :] = spin_prop
 
@@ -223,7 +238,7 @@ function groundstate(parsed_args)
         end
 
         for _ in 1:skip
-            mc_step!(rng, qmc_state, H)
+            mc_step!(rng, qmc_state, H, Diagnostics())
         end
     end
 

@@ -1,20 +1,20 @@
 # cluster_update!(rng, qmc_state, H::Hamiltonian, runstats; kw...) = multibranch_update!(rng, qmc_state, H, runstats)
-function cluster_update!(rng, qmc_state, H::Hamiltonian, runstats; p::Float64=0.0, kw...)
+function cluster_update!(rng, qmc_state, H::Hamiltonian, d::Diagnostics; p::Float64=0.0, kw...)
     if rand(rng) < p
-        multibranch_update!(rng, qmc_state, H, runstats)
+        multibranch_update!(rng, qmc_state, H, d)
     else
-        line_update!(rng, qmc_state, H, runstats)
+        line_update!(rng, qmc_state, H, d)
     end
 end
 
-function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats::AbstractRunStats=NoStats(); kw...)
-    full_diagonal_update!(rng, qmc_state, H, runstats)
-    lsize = cluster_update!(rng, qmc_state, H, runstats; kw...)
+function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, d::Diagnostics; kw...)
+    full_diagonal_update!(rng, qmc_state, H, d)
+    lsize = cluster_update!(rng, qmc_state, H, d; kw...)
     f(lsize, qmc_state, H)
 end
-mc_step!(f::Function, qmc_state::BinaryGroundState, H::Hamiltonian, runstats::AbstractRunStats=NoStats(); kw...) = mc_step!(f, Random.GLOBAL_RNG, qmc_state, H, runstats; kw...)
-mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, runstats::AbstractRunStats=NoStats(); kw...) = mc_step!((args...) -> nothing, rng, qmc_state, H, runstats; kw...)
-mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, runstats::AbstractRunStats=NoStats(); kw...) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, runstats; kw...)
+mc_step!(f::Function, qmc_state::BinaryGroundState, H::Hamiltonian, d::Diagnostics; kw...) = mc_step!(f, Random.GLOBAL_RNG, qmc_state, H, d; kw...)
+mc_step!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, d::Diagnostics; kw...) = mc_step!((args...) -> nothing, rng, qmc_state, H, d; kw...)
+mc_step!(qmc_state::BinaryGroundState, H::Hamiltonian, d::Diagnostics; kw...) = mc_step!(Random.GLOBAL_RNG, qmc_state, H, d; kw...)
 
 
 Base.@propagate_inbounds alignment_check(H::AbstractTFIM, op::NTuple{K, Int}, s1::Bool, s2::Bool) where K =
@@ -69,8 +69,9 @@ insert_diagonal_operator!(qmc_state, H, spin_prop, n) = insert_diagonal_operator
 
 #############################################################################
 
-function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
+function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H::AbstractIsing, d::Diagnostics)
     spin_prop = copyto!(qmc_state.propagated_config, qmc_state.left_config)  # the propagated spin state
+    runstats = d.runstats
 
     if !(runstats isa NoStats)
         failures = 0
@@ -100,4 +101,4 @@ function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H
         fit!(runstats, :diag_update_fails, failures/count)
     end
 end
-full_diagonal_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) = full_diagonal_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+full_diagonal_update!(qmc_state, H, d::Diagnostics) = full_diagonal_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)

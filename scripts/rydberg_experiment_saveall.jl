@@ -27,8 +27,8 @@ using Printf
 using ArgParse
 
 
-SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/trialstate_experiments/"
-# SCRATCH_PATH = "/scratch/ejaazm/"
+# SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/trialstate_experiments/"
+SCRATCH_PATH = "/scratch/ejaazm/"
 
 ###############################################################################
 
@@ -54,6 +54,7 @@ function init_mc_cli(parsed_args)
     Ω = parsed_args["omega"]
     δ = parsed_args["delta"]
     R_b = parsed_args["radius"]
+    epsilon = parsed_args["epsilon"]
     seed = parsed_args["seed"]
 
     ts_type = parsed_args["trialstate"]
@@ -61,7 +62,7 @@ function init_mc_cli(parsed_args)
     truncation = parsed_args["trunc"]
 
     nY = parsed_args["nY"]
-    nX = nY
+    # nX = nY
 
     # MC parameters
     M = parsed_args["M"]
@@ -69,23 +70,23 @@ function init_mc_cli(parsed_args)
     batches = parsed_args["batches"]
     mb_prob = parsed_args["mb-prob"]
 
-    println("Running Rydberg(($nX, $nY), R_b=$R_b, Ω=$Ω, δ=$δ; trunc=$truncation)")
+    println("Running Rydberg(($nY,), R_b=$R_b, Ω=$Ω, δ=$δ; trunc=$truncation, epsilon=$epsilon)")
 
-    d = (nX=nX, nY=nY, R_b=R_b, Ω=Ω, δ=δ, seed=seed)
+    d = (nY=nY, R_b=R_b, Ω=Ω, δ=δ, seed=seed)
 
     mc_opts = (M, MCS, batches, mb_prob)
 
     sname = savename(d; digits = 4)
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "groundstate",
-        "nY=$nY", "delta=$(@sprintf("%.2f", δ))", "M=$M",
-        "p=$mb_prob", "ts=$ts_type", "trunc=$truncation")
+        "groundstate", "transition_matrices",
+        "nY=$nY", "delta=$(@sprintf("%.2f", δ))",
+        "p=$mb_prob", "epsilon=$epsilon")
     mkpath(path)
 
     res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)
     if res === nothing
-        H = Rydberg((nX, nY), R_b, Ω, δ; pbc=(false, false), trunc=truncation)
+        H = Rydberg((nY,), R_b, Ω, δ; pbc=(false,), trunc=truncation, epsilon=epsilon)
         if M == 0
             qmc_state = BinaryThermalState(H, 2000)
         else
@@ -102,9 +103,6 @@ function init_mc_cli(parsed_args)
             batch = zeros(Int, MCS),
             n_ssd = zeros(MCS),
             checkerboard = zeros(MCS),
-            striated = zeros(MCS),
-            star_p = zeros(ComplexF64, MCS),
-            star_m = zeros(ComplexF64, MCS),
             mags = zeros(MCS),
         )
 
@@ -115,13 +113,14 @@ function init_mc_cli(parsed_args)
         else
             runstats = NoStats()
         end
+        diagnostics = Diagnostics(runstats, CombinedTransitionMatrix(nspins(H), 1:length(H.op_sampler.op_log_weights)))
     else
-        H, qmc_state, rng, observables, runstats, starting_batch = res
+        H, qmc_state, rng, observables, diagnostics, starting_batch = res
     end
 
     path = joinpath(path, sname)
 
-    return H, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch
+    return H, qmc_state, path, mc_opts, rng, observables, diagnostics, starting_batch
 end
 
 function continue_simulation(path, sname, parsed_args)
@@ -145,24 +144,24 @@ function continue_simulation(path, sname, parsed_args)
             qmc_state::BinaryGroundState = state["qmc_state"]
             H::Rydberg = state["hamiltonian"]
             observables = state["observables"]
-            runstats = state["runstats"]
+            diagnostics = state["diagnostics"]
 
             if parsed_args["runstats"] > 2
                 runstats2 = RunStatsHistogram(parsed_args["runstats"])
             elseif 0 < parsed_args["runstats"] <= 2
                 runstats2 = RunStats()
             elseif parsed_args["runstats"] == 0
-                runstats2 = runstats
+                runstats2 = diagnostics.runstats
             else
                 runstats2 = NoStats()
             end
 
             # allow overriding of runstats method when continuing simulation
-            if typeof(runstats) != typeof(runstats2)
-                runstats = runstats2
+            if typeof(diagnostics.runstats) != typeof(runstats2)
+                diagnostics = Diagnostics(runstats2, diagnostics.tmatrix)
             end
 
-            return H, qmc_state, rng, observables, runstats, starting_batch
+            return H, qmc_state, rng, observables, diagnostics, starting_batch
         catch _
             nothing
         end
@@ -178,48 +177,25 @@ measurementtodict(H::OnlineStats.KHist) = Dict("value" => mean(H), "error" => st
 measurementtodict(H::OnlineStats.Hist) = Dict("value" => mean(H), "error" => std(H) / sqrt(nobs(H)))
 
 function groundstate(parsed_args)
-    H, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch =
+    H, qmc_state, path, mc_opts, rng, observables, diagnostics, starting_batch =
         init_mc_cli(parsed_args)
 
     M, MCS, batches, mb_prob = mc_opts
-    if starting_batch == 0 && M == 0
-        beta = 20.0
-        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:MCS])
-
-        # there's still a lot of identity elements left over, no need to make the simulation cell bigger
-        resize_op_list!(qmc_state, H, max_ns)
-        qmc_state = convert(BinaryGroundState{4, typeof(qmc_state.left_config)}, qmc_state)
-        println("final operator list length: ", length(qmc_state.operator_list))
-        println("max ops: ", max_ns)
-    end
 
     l = floor(Int, log10(batches) + 1)
 
     for b in starting_batch:batches
-        for i in 1:MCS  # Monte Carlo Production Steps
-            # don't include equilibration samples in runstats
-            rs = (b == 0) ? NoStats() : runstats
+        # don't include equilibration samples in runstats
+        d = (b == 0) ? Diagnostics() : diagnostics
 
-            mc_step!(rng, qmc_state, H, rs; p=mb_prob) do lsize, qmc_state, H
+        for i in 1:MCS  # Monte Carlo Production Steps
+            mc_step!(rng, qmc_state, H, d; p=mb_prob) do _, qmc_state, H
                 spin_prop = sample(H, qmc_state)
 
                 observables[i, :n_ssd] = num_single_site_diag(H, qmc_state.operator_list)
 
                 observables[i, :mags] = magnetization(spin_prop)
-                checkerboard, striated = 0.0, 0.0
-                star_p, star_m = 0.0im, 0.0im
-                spin_prop = reshape(spin_prop, H.lattice.n1, H.lattice.n2)
-                @inbounds for j in axes(spin_prop, 2), i in axes(spin_prop, 1)
-                    s = spin_prop[i, j]
-                    checkerboard += ((-1)^(i+j)) * s
-                    striated += ((-1)^i) * s
-                    star_p += exp((π*i/2 + π*j)*im) * s
-                    star_m += exp(-(π*i/2 + π*j)*im) * s
-                end
-                observables[i, :checkerboard] = checkerboard / nspins(H)
-                observables[i, :striated] = striated / nspins(H)
-                observables[i, :star_p] = star_p / nspins(H)
-                observables[i, :star_m] = star_m / nspins(H)
+                observables[i, :checkerboard] = staggered_magnetization(H, spin_prop)
 
                 observables[i, :batch] = b
             end
@@ -232,7 +208,7 @@ function groundstate(parsed_args)
               qmc_state=qmc_state,
               hamiltonian=H,
               observables=observables,
-              runstats=runstats)
+              diagnostics=diagnostics)
 
         data_file = path * "_batch_$(lpad(b, l, "0"))_raw_observables.csv"
         CSV.write(data_file, observables)
@@ -246,25 +222,13 @@ function groundstate(parsed_args)
 
     runstats_file = path * "_runstats.json"
 
-    runstats_dict = Dict{Symbol, Any}([k => measurementtodict(getproperty(runstats, k)) for k in fieldnames(typeof(runstats))])
+    runstats_dict = Dict{Symbol, Any}([k => measurementtodict(getproperty(diagnostics.runstats, k))
+                                       for k in fieldnames(typeof(diagnostics.runstats))])
     runstats_dict[:operator_list_length] = length(qmc_state.operator_list)
 
     open(runstats_file, "w") do io
         JSON.print(io, runstats_dict, 2)
     end
-
-    #if runstats isa RunStatsHistogram
-    #    # plot histograms
-    #    for k in fieldnames(typeof(runstats))
-    #        file = path * "_$(k).png"
-    #        plt = plot(
-    #            getproperty(runstats, k),
-    #            legend = nothing,
-    #            size = (500, 500)
-    #        )
-    #        savefig(plt, file)
-    #    end
-    #end
 end
 
 
@@ -299,6 +263,11 @@ end
         arg_type = Float64
         default = 1.2
 
+    "--epsilon"
+        help = "Multiplicative Epsilon value for the constant energy shift to the Hamiltonian"
+        arg_type = Float64
+        default = 0.0
+
     "--trunc"
         help = """Interaction truncation.
                 Passing K > 0 will keep interactions upto and including the K'th nearest neighbour interactions.
@@ -308,9 +277,9 @@ end
         default = 0
 
     "-M"
-        help = "Projector length. If zero, will perform a thermal equilibration at beta=20 to select M."
+        help = "Projector length"
         arg_type = Int64
-        default = 0
+        default = 10000
 
     "--measurements", "-n"
         help = "Number of samples to record per batch"
@@ -359,6 +328,5 @@ parsed_args = parse_args(ARGS, s)
 if parsed_args["%COMMAND%"] == "groundstate"
     @time groundstate(parsed_args["groundstate"])
 else
-    # mixedstate(parsed_args["mixedstate"])
     println("thermal state currently not supported")
 end

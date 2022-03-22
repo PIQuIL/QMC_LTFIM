@@ -19,6 +19,7 @@ nspins(H::Rydberg) = nspins(H.lattice)
 
 function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω::AbstractVector{T}, δ::AbstractVector{T}; epsilon=0.0) where T
     @assert length(Ω) == length(δ) == size(V, 1) == size(V, 2)
+    @assert (0.0 <= epsilon <= 1.0) "epsilon must be in the range [0, 1]!"
 
     ops = Vector{NTuple{ISING_OP_SIZE, Int}}()
     p = Vector{T}()
@@ -54,7 +55,7 @@ function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω:
         local_H = V[site1, site2]*kron(n, n) - δb1*kron(n, I) - δb2*kron(I, n)
 
         p_spins = -diag(local_H)
-        C = abs(min(0, minimum(p_spins))) + epsilon
+        C = abs(min(0, minimum(p_spins)))*(1 + epsilon)
         p_spins .+= C
         energy_shift += C
 
@@ -73,7 +74,7 @@ end
 # function BlockadeRydberg(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=true) where N
 # end
 
-function Rydberg(dims::NTuple{D, Int}, R_b, Ω, δ; pbc=true, trunc::Int=0) where D
+function Rydberg(dims::NTuple{D, Int}, R_b, Ω, δ; pbc=true, trunc::Int=0, epsilon::Float64=0) where D
     if D == 1
         lat = Chain(dims[1], 1.0, pbc)
     elseif D == 2
@@ -81,11 +82,11 @@ function Rydberg(dims::NTuple{D, Int}, R_b, Ω, δ; pbc=true, trunc::Int=0) wher
     else
         error("Unsupported number of dimensions. 1- and 2-dimensional lattices are supported.")
     end
-    return Rydberg(lat, R_b, Ω, δ; trunc=trunc)
+    return Rydberg(lat, R_b, Ω, δ; trunc=trunc, epsilon=epsilon)
 end
 
 
-function Rydberg(lat::Lattice, R_b::Float64, Ω::Float64, δ::Float64; trunc::Int=0)
+function Rydberg(lat::Lattice, R_b::Float64, Ω::Float64, δ::Float64; trunc::Int=0, epsilon=0)
     Ns = nspins(lat)
     V = zeros(Float64, Ns, Ns)
 
@@ -126,7 +127,7 @@ function Rydberg(lat::Lattice, R_b::Float64, Ω::Float64, δ::Float64; trunc::In
 
         V = (V + V') / 2  # should already be symmetric but just in case
 
-        return Rydberg(UpperTriangular(triu!(V, 1)), Ω*ones(Ns), δ*ones(Ns), lat)
+        return Rydberg(UpperTriangular(triu!(V, 1)), Ω*ones(Ns), δ*ones(Ns), lat; epsilon=epsilon)
     else
         dist = lat.distance_matrix
     end
@@ -139,7 +140,7 @@ function Rydberg(lat::Lattice, R_b::Float64, Ω::Float64, δ::Float64; trunc::In
     end
     V = UpperTriangular(triu!(V, 1))
 
-    return Rydberg(V, Ω*ones(Ns), δ*ones(Ns), lat)
+    return Rydberg(V, Ω*ones(Ns), δ*ones(Ns), lat; epsilon=epsilon)
 end
 
 function Rydberg(V::AbstractMatrix{T}, Ω::AbstractVector{T}, δ::AbstractVector{T}, lattice::Lattice; epsilon=zero(T)) where T

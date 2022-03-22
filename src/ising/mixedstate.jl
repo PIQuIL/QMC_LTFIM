@@ -1,16 +1,16 @@
 
 ########################## finite-beta #######################################
 
-function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real, runstats::AbstractRunStats=NoStats(); eq::Bool = false, kw...)
+function mc_step_beta!(f::Function, rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, beta::Real, d::Diagnostics; eq::Bool = false, kw...)
     num_ops = full_diagonal_update_beta!(rng, qmc_state, H, beta; eq=eq)
-    lsize = cluster_update!(rng, qmc_state, H, runstats; kw...)
+    lsize = cluster_update!(rng, qmc_state, H, d; kw...)
     f(lsize, qmc_state, H)
     return num_ops
 end
 
-mc_step_beta!(f::Function, qmc_state, H, beta, runstats::AbstractRunStats=NoStats(); eq = false, kw...) = mc_step_beta!(f, Random.GLOBAL_RNG, qmc_state, H, beta, runstats; eq = eq, kw...)
-mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta, runstats::AbstractRunStats=NoStats(); eq = false, kw...) = mc_step_beta!((args...) -> nothing, rng, qmc_state, H, beta, runstats; eq = eq, kw...)
-mc_step_beta!(qmc_state, H, beta, runstats::AbstractRunStats=NoStats(); eq = false, kw...) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta, runstats; eq = eq, kw...)
+mc_step_beta!(f::Function, qmc_state, H, beta, d::Diagnostics; eq = false, kw...) = mc_step_beta!(f, Random.GLOBAL_RNG, qmc_state, H, beta, d; eq = eq, kw...)
+mc_step_beta!(rng::AbstractRNG, qmc_state, H, beta, d::Diagnostics; eq = false, kw...) = mc_step_beta!((args...) -> nothing, rng, qmc_state, H, beta, d; eq = eq, kw...)
+mc_step_beta!(qmc_state, H, beta, d::Diagnostics; eq = false, kw...) = mc_step_beta!(Random.GLOBAL_RNG, qmc_state, H, beta, d; eq = eq, kw...)
 
 function resize_op_list!(qmc_state::BinaryThermalState{K}, H::AbstractIsing, new_size::Int) where {K}
     operator_list = filter!(!isidentity(H), qmc_state.operator_list)

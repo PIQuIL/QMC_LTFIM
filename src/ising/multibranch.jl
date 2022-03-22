@@ -1,4 +1,4 @@
-function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, ::AbstractRunStats=NoStats())
+function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, ::Diagnostics)
     Ns = nspins(H)
     spin_left = qmc_state.left_config
 
@@ -140,14 +140,14 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
 
     return idx
 end
-link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
-    link_list_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+link_list_update!(qmc_state, H, d::Diagnostics) =
+    link_list_update!(Random.GLOBAL_RNG, qmc_state, H, d)
 
 
 #############################################################################
 
 
-@inline function _map_back_operator_list!(ocount::Int, qmc_state::BinaryQMCState, H::AbstractIsing)
+@inline function _map_back_operator_list!(ocount::Int, qmc_state::BinaryQMCState, H::AbstractIsing, d::Diagnostics)
     operator_list = qmc_state.operator_list
     LegType = qmc_state.leg_types
 
@@ -159,6 +159,7 @@ link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
                 s1, s2 = LegType[ocount], LegType[ocount+1]
                 t = getbondtype(H, s1, s2)
                 operator_list[n] = convertoperatortype(H, op, t)
+                fit!(d.tmatrix, op, operator_list[n])
             end
             ocount += 4
         elseif issiteoperator(H, op)
@@ -167,6 +168,7 @@ link_list_update!(qmc_state, H, runstats::AbstractRunStats=NoStats()) =
             else  # off-diagonal
                 operator_list[n] = makeoffdiagonalsiteop(H, getsite(H, op))
             end
+            fit!(d.tmatrix, op, operator_list[n])
             ocount += 2
         end
     end
@@ -256,11 +258,11 @@ end
 
 multibranch_acceptance(H::AbstractIsing, lnA::T) where {T <: Real} =
     haslongitudinalfield(H) ? exp(min(lnA, zero(lnA))) : T(0.5)
-multibranch_acceptance(H::AbstractRydberg, lnA::T) where {T <: Real} = exp(min(lnA, zero(T)))
+multibranch_acceptance(H::AbstractRydberg, lnA::T) where {T <: Real} = inv(1 + exp(-lnA)) #exp(min(lnA, zero(T)))
 # in the TFIM case, acceptance rate is exactly 1 so we set it to 1/2 to ensure ergodicity
 multibranch_acceptance(H::AbstractTFIM, lnA::T) where {T <: Real} = T(0.5)
 
-function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance::Function, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
+function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance::Function, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, d::Diagnostics)
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
 
@@ -272,6 +274,7 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
     in_cluster = fill!(qmc_state.in_cluster, 0)
     cstack = qmc_state.cstack # This is the stack of vertices in a cluster
     current_cluster = qmc_state.current_cluster
+    runstats = d.runstats
 
     ccount = 0  # cluster number counter
 
@@ -340,16 +343,16 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
 
     # map back basis states and operator list
     ocount = _map_back_basis_states!(rng, lsize, qmc_state, H)
-    _map_back_operator_list!(ocount, qmc_state, H)
+    _map_back_operator_list!(ocount, qmc_state, H, d)
 
     return lsize
 end
 
-function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
-    return cluster_update!(rng, multibranch_kernel!, multibranch_acceptance, lsize, qmc_state, H, runstats)
+function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, d::Diagnostics)
+    return cluster_update!(rng, multibranch_kernel!, multibranch_acceptance, lsize, qmc_state, H, d)
 end
 
-function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractTFIM, runstats::AbstractRunStats=NoStats())
+function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::BinaryQMCState, H::AbstractTFIM, d::Diagnostics)
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
 
@@ -359,6 +362,7 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
 
     in_cluster = fill!(qmc_state.in_cluster, false)
     cstack = qmc_state.cstack  # This is the stack of vertices in a cluster
+    runstats = d.runstats
 
     if !(runstats isa NoStats)
         ccount = 0  # cluster number counter
@@ -413,20 +417,20 @@ function multibranch_cluster_update!(rng::AbstractRNG, lsize::Int, qmc_state::Bi
 
     # map back basis states and operator list
     ocount = _map_back_basis_states!(rng, lsize, qmc_state, H)
-    _map_back_operator_list!(ocount, qmc_state, H)
+    _map_back_operator_list!(ocount, qmc_state, H, d)
 
     return lsize
 end
-multibranch_cluster_update!(lsize, qmc_state, H, runstats::AbstractRunStats=NoStats()) =
-    multibranch_cluster_update!(Random.GLOBAL_RNG, lsize, qmc_state, H, runstats)
+multibranch_cluster_update!(lsize, qmc_state, H, d::Diagnostics) =
+    multibranch_cluster_update!(Random.GLOBAL_RNG, lsize, qmc_state, H, d)
 
 
 #############################################################################
 
 
-function multibranch_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats())
-    lsize = link_list_update!(rng, qmc_state, H, runstats)
-    return multibranch_cluster_update!(rng, lsize, qmc_state, H, runstats)
+function multibranch_update!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, d::Diagnostics)
+    lsize = link_list_update!(rng, qmc_state, H, d)
+    return multibranch_cluster_update!(rng, lsize, qmc_state, H, d)
 end
-multibranch_update!(qmc_state::BinaryQMCState, H::AbstractIsing, runstats::AbstractRunStats=NoStats()) =
-    multibranch_update!(Random.GLOBAL_RNG, qmc_state, H, runstats)
+multibranch_update!(qmc_state::BinaryQMCState, H::AbstractIsing, d::Diagnostics) =
+    multibranch_update!(Random.GLOBAL_RNG, qmc_state, H, d)
