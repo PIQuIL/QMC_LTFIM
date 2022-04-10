@@ -79,14 +79,14 @@ function init_mc_cli(parsed_args)
     sname = savename(d; digits = 4)
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "groundstate", "transition_matrices",
+        "transition_matrices", "groundstate",
         "nY=$nY", "delta=$(@sprintf("%.2f", δ))",
         "p=$mb_prob", "epsilon=$epsilon")
     mkpath(path)
 
     res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)
     if res === nothing
-        H = Rydberg((nY,), R_b, Ω, δ; pbc=(false,), trunc=truncation, epsilon=epsilon)
+        H = Rydberg((nY,), R_b, Ω, δ; pbc=false, trunc=truncation, epsilon=epsilon)
         if M == 0
             qmc_state = BinaryThermalState(H, 2000)
         else

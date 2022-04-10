@@ -1,19 +1,25 @@
 #!/bin/bash
-for M in $(seq 1)
+
+for p in $(seq 0.0 0.5 1.0)
 do
-  for p in $(seq 1)
+  for delta in $(seq -3.0 0.1 3.0)
   do
-    for delta in $(seq -3.0 0.05 3.0)
-    do
-      M=100000
-      X="$delta|$p"
-      echo $X
-      sbatch -J "$X" --export="nY=16,delta=$delta,M=$M,p=$p" submit_rydberg
-    done
+    eps=0.0
+    X="$delta|$p|$eps"
+    sbatch -J "$X" --export="delta=$delta,eps=$eps,p=$p" submit_rydberg
+
+    # eps=0.01
+    # X="$delta|$p|$eps"
+    # sbatch -J "$X" --export="delta=$delta,eps=$eps,p=$p" submit_rydberg
+
+    # eps=0.05
+    # X="$delta|$p|$eps"
+    # sbatch -J "$X" --export="delta=$delta,eps=$eps,p=$p" submit_rydberg
+
+    # eps=0.1
+    # X="$delta|$p|$eps"
+    # sbatch -J "$X" --export="delta=$delta,eps=$eps,p=$p" submit_rydberg
+
+    sleep 0.5s
   done
-  sleep 0.5s
 done
-
-
-
-
