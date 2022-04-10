@@ -185,7 +185,7 @@ function groundstate(parsed_args)
     l = floor(Int, log10(batches) + 1)
 
     for b in starting_batch:batches
-        # don't include equilibration samples in runstats
+        # don't include equilibration samples in diagnostics
         d = (b == 0) ? Diagnostics() : diagnostics
 
         for i in 1:MCS  # Monte Carlo Production Steps

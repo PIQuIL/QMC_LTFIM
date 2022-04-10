@@ -27,7 +27,9 @@ using Printf
 using ArgParse
 
 
-SCRATCH_PATH = "../../qmc_data/kagome_nematic_staggered/"
+
+# SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/trialstate_experiments/"
+SCRATCH_PATH = "/scratch/ejaazm/"
 
 # https://www.pnas.org/content/pnas/118/4/e2015785118.full.pdf
 
@@ -56,17 +58,18 @@ function init_mc_cli(parsed_args)
     lattice_type = typeof(lat)
     sublattice = collect(1:nspins(lat)) .% 3 # A: 1, B: 2, C: 0
 
-    d = (lat=typeof(lat), n1=n1, n2=n2, R_b=R_b, Ω=Ω, δ=δ, seed=seed)
+    d = (lat="Kagome", n1=n1, n2=n2, R_b=R_b, Ω=Ω, δ=δ, seed=seed)
     sname = savename(d; digits = 4)
     mc_opts = (M, MCS, batches, mb_prob)
 
     println("Running Rydberg(lattice=$lattice_type, BC=($pa1,$pa2), n1=$n1, n2=$n2, R_b=$R_b, Ω=$Ω, δ=$δ, p=$mb_prob, trunc=$trunc).")
 
     path = joinpath(
-        SCRATCH_PATH, 
-        "groundstate", 
+        SCRATCH_PATH, "qmc_sims",
+        "kagome",
+        "groundstate",
         "pa1=$pa1", "pa2=$pa2",
-        "trunc=$trunc", 
+        "trunc=$trunc",
         "p=$mb_prob",
         "n1=$n1", "n2=$n2", "t=$t",
         "Rb=$R_b", "delta=$δ", "M=$M"
@@ -90,7 +93,7 @@ function init_mc_cli(parsed_args)
             mags = zeros(MCS),
             nematic_real = zeros(MCS),
             nematic_imag = zeros(MCS),
-            correlations = [zeros(nspins(H), nspins(H)) for _ in 1:MCS]
+            # correlations = [zeros(nspins(H), nspins(H)) for _ in 1:MCS]
         )
 
         if parsed_args["runstats"] > 2
@@ -100,14 +103,15 @@ function init_mc_cli(parsed_args)
         else
             runstats = NoStats()
         end
+        diagnostics = Diagnostics(runstats, CombinedTransitionMatrix(nspins(H), 1:length(H.op_sampler.op_log_weights)))
     else
-        println("Warning: Continuing simulation for nontrivial lattices isn't supported.")
-        H, lat, sublattice, qmc_state, rng, observables, runstats, starting_batch = res
+        # println("Warning: Continuing simulation for nontrivial lattices isn't supported.")
+        H, lat, sublattice, qmc_state, rng, observables, diagnostics, starting_batch = res
     end
 
     path = joinpath(path, sname)
 
-    return H, lat, sublattice, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch
+    return H, lat, sublattice, qmc_state, path, mc_opts, rng, observables, diagnostics, starting_batch
 end
 
 function continue_simulation(path, sname, parsed_args)
@@ -131,24 +135,26 @@ function continue_simulation(path, sname, parsed_args)
             qmc_state::BinaryGroundState = state["qmc_state"]
             H::Rydberg = state["hamiltonian"]
             observables = state["observables"]
-            runstats = state["runstats"]
+            diagnostics = state["diagnostics"]
+            lat = state["lattice"]
+            sublattice = state["sublattice"]
 
             if parsed_args["runstats"] > 2
                 runstats2 = RunStatsHistogram(parsed_args["runstats"])
             elseif 0 < parsed_args["runstats"] <= 2
-                runstats2 = RunStats(parsed_args["runstats"])
+                runstats2 = RunStats()
             elseif parsed_args["runstats"] == 0
-                runstats2 = runstats
+                runstats2 = diagnostics.runstats
             else
                 runstats2 = NoStats()
             end
 
             # allow overriding of runstats method when continuing simulation
-            if typeof(runstats) != typeof(runstats2)
-                runstats = runstats2
+            if typeof(diagnostics.runstats) != typeof(runstats2)
+                diagnostics = Diagnostics(runstats2, diagnostics.tmatrix)
             end
 
-            return H, qmc_state, rng, observables, runstats, starting_batch
+            return H, lat, sublattice, qmc_state, rng, observables, diagnostics, starting_batch
         catch _
             nothing
         end
@@ -164,30 +170,19 @@ measurementtodict(H::OnlineStats.KHist) = Dict("value" => mean(H), "error" => st
 measurementtodict(H::OnlineStats.Hist) = Dict("value" => mean(H), "error" => std(H) / sqrt(nobs(H)))
 
 function groundstate(parsed_args)
-    H, lat, sublattice, qmc_state, path, mc_opts, rng, observables, runstats, starting_batch =
+    H, lat, sublattice, qmc_state, path, mc_opts, rng, observables, diagnostics, starting_batch =
         init_mc_cli(parsed_args)
 
     M, MCS, batches, mb_prob = mc_opts
-    if starting_batch == 0 && M == 0
-        println("Running a finite-T procedure to estimate M. Not recommended!")
-        beta = 20.0
-        max_ns = maximum([mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:MCS])
-
-        # there's still a lot of identity elements left over, no need to make the simulation cell bigger
-        resize_op_list!(qmc_state, H, max_ns)
-        qmc_state = convert(BinaryGroundState{3, typeof(qmc_state.left_config)}, qmc_state)
-        println("final operator list length: ", length(qmc_state.operator_list))
-        println("max ops: ", max_ns)
-    end
 
     l = floor(Int, log10(batches) + 1)
 
     for b in starting_batch:batches
         for i in 1:MCS  # Monte Carlo Production Steps
-            # don't include equilibration samples in runstats
-            rs = (b == 0) ? NoStats() : runstats
+            # don't include equilibration samples in diagnostics
+            d = (b == 0) ? Diagnostics() : diagnostics
 
-            mc_step!(rng, qmc_state, H, rs; p=mb_prob) do lsize, qmc_state, H
+            mc_step!(rng, qmc_state, H, d; p=mb_prob) do _, qmc_state, H
                 spin_prop = sample(H, qmc_state)
 
                 observables[i, :n_ssd] = num_single_site_diag(H, qmc_state.operator_list)
@@ -195,7 +190,7 @@ function groundstate(parsed_args)
                 nematic = kagome_nematic(lat, sublattice, spin_prop)
                 observables[i, :nematic_real] = real(nematic)
                 observables[i, :nematic_imag] = imag(nematic)
-                observables[i, :correlations] = correlation_functions(spin_prop)
+                # observables[i, :correlations] = correlation_functions(spin_prop)
 
                 observables[i, :batch] = b
             end
@@ -207,11 +202,13 @@ function groundstate(parsed_args)
               rng=rng,
               qmc_state=qmc_state,
               hamiltonian=H,
+              lattice=lat,
+              sublattice=sublattice,
               observables=observables,
-              runstats=runstats)
+              diagnostics=diagnostics)
 
-        data_file = path * "_raw_observables.csv"
-        CSV.write(data_file, observables; append = (b > 0))
+        data_file = path * "_batch_$(lpad(b, l, "0"))_raw_observables.csv"
+        CSV.write(data_file, observables)
 
         # delete the previous saved state, if it exists
         old_qmc_state = path * "_batch_$(lpad(b-1, l, "0"))_state.jld2"
@@ -222,24 +219,12 @@ function groundstate(parsed_args)
 
     runstats_file = path * "_runstats.json"
 
-    runstats_dict = Dict{Symbol, Any}([k => measurementtodict(getproperty(runstats, k)) for k in fieldnames(typeof(runstats))])
+    runstats_dict = Dict{Symbol, Any}([k => measurementtodict(getproperty(diagnostics.runstats, k))
+                                       for k in fieldnames(typeof(diagnostics.runstats))])
     runstats_dict[:operator_list_length] = length(qmc_state.operator_list)
 
     open(runstats_file, "w") do io
         JSON.print(io, runstats_dict, 2)
-    end
-
-    if runstats isa RunStatsHistogram
-        # plot histograms
-        for k in fieldnames(typeof(runstats))
-            file = path * "_$(k).png"
-            plt = plot(
-                getproperty(runstats, k),
-                legend = nothing,
-                size = (500, 500)
-            )
-            savefig(plt, file)
-        end
     end
 end
 
@@ -283,7 +268,7 @@ end
         arg_type = Float64
         default = 1.0
     "--trunc"
-        help = """Truncate interactions at this distance. E.g., 
+        help = """Truncate interactions at this distance. E.g.,
                if trunc = 4, sites that are greater that 4 units away from each other
                do not interact. Measured in units of lattice spacing.
                """
