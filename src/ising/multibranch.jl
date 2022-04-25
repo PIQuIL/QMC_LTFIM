@@ -258,7 +258,7 @@ end
 
 multibranch_acceptance(H::AbstractIsing, lnA::T) where {T <: Real} =
     haslongitudinalfield(H) ? exp(min(lnA, zero(lnA))) : T(0.5)
-multibranch_acceptance(H::AbstractRydberg, lnA::T) where {T <: Real} = inv(1 + exp(-lnA)) #exp(min(lnA, zero(T)))
+multibranch_acceptance(H::AbstractRydberg, lnA::T) where {T <: Real} = exp(min(lnA, zero(T)))
 # in the TFIM case, acceptance rate is exactly 1 so we set it to 1/2 to ensure ergodicity
 multibranch_acceptance(H::AbstractTFIM, lnA::T) where {T <: Real} = T(0.5)
 
@@ -277,6 +277,9 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
     runstats = d.runstats
 
     ccount = 0  # cluster number counter
+
+    num_accept = 0
+    num_reject = 0
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
@@ -331,14 +334,20 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
                 @inbounds for j in current_cluster
                     LegType[j] ⊻= 1  # spinflip
                 end
+                fit!(runstats, :accepted_cluster_sizes, length(current_cluster))
+                num_accept += 1
+            else
+                fit!(runstats, :rejected_cluster_sizes, length(current_cluster))
+                num_reject += 1
             end
-
-            fit!(runstats, :cluster_sizes, float(length(current_cluster)))
+            fit!(runstats, :cluster_sizes, length(current_cluster))
         end
     end
 
     if !(runstats isa NoStats)
-        fit!(runstats, :cluster_count, float(ccount))
+        fit!(runstats, :accepted_cluster_count, num_accept)
+        fit!(runstats, :rejected_cluster_count, num_reject)
+        fit!(runstats, :cluster_count, ccount)
     end
 
     # map back basis states and operator list
