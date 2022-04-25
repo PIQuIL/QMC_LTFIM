@@ -278,6 +278,9 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
 
     ccount = 0  # cluster number counter
 
+    num_accept = 0
+    num_reject = 0
+
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
         if iszero(in_cluster[i]) && iszero(Associates[i])
@@ -331,14 +334,20 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
                 @inbounds for j in current_cluster
                     LegType[j] ⊻= 1  # spinflip
                 end
+                fit!(runstats, :accepted_cluster_sizes, length(current_cluster))
+                num_accept += 1
+            else
+                fit!(runstats, :rejected_cluster_sizes, length(current_cluster))
+                num_reject += 1
             end
-
-            fit!(runstats, :cluster_sizes, float(length(current_cluster)))
+            fit!(runstats, :cluster_sizes, length(current_cluster))
         end
     end
 
     if !(runstats isa NoStats)
-        fit!(runstats, :cluster_count, float(ccount))
+        fit!(runstats, :accepted_cluster_count, num_accept)
+        fit!(runstats, :rejected_cluster_count, num_reject)
+        fit!(runstats, :cluster_count, ccount)
     end
 
     # map back basis states and operator list
