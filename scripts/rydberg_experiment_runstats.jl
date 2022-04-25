@@ -79,17 +79,15 @@ function init_mc_cli(parsed_args)
     sname = savename(d; digits = 4)
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "snn_data3", "groundstate",
-        "nY=$nY", "Rb=$(@sprintf("%.2f", R_b))",
+        "transition_matrices", "cluster_histograms",
+        "nY=$nY",
         "delta=$(@sprintf("%.2f", δ))",
-        "trunc=$truncation",
-        "ts=$ts_type", "M=$M",
-        "p=$mb_prob")
+        "p=$mb_prob", "epsilon=$epsilon")
     mkpath(path)
 
     res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)
     if res === nothing
-        H = Rydberg((nY, nY), R_b, Ω, δ; pbc=false, trunc=truncation, epsilon=epsilon)
+        H = Rydberg((nY,), R_b, Ω, δ; pbc=false, trunc=truncation, epsilon=epsilon)
         if M == 0
             qmc_state = BinaryThermalState(H, 2000)
         else
@@ -188,19 +186,15 @@ function groundstate(parsed_args)
 
     l = floor(Int, log10(batches) + 1)
 
-    measurements = zeros(Bool, nspins(H), MCS)
+    # measurements = zeros(Bool, nspins(H), MCS)
 
     for b in starting_batch:batches
         # don't include equilibration samples in diagnostics
         d = (b == 0) ? Diagnostics() : diagnostics
 
         for i in 1:MCS  # Monte Carlo Production Steps
-            for _ in 1:10_000
-                mc_step!(rng, qmc_state, H, Diagnostics(); p=mb_prob)
-            end
-
             mc_step!(rng, qmc_state, H, d; p=mb_prob) do _, qmc_state, H
-                measurements[:, i] = sample(H, qmc_state)
+                # measurements[:, i] = sample(H, qmc_state)
 
                 observables[i, :n_ssd] = num_single_site_diag(H, qmc_state.operator_list)
 
@@ -222,12 +216,6 @@ function groundstate(parsed_args)
 
         data_file = path * "_batch_$(lpad(b, l, "0"))_raw_observables.csv"
         CSV.write(data_file, observables)
-
-        samples_file = path * "_batch_$(lpad(b, l, "0"))_samples.csv"
-
-        open(samples_file, "w") do io
-            writedlm(samples_file, Int.(measurements), " ")
-        end
 
         # delete the previous saved state, if it exists
         old_qmc_state = path * "_batch_$(lpad(b-1, l, "0"))_state.jld2"

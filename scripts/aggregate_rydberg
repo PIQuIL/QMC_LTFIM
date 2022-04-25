@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --time=8:00:00
+#SBATCH --mem=8G
+#SBATCH --mail-user=emerali@uwaterloo.ca
+#SBATCH --mail-type=FAIL
+#SBATCH --account=rrg-rgmelko-ab
+#SBATCH --output=/scratch/ejaazm/qmc_sims/snn_data2/logs/sample-compression-output-%x-%A-%a.out
+
+# echo nY=$nY
+echo delta=$delta
+# echo Rb=$Rb
+# echo M=$M
+# echo trunc=0
+
+# module load julia/1.5.2
+
+# julia --compiled-modules=no --project=../ rydberg_cleanup.jl \
+#    $nY -R $Rb --delta $delta -M $M --mb-prob 0.0 \
+#    --trunc 0 --trialstate plus
+
+# julia --compiled-modules=no --project=../ rydberg_sample_thinning.jl \
+#    $nY -R $Rb --delta $delta -M $M --mb-prob 0.0 \
+#    --trunc 0 --trialstate plus
+
+cd "/home/ejaazm/scratch/qmc_sims/snn_data/"
+find ./ -name "*δ=$delta*observables.json" -o -name "*δ=$delta*samples.csv" | tar -c -I "xz -9" -f snn_data_delta_$delta.tar.xz -T -

@@ -4,24 +4,25 @@
 #SBATCH --mail-user=emerali@uwaterloo.ca
 #SBATCH --mail-type=FAIL
 #SBATCH --account=rrg-rgmelko-ab
-#SBATCH --output=/scratch/ejaazm/qmc_sims/snn_data3/logs/mcmc-output-%x-%A-%a.out
+#SBATCH --output=/scratch/ejaazm/qmc_sims/transition_matrices/logs/mcmc-output-%x-%A-%a.out
 
 # echo nX=nY=$nX
-echo Rb=$Rb
+# echo Rb=$Rb
 echo delta=$delta
-# echo p=$p
+echo p=$p
+echo eps=$eps
 # echo trunc=$trunc
 # echo M=$M
-echo seed=$seed
+# echo seed=$seed
 
 
 module load StdEnv/2020 julia/1.5.2
 
-julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
-   groundstate 16 \
-   --omega 1.0 -R $Rb --delta $delta \
-   -n 10 -b 40 --mb-prob 0.0 \
-   --seed $seed -M 100000
+julia --compiled-modules=no --project=../ rydberg_experiment_runstats.jl \
+   groundstate 51 \
+   --omega 1.0 -R 1.2 --delta $delta \
+   -n 100000 -b 1 --mb-prob $p --epsilon $eps \
+   --seed 1234 -M 12000 --runstats 500
 
 # for p in $(seq 0.0 0.5 1.0)
 # do
