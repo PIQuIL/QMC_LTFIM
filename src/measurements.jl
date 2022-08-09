@@ -15,6 +15,18 @@ function sample(H::AbstractIsing, qmc_state::BinaryQMCState, M::Int=length(qmc_s
     return spin_prop
 end
 
+function update_two_pt_fn!(two_pt_fn::Matrix{T}, one_pt_fn::Vector{T}, sample::Vector, n::Int) where T <: AbstractFloat
+    n += 1
+    delta = @. T(sample) - one_pt_fn
+
+    LinearAlgebra.BLAS.syr!('U', inv(n), delta, two_pt_fn)  # two_pt_fn .+= (delta/n) * transpose(delta)
+    two_pt_fn *= (n-1)/n
+
+    one_pt_fn .+= delta / n
+
+    return two_pt_fn, one_pt_fn, n
+end
+
 function simulation_cell(H::AbstractIsing, qmc_state::BinaryQMCState, r::OrdinalRange{Int, Int})
     operator_list = qmc_state.operator_list
 

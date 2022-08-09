@@ -1,27 +1,37 @@
 #!/bin/bash
-#SBATCH --time=24:00:00
+#SBATCH --time=10:00:00
 #SBATCH --mem=4G
 #SBATCH --mail-user=emerali@uwaterloo.ca
 #SBATCH --mail-type=FAIL
 #SBATCH --account=rrg-rgmelko-ab
-#SBATCH --output=/scratch/ejaazm/qmc_sims/snn_data3/logs/mcmc-output-%x-%A-%a.out
+#SBATCH --output=/scratch/ejaazm/qmc_sims/snn_data_pbc/logs/mcmc-output-%j.out
 
-# echo nX=nY=$nX
+
+# echo delta=$delta
+# echo p=$p
+# echo eps=$eps
+echo nX=16
+echo M=100000
+echo seed=$seed
 echo Rb=$Rb
 echo delta=$delta
-# echo p=$p
-# echo trunc=$trunc
-# echo M=$M
-echo seed=$seed
 
 
 module load StdEnv/2020 julia/1.5.2
 
+# julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
+#    groundstate 51 \
+#    --omega 1.0 -R 1.2 --delta $delta \
+#    -n 1000000 -b 10 --mb-prob $p --epsilon $eps --trunc 0 \
+#    --seed 1234 -M 12000 --runstats 500
+
+
 julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
    groundstate 16 \
    --omega 1.0 -R $Rb --delta $delta \
-   -n 10 -b 40 --mb-prob 0.0 \
-   --seed $seed -M 100000
+   -n 40 -b 10 --mb-prob 0.0 --trunc 0 \
+   --seed $seed -M 100000 --runstats 0
+# run again with M=200000 ?
 
 # for p in $(seq 0.0 0.5 1.0)
 # do

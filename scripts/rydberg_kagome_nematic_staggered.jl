@@ -93,7 +93,7 @@ function init_mc_cli(parsed_args)
             mags = zeros(MCS),
             nematic_real = zeros(MCS),
             nematic_imag = zeros(MCS),
-            # correlations = [zeros(nspins(H), nspins(H)) for _ in 1:MCS]
+            correlations = [zeros(nspins(H), nspins(H)) for _ in 1:MCS]
         )
 
         if parsed_args["runstats"] > 2
@@ -103,7 +103,7 @@ function init_mc_cli(parsed_args)
         else
             runstats = NoStats()
         end
-        diagnostics = Diagnostics(runstats, CombinedTransitionMatrix(nspins(H), 1:length(H.op_sampler.op_log_weights)))
+        diagnostics = Diagnostics(runstats, TransitionMatrix())
     else
         # println("Warning: Continuing simulation for nontrivial lattices isn't supported.")
         H, lat, sublattice, qmc_state, rng, observables, diagnostics, starting_batch = res
@@ -190,7 +190,7 @@ function groundstate(parsed_args)
                 nematic = kagome_nematic(lat, sublattice, spin_prop)
                 observables[i, :nematic_real] = real(nematic)
                 observables[i, :nematic_imag] = imag(nematic)
-                # observables[i, :correlations] = correlation_functions(spin_prop)
+                observables[i, :correlations] = correlation_functions(spin_prop)
 
                 observables[i, :batch] = b
             end

@@ -345,9 +345,9 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
     end
 
     if !(runstats isa NoStats)
-        fit!(runstats, :accepted_cluster_count, num_accept)
-        fit!(runstats, :rejected_cluster_count, num_reject)
-        fit!(runstats, :cluster_count, ccount)
+        fit!(runstats, :accepted_cluster_count, num_accept+1)
+        fit!(runstats, :rejected_cluster_count, num_reject+1)
+        fit!(runstats, :cluster_count, ccount+1)
     end
 
     # map back basis states and operator list

@@ -79,17 +79,14 @@ function init_mc_cli(parsed_args)
     sname = savename(d; digits = 4)
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "snn_data3", "groundstate",
+        "snn_data_pbc",
         "nY=$nY", "Rb=$(@sprintf("%.2f", R_b))",
-        "delta=$(@sprintf("%.2f", δ))",
-        "trunc=$truncation",
-        "ts=$ts_type", "M=$M",
-        "p=$mb_prob")
+        "delta=$(@sprintf("%.2f", δ))", "seed=$seed")
     mkpath(path)
 
     res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)
     if res === nothing
-        H = Rydberg((nY, nY), R_b, Ω, δ; pbc=false, trunc=truncation, epsilon=epsilon)
+        H = Rydberg((nY,nY), R_b, Ω, δ; pbc=true, trunc=truncation, epsilon=epsilon)
         if M == 0
             qmc_state = BinaryThermalState(H, 2000)
         else
@@ -105,8 +102,8 @@ function init_mc_cli(parsed_args)
         observables = DataFrame(
             batch = zeros(Int, MCS),
             n_ssd = zeros(MCS),
-            # checkerboard = zeros(MCS),
-            # mags = zeros(MCS),
+            checkerboard = zeros(MCS),
+            mags = zeros(MCS),
         )
 
         if parsed_args["runstats"] > 2
@@ -194,22 +191,49 @@ function groundstate(parsed_args)
         # don't include equilibration samples in diagnostics
         d = (b == 0) ? Diagnostics() : diagnostics
 
+        # compute 1,2 pt fns separately for each batch (can combine batches later)
+        two_pt_fn = zeros(Float64, nspins(H), nspins(H))
+        one_pt_fn = zeros(Float64, nspins(H))
+        n = 0
+
         for i in 1:MCS  # Monte Carlo Production Steps
-            for _ in 1:10_000
-                mc_step!(rng, qmc_state, H, Diagnostics(); p=mb_prob)
+            for _ in 1:(10_000-1)
+                mc_step!(rng, qmc_state, H, Diagnostics(); p=mb_prob) do _, qmc_state, H
+                    spin_prop = sample(H, qmc_state)
+
+                    two_pt_fn, one_pt_fn, n =
+                        update_two_pt_fn!(two_pt_fn, one_pt_fn, spin_prop, n)
+                end
             end
 
             mc_step!(rng, qmc_state, H, d; p=mb_prob) do _, qmc_state, H
-                measurements[:, i] = sample(H, qmc_state)
+                spin_prop = sample(H, qmc_state)
+
+                measurements[:, i] = spin_prop
+
+                two_pt_fn, one_pt_fn, n =
+                    update_two_pt_fn!(two_pt_fn, one_pt_fn, spin_prop, n)
 
                 observables[i, :n_ssd] = num_single_site_diag(H, qmc_state.operator_list)
 
-                # observables[i, :mags] = magnetization(spin_prop)
-                # observables[i, :checkerboard] = staggered_magnetization(H, spin_prop)
+                observables[i, :mags] = magnetization(spin_prop)
+                observables[i, :checkerboard] = staggered_magnetization(H, spin_prop)
 
                 observables[i, :batch] = b
             end
         end
+
+        data_file = path * "_batch_$(lpad(b, l, "0"))_raw_observables.csv"
+        CSV.write(data_file, observables)
+
+        two_pt_file = path * "_batch_$(lpad(b, l, "0"))_2_pt_fn.csv"
+        writedlm(two_pt_file, two_pt_fn, " ")
+
+        one_pt_file = path * "_batch_$(lpad(b, l, "0"))_1_pt_fn.csv"
+        writedlm(one_pt_file, one_pt_fn, " ")
+
+        samples_file = path * "_batch_$(lpad(b, l, "0"))_samples.csv"
+        writedlm(samples_file, Int.(transpose(measurements)), " ")
 
         # save batch
         qmc_state_file = path * "_batch_$(lpad(b, l, "0"))_state.jld2"
@@ -220,15 +244,6 @@ function groundstate(parsed_args)
               observables=observables,
               diagnostics=diagnostics)
 
-        data_file = path * "_batch_$(lpad(b, l, "0"))_raw_observables.csv"
-        CSV.write(data_file, observables)
-
-        samples_file = path * "_batch_$(lpad(b, l, "0"))_samples.csv"
-
-        open(samples_file, "w") do io
-            writedlm(samples_file, Int.(measurements), " ")
-        end
-
         # delete the previous saved state, if it exists
         old_qmc_state = path * "_batch_$(lpad(b-1, l, "0"))_state.jld2"
         if isfile(old_qmc_state)
@@ -236,15 +251,15 @@ function groundstate(parsed_args)
         end
     end
 
-    runstats_file = path * "_runstats.json"
+    # runstats_file = path * "_runstats.json"
 
-    runstats_dict = Dict{Symbol, Any}([k => measurementtodict(getproperty(diagnostics.runstats, k))
-                                       for k in fieldnames(typeof(diagnostics.runstats))])
-    runstats_dict[:operator_list_length] = length(qmc_state.operator_list)
+    # runstats_dict = Dict{Symbol, Any}([k => measurementtodict(getproperty(diagnostics.runstats, k))
+    #                                    for k in fieldnames(typeof(diagnostics.runstats))])
+    # runstats_dict[:operator_list_length] = length(qmc_state.operator_list)
 
-    open(runstats_file, "w") do io
-        JSON.print(io, runstats_dict, 2)
-    end
+    # open(runstats_file, "w") do io
+    #     JSON.print(io, runstats_dict, 2)
+    # end
 end
 
 
@@ -325,7 +340,7 @@ end
                 same runstats calculation as before.
                """
         arg_type = Int
-        default = 0
+        default = -1
 
     "--seed"
         help = "Random seed"
