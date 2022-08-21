@@ -18,6 +18,7 @@ abstract type PolyLattice <: Lattice end
 struct Chain <: OneDLattice
     n1::Int
     a1::Float64
+    PBC::Tuple{Bool}
     distance_matrix::Array{Float64, 2}
 end
 
@@ -40,7 +41,7 @@ function Chain(nX::Int, aX::Float64, PBC::Bool; trunc::Float64 = Inf)
             distance_matrix[i, j] = dx <= trunc ? dx : 0.0
         end
     end
-    return Chain(nX, aX, distance_matrix)
+    return Chain(nX, aX, (PBC,), distance_matrix)
 end
 
 

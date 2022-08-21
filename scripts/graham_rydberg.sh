@@ -1,5 +1,33 @@
 # #!/bin/bash
 
+
+# FSS Dataset
+
+joblist=$(sq -h --format="%j")
+for nX in $(seq 8 4 20)
+do
+    for delta in $(seq 1.0 0.01 1.2) $(seq 1.22 0.02 1.28)
+    do
+        for seed in $(seq 1000 1000 10000)
+        do
+            X="$nX|$delta|$seed"
+            # sbatch -J "$X" --export="nX=$nX,seed=$seed,delta=$delta" submit_rydberg_fss
+
+            if `echo $joblist | grep -owq "$X"` ; then
+                # echo "queueing $X"
+                # sbatch -J "$X" --export="nX=$nX,seed=$seed,delta=$delta" --dependency=singleton submit_rydberg_fss
+        	    # sleep 0.5s
+                :
+            else
+                echo "run $X"
+         	    sbatch -J "$X" --export="nX=$nX,seed=$seed,delta=$delta" submit_rydberg_fss
+                #:
+            fi
+        done 
+        sleep 0.5s
+    done
+done
+
 # Kagome
 # for nX in $(seq 4 2 8)
 # do
@@ -32,30 +60,31 @@
 
 # SNN Data
 
-joblist=$(sq -h --format="%.12j")
+# joblist=$(sq -h --format="%.12j")
 
-for Rb in $(seq 1.0 0.1 2.0)
-do
-  for delta in $(seq 0.0 0.1 2.9)
-  do
-    for seed in 1234 4321 5555
-    do
-      X="$Rb|$delta|$seed"
-      #echo $X
-      #sbatch -J "$X" --export="seed=$seed,delta=$delta,Rb=$Rb" submit_rydberg
+# for Rb in $(seq 1.0 0.1 2.0)
+# do
+#   for delta in $(seq 0.0 0.1 2.9)
+#   do
+#     for seed in 1234 4321 5555
+#     do
+#       X="$Rb|$delta|$seed"
+#       #echo $X
+#       #sbatch -J "$X" --export="seed=$seed,delta=$delta,Rb=$Rb" submit_rydberg
 
-      if `echo $joblist | grep -owq "$X"` ; then
-        echo "queueing $X"
-        sbatch -J "$X" --export="seed=$seed,delta=$delta,Rb=$Rb" --dependency=singleton submit_rydberg
-      else
-        #echo "run $X"
- 	:
-      fi
-    done
-    #sleep 0.5s
-  done
-  sleep 1s
-done
+#       if `echo $joblist | grep -owq "$X"` ; then
+#         echo "queueing $X"
+#         sbatch -J "$X" --export="seed=$seed,delta=$delta,Rb=$Rb" --dependency=singleton submit_rydberg
+# 	sleep 0.5s
+#       else
+#         #echo "run $X"
+#  	:
+#       fi
+#     done
+#     #sleep 0.5s
+#   done
+#   #sleep 1s
+# done
 
 
 #for p in 0.0 0.5 1.0

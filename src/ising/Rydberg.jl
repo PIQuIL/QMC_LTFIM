@@ -129,6 +129,27 @@ function Rydberg(lat::Lattice, R_b::Float64, Ω::Float64, δ::Float64; trunc::In
         V = (V + V') / 2  # should already be symmetric but just in case
 
         return Rydberg(UpperTriangular(triu!(V, 1)), Ω*ones(Ns), δ*ones(Ns), lat; epsilon=epsilon)
+    elseif lat isa Chain && all(lat.PBC)
+        V = zeros(Ns, Ns)
+        K = 3  # figure out an efficient way to set this dynamically
+
+        dist = zeros(Ns, Ns)
+        for v1 in -K:K
+            dV = zeros(Ns, Ns)
+            for x2 in axes(dV, 2), x1 in axes(dV, 1)
+                i1 = x1 - 1
+                i2 = x2 - 1
+                r = i2 - i1 + v1*lat.n1
+                dV[x1, x2] += Ω * (R_b/abs(r))^6
+            end
+            # @show v2, v1, maximum(abs, dV)
+
+            V += dV
+        end
+
+        V = (V + V') / 2  # should already be symmetric but just in case
+
+        return Rydberg(UpperTriangular(triu!(V, 1)), Ω*ones(Ns), δ*ones(Ns), lat; epsilon=epsilon)
     else
         dist = lat.distance_matrix
     end

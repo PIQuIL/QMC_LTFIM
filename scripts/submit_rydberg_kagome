@@ -1,0 +1,14 @@
+#!/bin/bash
+#SBATCH --time=12:00:00
+#SBATCH --mem=8G
+#SBATCH --mail-user=emerali@uwaterloo.ca
+#SBATCH --mail-type=FAIL
+#SBATCH --account=rrg-rgmelko-ab
+#SBATCH --output=/scratch/ejaazm/qmc_sims/scipost/logs/cleanup-%j.out
+
+echo delta=$delta
+
+module load StdEnv/2020 julia/1.5.2
+
+julia --compiled-modules=no --project=../ rydberg_tmatrix_reduction.jl \
+   $delta

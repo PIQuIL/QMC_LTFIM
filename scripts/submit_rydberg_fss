@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH --time=7-00:00:00
+#SBATCH --mem=4G
+#SBATCH --mail-user=emerali@uwaterloo.ca
+#SBATCH --mail-type=FAIL
+#SBATCH --account=rrg-rgmelko-ab
+#SBATCH --output=/scratch/ejaazm/qmc_sims/fss/logs/mcmc-output-%j.out
+
+echo nX=$nX
+echo Rb=1.2
+echo delta=$delta
+echo seed=$seed
+
+module load StdEnv/2020 julia/1.5.2
+
+
+julia --compiled-modules=no --project=../ rydberg_experiment_saveall2.jl \
+   groundstate $nX \
+   --omega 1.0 -R 1.2 --delta $delta \
+   -n 1000 -b 50 --mb-prob 0.0 --trunc 0 \
+   --seed $seed -M 12000 --runstats 0 --epsilon 0.0
