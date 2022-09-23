@@ -3,6 +3,7 @@ using Statistics
 using Random
 using RandomNumbers
 using Measurements
+using BinningAnalysis
 
 
 expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
@@ -30,47 +31,42 @@ expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
 )
 
 
-# @testset "1D TFIM Ground State $N-sites, PBC=$PBC" for PBC in [true, false], N in [10]
-#     rng = Xorshifts.Xoroshiro128Plus(1234)
+@testset "1D TFIM Ground State $N-sites, PBC=$PBC" for PBC in [true, false], N in [10]
+    rng = Xorshifts.Xoroshiro128Plus(1234)
 
-#     bonds, Ns, Nb = lattice_bond_spins((10,), PBC)
-#     H = TFIM(bonds, 1, Ns, Nb, 1.0, 1.0)
-#     gs = BinaryGroundState(H, 1000)
+    bonds, Ns, Nb = lattice_bond_spins((10,), PBC)
+    H = TFIM(bonds, Ns, Nb, 1.0, 1.0)
+    gs = BinaryGroundState(H, 1000)
 
-#     MCS = 1_000_000
-#     EQ_MCS = 100_000
+    MCS = 1_000_000
+    EQ_MCS = 100_000
 
-#     mags = zeros(MCS)
-#     ns = zeros(MCS)
-#     nb = zeros(MCS)
+    mags = zeros(MCS)
+    ns = zeros(MCS)
 
-#     [mc_step!(rng, gs, H) for i in 1:EQ_MCS]
+    d = Diagnostics()
 
-#     for i in 1:MCS # Monte Carlo Production Steps
-#         mc_step!(rng, gs, H) do lsize, gs, H
-#             spin_prop = sample(H, gs)
-#             ns[i] = num_single_site_diag(H, gs.operator_list)
-#             nb[i] = num_two_site_diag(H, gs.operator_list)
-#             mags[i] = magnetization(spin_prop)
-#         end
-#     end
+    [mc_step!(rng, gs, H, d) for i in 1:EQ_MCS]
 
-#     abs_mag = mean_and_stderr(abs, mags)
-#     mag_sqr = mean_and_stderr(abs2, mags)
+    for i in 1:MCS # Monte Carlo Production Steps
+        mc_step!(rng, gs, H, d) do lsize, gs, H
+            spin_prop = sample(H, gs)
+            ns[i] = num_single_site_diag(H, gs.operator_list)
+            mags[i] = magnetization(spin_prop)
+        end
+    end
+    A = LogBinner(abs.(mags))
+    S = LogBinner(abs2.(mags))
+    abs_mag = measurement(mean(A), std_error(A))
+    mag_sqr = measurement(mean(S), std_error(S))
 
-#     energy = jackknife(ns) do n
-#         if H.h != 0
-#             (-H.h / n) + H.energy_shift / nspins(H)
-#         else
-#             H.energy_shift / nspins(H)
-#         end
-#     end
+    energy = QMC.energy_density(gs, H, ns)
 
-#     expected_vals = expected_values[(PBC, N, Inf64)]
-#     @test stdscore(abs_mag, expected_vals["|M|"]) < THRESHOLD
-#     @test stdscore(mag_sqr, expected_vals["M^2"]) < THRESHOLD
-#     @test stdscore(energy, expected_vals["H"]) < THRESHOLD
-# end
+    expected_vals = expected_values[(PBC, N, Inf64)]
+    @test stdscore(abs_mag, expected_vals["|M|"]) < THRESHOLD
+    @test stdscore(mag_sqr, expected_vals["M^2"]) < THRESHOLD
+    @test stdscore(energy, expected_vals["H"]) < THRESHOLD
+end # TODO: make this abs values^
 
 
 @testset "1D TFIM Thermal State $N-sites, PBC=$PBC, β=1.0" for PBC in [true, false], N in [10]
@@ -78,7 +74,7 @@ expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
     # rng = MersenneTwister(4321)
 
     bonds, Ns, Nb = lattice_bond_spins((10,), PBC)
-    H = TFIM(bonds, 1, Ns, Nb, 1.0, 1.0)
+    H = TFIM(bonds, Ns, Nb, 1.0, 1.0)
     th = BinaryThermalState(H, 1000)
     beta = 1.0
 
@@ -88,20 +84,25 @@ expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
     mags = zeros(MCS)
     ns = zeros(MCS)
 
-    [mc_step_beta!(rng, th, H, beta) for i in 1:EQ_MCS]
+    d = Diagnostics()
+
+    [mc_step_beta!(rng, th, H, beta, d; eq=true) for i in 1:EQ_MCS]
 
     for i in 1:MCS # Monte Carlo Steps
-        ns[i] = mc_step_beta!(rng, th, H, beta) do lsize, th, H
+        ns[i] = mc_step_beta!(rng, th, H, beta, d) do lsize, th, H
             mags[i] = magnetization(sample(H, th))
         end
     end
-    abs_mag = mean_and_stderr(abs, mags)
-    mag_sqr = mean_and_stderr(abs2, mags)
+    A = LogBinner(abs.(mags))
+    S = LogBinner(abs2.(mags))
+    abs_mag = measurement(mean(A), std_error(A))
+    mag_sqr = measurement(mean(S), std_error(S))
 
-    energy = mean_and_stderr(x -> -x/beta, ns) + H.energy_shift
+    E = LogBinner(-ns/beta)
+    energy = measurement(mean(E), std_error(E)) + H.energy_shift
     energy /= nspins(H)
 
-    heat_capacity = jackknife(ns .^ 2, ns) do nsqr, n
+    heat_capacity = QMC.jackknife(ns .^ 2, ns) do nsqr, n
         nsqr - n^2 - n
     end
 

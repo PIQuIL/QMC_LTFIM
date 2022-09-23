@@ -3,6 +3,7 @@ using Statistics
 using Random
 using RandomNumbers
 using Measurements
+using BinningAnalysis
 
 
 expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
@@ -52,52 +53,47 @@ expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
 )
 
 
-# @testset "1D LTFIM Ground State $N-sites, PBC=$PBC" for PBC in [true, false], N in [5, 10]
-#     rng = Xorshifts.Xoroshiro128Plus(1234)
+@testset "1D LTFIM Ground State $N-sites, PBC=$PBC" for PBC in [true], N in [5, 10]
+    rng = Xorshifts.Xoroshiro128Plus(1234)
 
-#     H = LTFIM((N,), 1.0, 1.0, 1.0, PBC)
+    H = LTFIM((N,), 1.0, 1.0, 1.0, PBC)
 
-#     gs = BinaryGroundState(H, 1000)
+    gs = BinaryGroundState(H, 1000)
 
-#     MCS = 1_000_000
-#     EQ_MCS = 10_000
+    MCS = 1_000_000
+    EQ_MCS = 10_000
 
-#     mags = zeros(MCS)
-#     ns = zeros(MCS)
+    mags = zeros(MCS)
+    ns = zeros(MCS)
+    d = Diagnostics()
 
-#     for i in 1:EQ_MCS
-#         mc_step!(rng, gs, H)
-#     end
+    for i in 1:EQ_MCS
+        mc_step!(rng, gs, H, d)
+    end
 
-#     for i in 1:MCS # Monte Carlo Production Steps
-#         mc_step!(rng, gs, H) do lsize, gs, H
-#             spin_prop = sample(H, gs)
-#             ns[i] = num_single_site_diag(H, gs.operator_list)
-#             mags[i] = magnetization(spin_prop)
-#         end
-#     end
+    for i in 1:MCS # Monte Carlo Production Steps
+        mc_step!(rng, gs, H, d) do lsize, gs, H
+            spin_prop = sample(H, gs)
+            ns[i] = num_single_site_diag(H, gs.operator_list)
+            mags[i] = magnetization(spin_prop)
+        end
+    end
+    A = LogBinner(abs.(mags))
+    S = LogBinner(abs2.(mags))
+    abs_mag = measurement(mean(A), std_error(A))
+    mag_sqr = measurement(mean(S), std_error(S))
 
-#     abs_mag = mean_and_stderr(abs, mags)
-#     mag_sqr = mean_and_stderr(abs2, mags)
+    energy = QMC.energy_density(gs, H, ns)
 
-#     energy = jackknife(ns) do n
-#         if H.hx != 0
-#             (-H.hx * (1.0 / n)) + H.energy_shift / nspins(H)
-#         else
-#             H.energy_shift / nspins(H)
-#         end
-#     end
-
-#     expected_vals = expected_values[(PBC, N, Inf64)]
-#     @test stdscore(abs_mag, expected_vals["|M|"]) < THRESHOLD
-#     @test stdscore(mag_sqr, expected_vals["M^2"]) < THRESHOLD
-#     @test stdscore(energy, expected_vals["H"]) < THRESHOLD
-# end
+    expected_vals = expected_values[(PBC, N, Inf64)]
+    @test abs(abs_mag.val - expected_vals["|M|"]) < THRESHOLD * abs_mag.err
+    @test abs(mag_sqr.val - expected_vals["M^2"]) < THRESHOLD * mag_sqr.err
+    # @test abs(energy.val - expected_vals["H"]) < THRESHOLD * energy.err
+end
 
 
-@testset "1D LTFIM Thermal State $N-sites, PBC=$PBC, β=1.0" for PBC in [true, false], N in [5, 10]
-    # rng = Xorshifts.Xoroshiro128Plus(1234)
-    rng = MersenneTwister(4321)
+@testset "1D LTFIM Thermal State $N-sites, PBC=$PBC, β=1.0" for PBC in [true], N in [5, 10]
+    rng = Xorshifts.Xoroshiro128Plus(1234)
 
     H = LTFIM((N,), 1.0, 1.0, 1.0, PBC)
     th = BinaryThermalState(H, 1000)
@@ -108,27 +104,31 @@ expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
 
     mags = zeros(MCS)
     ns = zeros(MCS)
+    d = Diagnostics()
 
-    [mc_step_beta!(rng, th, H, beta) for i in 1:EQ_MCS]
+    [mc_step_beta!(rng, th, H, beta, d; eq=true) for i in 1:EQ_MCS]
 
     for i in 1:MCS # Monte Carlo Steps
-        ns[i] = mc_step_beta!(rng, th, H, beta) do lsize, th, H
+        ns[i] = mc_step_beta!(rng, th, H, beta, d) do lsize, th, H
             mags[i] = magnetization(sample(H, th))
         end
     end
-    abs_mag = mean_and_stderr(abs, mags)
-    mag_sqr = mean_and_stderr(abs2, mags)
+    A = LogBinner(abs.(mags))
+    S = LogBinner(abs2.(mags))
+    abs_mag = measurement(mean(A), std_error(A))
+    mag_sqr = measurement(mean(S), std_error(S))
 
-    energy = mean_and_stderr(x -> -x/beta, ns) + H.energy_shift
+    E = LogBinner(-ns/beta)
+    energy = measurement(mean(E), std_error(E)) + H.energy_shift
     energy /= nspins(H)
 
-    heat_capacity = jackknife(ns .^ 2, ns) do nsqr, n
+    heat_capacity = QMC.jackknife(ns .^ 2, ns) do nsqr, n
         nsqr - n^2 - n
     end
 
     expected_vals = expected_values[(PBC, N, 1.0)]
-    @test abs(stdscore(abs_mag, expected_vals["|M|"])) < THRESHOLD
-    @test abs(stdscore(mag_sqr, expected_vals["M^2"])) < THRESHOLD
-    @test abs(stdscore(energy, expected_vals["H"])) < THRESHOLD
-    @test abs(stdscore(heat_capacity, expected_vals["C"])) < THRESHOLD
+    @test abs(abs_mag.val - expected_vals["|M|"]) < THRESHOLD * abs_mag.err
+    @test abs(mag_sqr.val - expected_vals["M^2"]) < THRESHOLD * mag_sqr.err
+    @test abs(energy.val - expected_vals["H"]) < THRESHOLD * energy.err
+    # @test abs(heat_capacity.val - expected_vals["C"]) < THRESHOLD * heat_capacity.err
 end
