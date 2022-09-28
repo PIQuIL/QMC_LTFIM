@@ -55,7 +55,7 @@ function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω:
         local_H = V[site1, site2]*kron(n, n) - δb1*kron(n, I) - δb2*kron(I, n)
 
         p_spins = -diag(local_H)
-        C = abs(min(0, minimum(p_spins)))*(1 + epsilon)
+        C = abs(min(0, minimum(p_spins))) + epsilon*abs(minimum(p_spins))
         p_spins .+= C
         energy_shift += C
 

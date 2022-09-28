@@ -7,6 +7,8 @@ function cluster_update!(rng, qmc_state, H::Hamiltonian, d::Diagnostics; p::Floa
     end
 end
 
+cluster_update!(rng, qmc_state, H::AbstractTFIM, d::Diagnostics; kw...) = multibranch_update!(rng, qmc_state, H, d)
+
 function mc_step!(f::Function, rng::AbstractRNG, qmc_state::BinaryGroundState, H::Hamiltonian, d::Diagnostics; kw...)
     full_diagonal_update!(rng, qmc_state, H, d)
     lsize = cluster_update!(rng, qmc_state, H, d; kw...)

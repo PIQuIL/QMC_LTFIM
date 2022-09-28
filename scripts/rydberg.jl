@@ -48,13 +48,13 @@ function init_mc_cli(parsed_args)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
     println("Running Rydberg(R_b=$R_b, Ω=$Ω, δ=$δ)")
-    H = Rydberg(nX, R_b, Ω, δ; pbc = (isone(Dim) ? PBC : (false, false)), epsilon=0.0)
+    H = Rydberg(nX, R_b, Ω, δ; pbc = (isone(Dim) ? PBC : (false, false)), epsilon=0.2)
     d = @ntuple Dim nX BC_name R_b Ω δ skip M
 
     mc_opts = @ntuple M MCS EQ_MCS skip
 
     if haskey(parsed_args, "beta")
-        qmc_state = BinaryThermalState(H, M)
+        qmc_state = BinaryThermalState(H, 2M)
     else
         qmc_state = BinaryGroundState(H, M)
     end
@@ -128,7 +128,7 @@ function mixedstate(parsed_args)
     beta = parsed_args["beta"]
 
     if runstats isa Val{true}
-        d = Diagnostics(RunStats(), CombinedTransitionMatrix(nspins(H), 1:length(H.op_sampler.op_log_weights)))
+        d = Diagnostics(RunStatsHistogram(500), CombinedTransitionMatrix(nspins(H), 1:length(H.op_sampler.op_log_weights)))
     else
         d = Diagnostics()
     end
@@ -142,11 +142,11 @@ function mixedstate(parsed_args)
     smags = zeros(MCS)
     ns = zeros(MCS)
 
-    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); eq=true, p=0.0) for i in 1:EQ_MCS])
+    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); eq=false, p=0.0) for i in 1:EQ_MCS])
 
     # TODO: bug with 3//2. Using 1.5 instead
     #resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
-    resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
+    # resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS  # Monte Carlo Steps
         ns[i] = mc_step_beta!(rng, qmc_state, H, beta, d; p=0.0) do lsize, qmc_state, H
@@ -160,6 +160,22 @@ function mixedstate(parsed_args)
             mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); p=0.0)
         end
     end
+
+
+    println(qmc_state.operator_list)
+    qmc_state_line = deepcopy(qmc_state)
+    println("Line clusters:")
+    lsize = QMC.line_update!(rng, qmc_state_line, H, Diagnostics())
+    println(qmc_state_line.operator_list)
+    println(collect(zip(1:lsize, qmc_state_line.linked_list[1:lsize])))
+    println(collect(zip(1:lsize, qmc_state_line.in_cluster[1:lsize])))
+
+    qmc_state_mb = deepcopy(qmc_state)
+    println("MB clusters:")
+    lsize = QMC.multibranch_update!(rng, qmc_state_mb, H, Diagnostics())
+    println(qmc_state_mb.operator_list)
+    println(collect(zip(1:lsize, qmc_state_mb.linked_list[1:lsize])))
+    println(collect(zip(1:lsize, qmc_state_mb.in_cluster[1:lsize])))
 
     mag = mean_and_stderr(smags)
     abs_mag = mean_and_stderr(abs, smags)
@@ -197,6 +213,7 @@ function mixedstate(parsed_args)
 end
 
 
+using Plots
 
 function groundstate(parsed_args)
     H, qmc_state, sname, mc_opts, rng, runstats = init_mc_cli(parsed_args)
@@ -209,45 +226,89 @@ function groundstate(parsed_args)
     measurements = zeros(Int, MCS, nspins(H))
     mags = zeros(MCS)
     smags = zeros(MCS)
-    ns = zeros(MCS)
+    nssd = zeros(MCS)
+    nsso = zeros(MCS)
+    nbond = zeros(MCS)
+    d = Diagnostics()
     if runstats isa Val{true}
         diag_update_fails = zeros(MCS)
         cluster_update_accep = zeros(MCS)
         num_clusters = zeros(Int, MCS)
         cluster_sizes = zeros(MCS)
         abort_rates = zeros(MCS)
-        d = Diagnostics(RunStats(), NoTransitionMatrix())
+        d = Diagnostics(RunStatsHistogram(500), NoTransitionMatrix())
     end
 
-    @showprogress "Warm up..." for i in 1:EQ_MCS
-        mc_step!(rng, qmc_state, H, Diagnostics())
+    mbprob = 0.0
+    @showprogress "Warm up..." for _ in 1:EQ_MCS
+        mc_step!(rng, qmc_state, H, Diagnostics(), p=mbprob)
     end
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Production Steps
-        output = mc_step!(rng, qmc_state, H, d) do lsize, qmc_state, H
+        mc_step!(rng, qmc_state, H, d, p=mbprob) do _, qmc_state, H
             spin_prop = sample(H, qmc_state)
             measurements[i, :] = spin_prop
 
-            ns[i] = num_single_site_diag(H, qmc_state.operator_list)
+            nssd[i] = num_single_site_diag(H, qmc_state.operator_list)
+            nsso[i] = num_single_site_offdiag(H, qmc_state.operator_list)
+            nbond[i] = num_two_site_diag(H, qmc_state.operator_list)
+
             mags[i] = magnetization(spin_prop)
             smags[i] = staggered_magnetization(H, spin_prop)
         end
 
-        if runstats isa Val{true}
-            diag_update_fails[i], cluster_update_accep[i], num_clusters[i], cluster_sizes[i], abort_rates[i] = output
-        end
-
         for _ in 1:skip
-            mc_step!(rng, qmc_state, H, Diagnostics())
+            mc_step!(rng, qmc_state, H, Diagnostics(), p=mbprob)
         end
     end
 
+    # println(qmc_state.operator_list)
+    # qmc_state_line = deepcopy(qmc_state)
+    # println("Line clusters:")
+    # lsize = QMC.line_update!(rng, qmc_state_line, H, Diagnostics())
+    # println(qmc_state_line.operator_list)
+    # println(collect(zip(1:lsize, qmc_state_line.linked_list[1:lsize])))
+    # println(collect(zip(1:lsize, qmc_state_line.in_cluster[1:lsize])))
+
+    # qmc_state_mb = deepcopy(qmc_state)
+    # println("MB clusters:")
+    # lsize = QMC.multibranch_update!(rng, qmc_state_mb, H, Diagnostics())
+    # println(qmc_state_mb.operator_list)
+    # println(collect(zip(1:lsize, qmc_state_mb.linked_list[1:lsize])))
+    # println(collect(zip(1:lsize, qmc_state_mb.in_cluster[1:lsize])))
+
     if runstats isa Val{true}
-        println("Diag update acceptance rate:    ", 1 - mean_and_stderr(diag_update_fails))
-        println("Cluster update acceptance rate: ", mean_and_stderr(cluster_update_accep))
-        println("Average number of clusters: ", mean_and_stderr(num_clusters))
-        println("Average cluster size: ", mean_and_stderr(cluster_sizes))
-        println("Average abort rate: ", mean_and_stderr(abort_rates))
+        # println("Diag update acceptance rate:    ", 1 - mean_and_stderr(diag_update_fails))
+        # println("Cluster update acceptance rate: ", mean_and_stderr(cluster_update_accep))
+        # println("Average number of clusters: ", mean_and_stderr(num_clusters))
+        # println("Average cluster size: ", mean_and_stderr(cluster_sizes))
+        # println("Average abort rate: ", mean_and_stderr(abort_rates))
+
+        # println(d.runstats.cluster_sizes)
+        # gui(plot(d.runstats.cluster_sizes[4:2:end], xaxis=:log))
+
+        p1 = plot(2:2:length(d.runstats.cluster_sizes), d.runstats.cluster_sizes[2:2:end],
+                  xaxis=:log, legend=false, title="Cluster Size Histogram")
+        p2 = plot(d.runstats.cluster_count,
+                  xlims=(findfirst(!iszero, d.runstats.cluster_count) - 10,
+                         findlast(!iszero, d.runstats.cluster_count) + 10),
+                  legend=false, title="Cluster Count Histogram")
+
+        p3 = plot(2:2:length(d.runstats.accepted_cluster_sizes), d.runstats.accepted_cluster_sizes[2:2:end],
+                  xaxis=:log, legend=false, title="Accepted Cluster Size Histogram")
+        p4 = plot(d.runstats.accepted_cluster_count,
+                  xlims=(findfirst(!iszero, d.runstats.accepted_cluster_count) - 10,
+                         findlast(!iszero, d.runstats.accepted_cluster_count) + 10),
+                  legend=false, title="Accepted Cluster Count Histogram")
+
+        p5 = plot(2:2:length(d.runstats.rejected_cluster_sizes), d.runstats.rejected_cluster_sizes[2:2:end],
+                  xaxis=:log, legend=false, title="Rejected Cluster Size Histogram")
+        p6 = plot(d.runstats.rejected_cluster_count,
+                  xlims=(findfirst(!iszero, d.runstats.rejected_cluster_count) - 10,
+                         findlast(!iszero, d.runstats.rejected_cluster_count) + 10),
+                  legend=false, title="Rejected Cluster Count Histogram")
+        gui(plot(p1, p2, p3, p4, p5, p6, layout = @layout([a b; c d; e f])))
+        sleep(60)
     end
 
     mag = mean_and_stderr(mags)
@@ -259,12 +320,23 @@ function groundstate(parsed_args)
     mag_sqr = mean_and_stderr(abs2, mags)
     mag_sqr = mag_sqr.val ± (mag_sqr.err * 2 * correlation_time(abs2.(mags)))
 
-    binder_cumulant = jackknife(smags .^ 4, smags .^ 2) do M4, M2
+    nssd_mean = mean_and_stderr(nssd)
+    nssd_mean = nssd_mean.val ± (nssd_mean.err * 2 * correlation_time(nssd))
+
+    nsso_mean = mean_and_stderr(nsso)
+    nsso_mean = nsso_mean.val ± (nsso_mean.err * 2 * correlation_time(nsso))
+
+    nbond_mean = mean_and_stderr(nbond)
+    nbond_mean = nbond_mean.val ± (nbond_mean.err * 2 * correlation_time(nbond))
+
+    @show nssd_mean, nsso_mean, nbond_mean
+
+    binder_cumulant = QMC.jackknife(smags .^ 4, smags .^ 2) do M4, M2
         3 - (M4 / (M2 ^ 2))
     end
     binder_cumulant /= 2
 
-    energy = energy_density(qmc_state, H, ns)
+    energy = energy_density(qmc_state, H, nssd)
 
     observables = (mag, abs_mag, mag_sqr, binder_cumulant, energy)
 

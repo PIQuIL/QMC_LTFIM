@@ -4,6 +4,7 @@ using Random
 using RandomNumbers
 using Measurements
 using BinningAnalysis
+import Distributions: TDist
 
 
 expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
@@ -63,18 +64,14 @@ expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
     MCS = 1_000_000
     EQ_MCS = 10_000
 
-    mags = zeros(MCS)
-    ns = zeros(MCS)
     d = Diagnostics()
 
-    for i in 1:EQ_MCS
-        mc_step!(rng, gs, H, d)
-    end
+    [mc_step!(rng, gs, H, d) for _ in 1:EQ_MCS]
 
+    mags = zeros(MCS)
     for i in 1:MCS # Monte Carlo Production Steps
         mc_step!(rng, gs, H, d) do lsize, gs, H
             spin_prop = sample(H, gs)
-            ns[i] = num_single_site_diag(H, gs.operator_list)
             mags[i] = magnetization(spin_prop)
         end
     end
@@ -83,12 +80,12 @@ expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
     abs_mag = measurement(mean(A), std_error(A))
     mag_sqr = measurement(mean(S), std_error(S))
 
-    energy = QMC.energy_density(gs, H, ns)
+    N_eff_A = floor(Int64, MCS / (2tau(A) + 1))
+    N_eff_S = floor(Int64, MCS / (2tau(S) + 1))
 
     expected_vals = expected_values[(PBC, N, Inf64)]
     @test abs(abs_mag.val - expected_vals["|M|"]) < THRESHOLD * abs_mag.err
     @test abs(mag_sqr.val - expected_vals["M^2"]) < THRESHOLD * mag_sqr.err
-    # @test abs(energy.val - expected_vals["H"]) < THRESHOLD * energy.err
 end
 
 
@@ -102,12 +99,12 @@ end
     MCS = 1_000_000
     EQ_MCS = 100_000
 
-    mags = zeros(MCS)
-    ns = zeros(MCS)
     d = Diagnostics()
 
     [mc_step_beta!(rng, th, H, beta, d; eq=true) for i in 1:EQ_MCS]
 
+    mags = zeros(MCS)
+    ns = zeros(Int, MCS)
     for i in 1:MCS # Monte Carlo Steps
         ns[i] = mc_step_beta!(rng, th, H, beta, d) do lsize, th, H
             mags[i] = magnetization(sample(H, th))
@@ -115,20 +112,18 @@ end
     end
     A = LogBinner(abs.(mags))
     S = LogBinner(abs2.(mags))
+    E = LogBinner(-ns/beta)
     abs_mag = measurement(mean(A), std_error(A))
     mag_sqr = measurement(mean(S), std_error(S))
-
-    E = LogBinner(-ns/beta)
     energy = measurement(mean(E), std_error(E)) + H.energy_shift
     energy /= nspins(H)
 
-    heat_capacity = QMC.jackknife(ns .^ 2, ns) do nsqr, n
-        nsqr - n^2 - n
-    end
+    N_eff_A = floor(Int64, MCS / (2tau(A) + 1))
+    N_eff_S = floor(Int64, MCS / (2tau(S) + 1))
+    N_eff_E = floor(Int64, MCS / (2tau(E) + 1))
 
     expected_vals = expected_values[(PBC, N, 1.0)]
     @test abs(abs_mag.val - expected_vals["|M|"]) < THRESHOLD * abs_mag.err
     @test abs(mag_sqr.val - expected_vals["M^2"]) < THRESHOLD * mag_sqr.err
     @test abs(energy.val - expected_vals["H"]) < THRESHOLD * energy.err
-    # @test abs(heat_capacity.val - expected_vals["C"]) < THRESHOLD * heat_capacity.err
 end

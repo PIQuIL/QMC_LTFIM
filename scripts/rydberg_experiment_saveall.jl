@@ -27,8 +27,8 @@ using Printf
 using ArgParse
 
 
-# SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/trialstate_experiments/"
-SCRATCH_PATH = "/scratch/ejaazm/"
+SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/"
+# SCRATCH_PATH = "/scratch/ejaazm/"
 
 ###############################################################################
 
@@ -79,14 +79,14 @@ function init_mc_cli(parsed_args)
     sname = savename(d; digits = 4)
     path = joinpath(
         SCRATCH_PATH, "qmc_sims",
-        "groundstate", "transition_matrices",
+        "transition_matrices", "no_trivial_clusters",
         "nY=$nY", "delta=$(@sprintf("%.2f", δ))",
         "p=$mb_prob", "epsilon=$epsilon")
     mkpath(path)
 
     res = parsed_args["restart"] ? nothing : continue_simulation(path, sname, parsed_args)
     if res === nothing
-        H = Rydberg((nY,), R_b, Ω, δ; pbc=(false,), trunc=truncation, epsilon=epsilon)
+        H = Rydberg((nY,nY), R_b, Ω, δ; pbc=false, trunc=truncation, epsilon=epsilon)
         if M == 0
             qmc_state = BinaryThermalState(H, 2000)
         else
@@ -188,8 +188,8 @@ function groundstate(parsed_args)
         # don't include equilibration samples in diagnostics
         d = (b == 0) ? Diagnostics() : diagnostics
 
-        for i in 1:MCS  # Monte Carlo Production Steps
-            mc_step!(rng, qmc_state, H, d; p=mb_prob) do _, qmc_state, H
+        for _ in 1:MCS  # Monte Carlo Production Steps
+            mc_step!(rng, qmc_state, H, d; p=mb_prob) #do _, qmc_state, H
                 spin_prop = sample(H, qmc_state)
 
                 observables[i, :n_ssd] = num_single_site_diag(H, qmc_state.operator_list)
@@ -198,9 +198,10 @@ function groundstate(parsed_args)
                 observables[i, :checkerboard] = staggered_magnetization(H, spin_prop)
 
                 observables[i, :batch] = b
-            end
+            # end
         end
 
+        println("Batch $b completed")
         # save batch
         qmc_state_file = path * "_batch_$(lpad(b, l, "0"))_state.jld2"
         @save(qmc_state_file,
@@ -220,15 +221,15 @@ function groundstate(parsed_args)
         end
     end
 
-    runstats_file = path * "_runstats.json"
+    # runstats_file = path * "_runstats.json"
 
-    runstats_dict = Dict{Symbol, Any}([k => measurementtodict(getproperty(diagnostics.runstats, k))
-                                       for k in fieldnames(typeof(diagnostics.runstats))])
-    runstats_dict[:operator_list_length] = length(qmc_state.operator_list)
+    # runstats_dict = Dict{Symbol, Any}([k => measurementtodict(getproperty(diagnostics.runstats, k))
+    #                                    for k in fieldnames(typeof(diagnostics.runstats))])
+    # runstats_dict[:operator_list_length] = length(qmc_state.operator_list)
 
-    open(runstats_file, "w") do io
-        JSON.print(io, runstats_dict, 2)
-    end
+    # open(runstats_file, "w") do io
+    #     JSON.print(io, runstats_dict, 2)
+    # end
 end
 
 

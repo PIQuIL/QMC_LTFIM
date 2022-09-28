@@ -328,24 +328,34 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
             end
 
             A = acceptance(H, lnA)
-            fit!(runstats, :cluster_update_accept, A)
+            TRACK_TRIVIAL_CLUSTERS = false
 
-            if rand(rng) < A
-                @inbounds for j in current_cluster
-                    LegType[j] ⊻= 1  # spinflip
+            if !(runstats isa NoStats) && (TRACK_TRIVIAL_CLUSTERS || length(current_cluster) > 2)
+                fit!(runstats, :cluster_update_accept, A)
+
+                if rand(rng) < A
+                    @inbounds for j in current_cluster
+                        LegType[j] ⊻= 1  # spinflip
+                    end
+                    fit!(runstats, :accepted_cluster_sizes, length(current_cluster))
+                    num_accept += 1
+                else
+                    fit!(runstats, :rejected_cluster_sizes, length(current_cluster))
+                    num_reject += 1
                 end
-                fit!(runstats, :accepted_cluster_sizes, length(current_cluster))
-                num_accept += 1
+                fit!(runstats, :cluster_sizes, length(current_cluster))
             else
-                fit!(runstats, :rejected_cluster_sizes, length(current_cluster))
-                num_reject += 1
+                if rand(rng) < A
+                    @inbounds for j in current_cluster
+                        LegType[j] ⊻= 1  # spinflip
+                    end
+                end
             end
-            fit!(runstats, :cluster_sizes, length(current_cluster))
         end
     end
 
     if !(runstats isa NoStats)
-        fit!(runstats, :accepted_cluster_count, num_accept)
+        fit!(runstats, :accepted_cluster_count, num_accept+1)
         fit!(runstats, :rejected_cluster_count, num_reject)
         fit!(runstats, :cluster_count, ccount)
     end

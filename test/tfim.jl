@@ -4,6 +4,7 @@ using Random
 using RandomNumbers
 using Measurements
 using BinningAnalysis
+import Distributions: TDist, cdf
 
 
 expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
@@ -41,17 +42,14 @@ expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
     MCS = 1_000_000
     EQ_MCS = 100_000
 
-    mags = zeros(MCS)
-    ns = zeros(MCS)
-
     d = Diagnostics()
 
-    [mc_step!(rng, gs, H, d) for i in 1:EQ_MCS]
+    [mc_step!(rng, gs, H, d) for _ in 1:EQ_MCS]
 
+    mags = zeros(MCS)
     for i in 1:MCS # Monte Carlo Production Steps
         mc_step!(rng, gs, H, d) do lsize, gs, H
             spin_prop = sample(H, gs)
-            ns[i] = num_single_site_diag(H, gs.operator_list)
             mags[i] = magnetization(spin_prop)
         end
     end
@@ -60,18 +58,19 @@ expected_values = Dict{Tuple{Bool, Int, Float64}, Dict{String, Float64}}(
     abs_mag = measurement(mean(A), std_error(A))
     mag_sqr = measurement(mean(S), std_error(S))
 
-    energy = QMC.energy_density(gs, H, ns)
+    N_eff_A = floor(Int64, MCS / (2tau(A) + 1))
+    N_eff_S = floor(Int64, MCS / (2tau(S) + 1))
+
+    T_A, T_S = TDist(N_eff_A), TDist(N_eff_S)
 
     expected_vals = expected_values[(PBC, N, Inf64)]
-    @test stdscore(abs_mag, expected_vals["|M|"]) < THRESHOLD
-    @test stdscore(mag_sqr, expected_vals["M^2"]) < THRESHOLD
-    @test stdscore(energy, expected_vals["H"]) < THRESHOLD
-end # TODO: make this abs values^
+    @test 1 - 2*cdf(T_A, -abs(stdscore(abs_mag, expected_vals["|M|"]))) < 0.95
+    @test 1 - 2*cdf(T_S, -abs(stdscore(mag_sqr, expected_vals["M^2"]))) < 0.95
+end
 
 
 @testset "1D TFIM Thermal State $N-sites, PBC=$PBC, β=1.0" for PBC in [true, false], N in [10]
     rng = Xorshifts.Xoroshiro128Plus(1234)
-    # rng = MersenneTwister(4321)
 
     bonds, Ns, Nb = lattice_bond_spins((10,), PBC)
     H = TFIM(bonds, Ns, Nb, 1.0, 1.0)
@@ -81,13 +80,12 @@ end # TODO: make this abs values^
     MCS = 1_000_000
     EQ_MCS = 100_000
 
-    mags = zeros(MCS)
-    ns = zeros(MCS)
-
     d = Diagnostics()
 
     [mc_step_beta!(rng, th, H, beta, d; eq=true) for i in 1:EQ_MCS]
 
+    mags = zeros(MCS)
+    ns = zeros(Int, MCS)
     for i in 1:MCS # Monte Carlo Steps
         ns[i] = mc_step_beta!(rng, th, H, beta, d) do lsize, th, H
             mags[i] = magnetization(sample(H, th))
@@ -95,20 +93,20 @@ end # TODO: make this abs values^
     end
     A = LogBinner(abs.(mags))
     S = LogBinner(abs2.(mags))
+    E = LogBinner(-ns/beta)
     abs_mag = measurement(mean(A), std_error(A))
     mag_sqr = measurement(mean(S), std_error(S))
-
-    E = LogBinner(-ns/beta)
     energy = measurement(mean(E), std_error(E)) + H.energy_shift
     energy /= nspins(H)
 
-    heat_capacity = QMC.jackknife(ns .^ 2, ns) do nsqr, n
-        nsqr - n^2 - n
-    end
+    N_eff_A = floor(Int64, MCS / (2tau(A) + 1))
+    N_eff_S = floor(Int64, MCS / (2tau(S) + 1))
+    N_eff_E = floor(Int64, MCS / (2tau(E) + 1))
+
+    T_A, T_S, T_E = TDist(N_eff_A), TDist(N_eff_S), TDist(N_eff_E)
 
     expected_vals = expected_values[(PBC, N, 1.0)]
     @test abs(stdscore(abs_mag, expected_vals["|M|"])) < THRESHOLD
     @test abs(stdscore(mag_sqr, expected_vals["M^2"])) < THRESHOLD
     @test abs(stdscore(energy, expected_vals["H"])) < THRESHOLD
-    @test abs(stdscore(heat_capacity, expected_vals["C"])) < THRESHOLD
 end
