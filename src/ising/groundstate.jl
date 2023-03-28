@@ -82,10 +82,10 @@ function full_diagonal_update!(rng::AbstractRNG, qmc_state::BinaryGroundState, H
         if !isdiagonal(H, op)
             @inbounds spin_prop[getsite(H, op)] ⊻= 1  # spinflip
         else
-            op = nothing
+            op_new = nothing
             if !(runstats isa NoStats); i = -1; end
-            while op === nothing
-                op, _ = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
+            while op_new === nothing
+                op_new, _ = insert_diagonal_operator!(rng, qmc_state, H, spin_prop, n)
                 if !(runstats isa NoStats); i += 1; end
             end
             if !(runstats isa NoStats); failures += i; count += 1; end

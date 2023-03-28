@@ -10,7 +10,7 @@
 # echo delta=$delta
 # echo p=$p
 # echo eps=$eps
-echo nX=16
+# echo nX=16
 echo M=100000
 echo seed=$seed
 echo Rb=$Rb
@@ -27,10 +27,10 @@ module load StdEnv/2020 julia/1.5.2
 
 
 julia --compiled-modules=no --project=../ rydberg_experiment_saveall.jl \
-   groundstate 16 \
+   groundstate $nX \
    --omega 1.0 -R $Rb --delta $delta \
-   -n 40 -b 10 --mb-prob 0.0 --trunc 0 \
-   --seed $seed -M 100000 --runstats 0
+   -n 40 -b 10 \
+   --seed $seed -M 100000
 # run again with M=200000 ?
 
 # for p in $(seq 0.0 0.5 1.0)

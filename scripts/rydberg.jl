@@ -113,7 +113,7 @@ function save_data(path, mc_opts, qmc_state, measurements, observables, corr_tim
         writedlm(samples_file, measurements, " ")
     end
 
-    @time @save qmc_state_file qmc_state
+    # @time @save qmc_state_file qmc_state
 
     M = length(qmc_state.operator_list)
 
@@ -167,8 +167,8 @@ function mixedstate(parsed_args)
 
     # energy = energy_density(qmc_state, H, beta, ns)
 
-    binder_cumulant = QMC.jackknife(smags .^ 4, smags .^ 2) do M4, M2
-        3 - (M4 / (M2 ^ 2))
+    binder_cumulant = QMC.bootstrap_alt(smags) do M
+        3 - (mean(x -> x^4, M) / (mean(abs2, M) ^ 2))
     end
     binder_cumulant /= 2
 
@@ -180,7 +180,7 @@ function mixedstate(parsed_args)
 
     # # @show pd
     # @show d.tmatrix.pdmatrix
-    @show d.tmatrix.tmatrix
+    # @show d.tmatrix.tmatrix
 
     # @show correlation_time(energy_density.(qmc_state, H, beta, ns))
 
@@ -188,7 +188,15 @@ function mixedstate(parsed_args)
     @show tau(lb) #, std_error(lb)
     # @show mean(lb)
 
-    observables = (mag, abs_mag, mag_sqr, binder_cumulant, mean(lb) ± std_error(lb))
+    c = QMC.bootstrap_alt(ns) do n
+        m = mean(n)
+        v = varm(n, m)
+
+        return v - m
+    end 
+    c /= nspins(H)
+
+    observables = (mag, abs_mag, mag_sqr, binder_cumulant, mean(lb) ± std_error(lb), c)
 
     # measure correlation time from equilibriation samples
     corr_time = correlation_time(smags .^ 2)
@@ -217,6 +225,8 @@ function groundstate(parsed_args)
         cluster_sizes = zeros(MCS)
         abort_rates = zeros(MCS)
         d = Diagnostics(RunStats(), NoTransitionMatrix())
+    else
+        d = Diagnostics()
     end
 
     @showprogress "Warm up..." for i in 1:EQ_MCS
@@ -259,7 +269,7 @@ function groundstate(parsed_args)
     mag_sqr = mean_and_stderr(abs2, mags)
     mag_sqr = mag_sqr.val ± (mag_sqr.err * 2 * correlation_time(abs2.(mags)))
 
-    binder_cumulant = jackknife(smags .^ 4, smags .^ 2) do M4, M2
+    binder_cumulant = QMC.jackknife(smags .^ 4, smags .^ 2) do M4, M2
         3 - (M4 / (M2 ^ 2))
     end
     binder_cumulant /= 2

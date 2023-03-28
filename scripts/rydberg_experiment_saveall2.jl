@@ -207,8 +207,8 @@ function groundstate(parsed_args)
                         update_two_pt_fn!(two_pt_fn, one_pt_fn, spin_prop, n)
 
                     observables[i, :n_ssd] += num_single_site_diag(H, qmc_state.operator_list)
-                    observables[i, :mags] += magnetization(spin_prop)
-                    observables[i, :checkerboard] += staggered_magnetization(H, spin_prop)
+                    observables[i, :mags] += abs(magnetization(spin_prop))
+                    observables[i, :checkerboard] += abs(staggered_magnetization(H, spin_prop))
                 end
             end
 
@@ -221,8 +221,8 @@ function groundstate(parsed_args)
                     update_two_pt_fn!(two_pt_fn, one_pt_fn, spin_prop, n)
 
                 observables[i, :n_ssd] += num_single_site_diag(H, qmc_state.operator_list)
-                observables[i, :mags] += magnetization(spin_prop)
-                observables[i, :checkerboard] += staggered_magnetization(H, spin_prop)
+                observables[i, :mags] += abs(magnetization(spin_prop))
+                observables[i, :checkerboard] += abs(staggered_magnetization(H, spin_prop))
 
                 observables[i, :n_ssd] /= 2000
                 observables[i, :mags] /= 2000

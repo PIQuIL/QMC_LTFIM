@@ -59,3 +59,28 @@ function bootstrap(f::Function, xs::Vector...; nboot::Int=500)
     return μ′ ± σ
 end
 bootstrap(xs::Vector...; nboot::Int=500) = bootstrap(identity, xs...; nboot=nboot)
+
+
+function bootstrap_alt(f::Function, xs::Vector...; nboot::Int=500)
+    N = length(xs[1])
+
+    f_B = zeros(nboot)
+
+    for b in 1:nboot
+        idx = rand(1:N, N)
+        xs_b = [(@views x[idx]) for x in xs]
+        f_B[b] = f(xs_b...)
+    end
+
+    μ = mean(f_B)
+    σ2 = (N / (N - 1)) * (mean(abs2, f_B) - μ^2)
+    σ = sqrt(σ2)
+
+    f_ = f(xs...)
+
+    μ′ = 2*f_ - μ
+
+    return μ′ ± σ
+end
+bootstrap_alt(xs::Vector...; nboot::Int=500) = bootstrap_alt(identity, xs...; nboot=nboot)
+
