@@ -125,7 +125,7 @@ function domain_wall_density(H::AbstractRydberg, spin_prop)
 end
 
 num_single_site_diag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && isdiagonal(H, x), operator_list)
-num_single_site_offdiag(H::AbstractIsing, operator_list) = mean(x -> issiteoperator(H, x) && !isdiagonal(H, x), operator_list)
+num_single_site_offdiag(H::AbstractIsing, operator_list) = sum(x -> issiteoperator(H, x) && !isdiagonal(H, x), operator_list)
 num_single_site(H::AbstractIsing, operator_list) = mean(issiteoperator(H), operator_list)
 num_two_site_diag(H::AbstractIsing, operator_list) = mean(isbondoperator(H), operator_list)
 
