@@ -17,7 +17,7 @@ using OnlineStats
 using Plots
 using StatsPlots
 using DelimitedFiles
-using JLD2
+using JLD2, CodecBzip2
 using JSON
 using FileIO
 using CSV
@@ -28,7 +28,7 @@ using ArgParse
 
 
 # SCRATCH_PATH = "/media/ejaaz/Seagate Expansion Drive/qmc_data/trialstate_experiments/"
-SCRATCH_PATH = "/scratch/ejaazm/"
+SCRATCH_PATH = "/home/ejaaz/"
 
 ###############################################################################
 
@@ -186,47 +186,42 @@ function groundstate(parsed_args)
 
     l = floor(Int, log10(batches) + 1)
 
+    left_msmts = zeros(Bool, nspins(H), MCS)
     measurements = zeros(Bool, nspins(H), MCS)
 
     for b in starting_batch:batches
         # don't include equilibration samples in diagnostics
         d = (b == 0) ? Diagnostics() : diagnostics
 
-        # compute 1,2 pt fns separately for each batch (can combine batches later)
-        two_pt_fn = zeros(Float64, nspins(H), nspins(H))
-        one_pt_fn = zeros(Float64, nspins(H))
+        # # compute 1,2 pt fns separately for each batch (can combine batches later)
+        # two_pt_fn = zeros(Float64, nspins(H), nspins(H))
+        # one_pt_fn = zeros(Float64, nspins(H))
 
-        n = 0
+        # n = 0
 
         for i in 1:MCS  # Monte Carlo Production Steps
-            for _ in 1:(2_000-1)
-                mc_step!(rng, qmc_state, H, Diagnostics(); p=mb_prob) do _, qmc_state, H
-                    spin_prop = sample(H, qmc_state)
+            # for _ in 1:(2_000-1)
+            #     mc_step!(rng, qmc_state, H, Diagnostics(); p=mb_prob) do _, qmc_state, H
+            #         spin_prop = sample(H, qmc_state)
 
-                    two_pt_fn, one_pt_fn, n =
-                        update_two_pt_fn!(two_pt_fn, one_pt_fn, spin_prop, n)
+            #         two_pt_fn, one_pt_fn, n =
+            #             update_two_pt_fn!(two_pt_fn, one_pt_fn, spin_prop, n)
 
-                    observables[i, :n_ssd] += num_single_site_diag(H, qmc_state.operator_list)
-                    observables[i, :mags] += abs(magnetization(spin_prop))
-                    observables[i, :checkerboard] += abs(staggered_magnetization(H, spin_prop))
-                end
-            end
+            #         observables[i, :n_ssd] += num_single_site_diag(H, qmc_state.operator_list)
+            #         observables[i, :mags] += abs(magnetization(spin_prop))
+            #         observables[i, :checkerboard] += abs(staggered_magnetization(H, spin_prop))
+            #     end
+            # end
 
             mc_step!(rng, qmc_state, H, d; p=mb_prob) do _, qmc_state, H
-                spin_prop = sample(H, qmc_state)
+                left_msmts[:, i] = qmc_state.left_config
 
+                spin_prop = sample(H, qmc_state)
                 measurements[:, i] = spin_prop
 
-                two_pt_fn, one_pt_fn, n =
-                    update_two_pt_fn!(two_pt_fn, one_pt_fn, spin_prop, n)
-
-                observables[i, :n_ssd] += num_single_site_diag(H, qmc_state.operator_list)
-                observables[i, :mags] += abs(magnetization(spin_prop))
-                observables[i, :checkerboard] += abs(staggered_magnetization(H, spin_prop))
-
-                observables[i, :n_ssd] /= 2000
-                observables[i, :mags] /= 2000
-                observables[i, :checkerboard] /= 2000
+                observables[i, :n_ssd] = num_single_site_diag(H, qmc_state.operator_list)
+                observables[i, :mags] = abs(magnetization(spin_prop))
+                observables[i, :checkerboard] = abs(staggered_magnetization(H, spin_prop))
 
                 observables[i, :batch] = b
             end
@@ -235,14 +230,10 @@ function groundstate(parsed_args)
         data_file = path * "_batch_$(lpad(b, l, "0"))_raw_observables.csv"
         CSV.write(data_file, observables)
 
-        two_pt_file = path * "_batch_$(lpad(b, l, "0"))_2_pt_fn.csv"
-        writedlm(two_pt_file, two_pt_fn, " ")
-
-        one_pt_file = path * "_batch_$(lpad(b, l, "0"))_1_pt_fn.csv"
-        writedlm(one_pt_file, one_pt_fn, " ")
-
-        samples_file = path * "_batch_$(lpad(b, l, "0"))_samples.csv"
-        writedlm(samples_file, Int.(transpose(measurements)), " ")
+        samples_file = path * "_batch_$(lpad(b, l, "0"))_left_samples.bin"
+        write(samples_file, BitMatrix(left_msmts))
+        samples_file = path * "_batch_$(lpad(b, l, "0"))_samples.bin"
+        write(samples_file, BitMatrix(measurements))
 
         # save batch state
         qmc_state_file = path * "_batch_$(lpad(b, l, "0"))_state.jld2"

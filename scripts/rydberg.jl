@@ -48,7 +48,7 @@ function init_mc_cli(parsed_args)
     skip = parsed_args["skip"]  # number of MC steps to perform between each msmt
 
     println("Running Rydberg(R_b=$R_b, Ω=$Ω, δ=$δ)")
-    H = Rydberg(nX, R_b, Ω, δ; pbc = (isone(Dim) ? PBC : (false, false)), epsilon=0.0)
+    H = Rydberg(nX, R_b, Ω, δ; pbc = (isone(Dim) ? PBC : (true, true)), epsilon=0.0)
     d = @ntuple Dim nX BC_name R_b Ω δ skip M
 
     mc_opts = @ntuple M MCS EQ_MCS skip

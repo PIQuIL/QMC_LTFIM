@@ -50,8 +50,8 @@ function init_mc_cli(parsed_args)
 
     path = joinpath(
         save_path,
-        "L=$L", 
-        "Rb=$(@sprintf("%.2f", R_b))", 
+        "L=$L",
+        "Rb=$(@sprintf("%.2f", R_b))",
         "omega=$(@sprintf("%.2f", Ω))",
         "delta=$(@sprintf("%.2f", δ))",
         "beta=$beta",
@@ -60,7 +60,7 @@ function init_mc_cli(parsed_args)
 
     res = parsed_args["restart"] ? nothing : continue_simulation(path, parsed_args)
     if res === nothing
-        H = Rydberg((L, L), R_b, Ω, δ; pbc=false)
+        H = Rydberg((L,L), R_b, Ω, δ; pbc=false)
         qmc_state = BinaryThermalState(H, M)
 
         writedlm(joinpath(path, "V_ij.csv"), Matrix(H.V))
@@ -146,7 +146,9 @@ function thermalstate(parsed_args)
     observables = DataFrame(
         batch = zeros(Int, nsteps),
         n_sso = zeros(Int, nsteps),
-        n_ops = zeros(Int, nsteps)
+        n_ops = zeros(Int, nsteps),
+        chk = zeros(Float64, nsteps),
+        mag = zeros(Float64, nsteps)
     )
 
     for b in starting_batch:batches
@@ -162,6 +164,8 @@ function thermalstate(parsed_args)
                 measurements[:, i] = spin_prop
 
                 observables[i, :n_sso] = num_single_site_offdiag(H, qmc_state.operator_list)
+                observables[i, :chk] = staggered_magnetization(H, spin_prop)
+                observables[i, :mag] = magnetization(spin_prop)
                 observables[i, :batch] = b
             end
             observables[i, :n_ops] = n_ops
@@ -170,15 +174,17 @@ function thermalstate(parsed_args)
         data_file = joinpath(path, "batch_$(lpad(b, l, "0"))_raw_observables.csv")
         CSV.write(data_file, observables)
 
-        samples_file = joinpath(path, "batch_$(lpad(b, l, "0"))_samples.bin")
-        write(samples_file, BitMatrix(measurements))
+        samples_file = joinpath(path, "batch_$(lpad(b, l, "0"))_samples.csv")
+        writedlm(samples_file, Int.(transpose(measurements)), ',')
 
         if eq  # resize measurements arrays if no longer equilibrating
             measurements = zeros(Bool, nspins(H), MCS)
             observables = DataFrame(
                 batch = zeros(Int, MCS),
                 n_sso = zeros(Int, MCS),
-                n_ops = zeros(Int, MCS)
+                n_ops = zeros(Int, MCS),
+                chk = zeros(Float64, MCS),
+                mag = zeros(Float64, MCS)
             )
         end
 
