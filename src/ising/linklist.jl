@@ -39,20 +39,20 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
         if issiteoperator(H, op)
             site = getsite(H, op)
             # lower or left leg
-            idx += 1
+            v = idx + 1
             F = First[site]
-            LinkList[idx] = F
+            LinkList[v] = F
             if qmc_state isa BinaryGroundState || !iszero(F)
-                LinkList[F] = idx  # completes backwards link
+                LinkList[F] = v  # completes backwards link
             else
-                Last[site] = idx
+                Last[site] = v
             end
 
-            LegType[idx] = spin_prop[site]
-            Associates[idx] = 0
+            LegType[v] = spin_prop[site]
+            Associates[v] = 0
             if H isa AbstractLTFIM
-                op_indices[idx] = n
-                leg_sites[idx] = 1
+                op_indices[v] = n
+                leg_sites[v] = 1
             end
 
             if !isdiagonal(H, op)  # off-diagonal site operator
@@ -60,14 +60,16 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
             end
 
             # upper or right leg
-            idk += 1
-            First[site] = idx
-            LegType[idx] = spin_prop[site]
-            Associates[idx] = 0
+            v = idx + 2
+            First[site] = v
+            LegType[v] = spin_prop[site]
+            Associates[v] = 0
             if H isa AbstractLTFIM
-                op_indices[idx] = n
-                leg_sites[idx] = 1
+                op_indices[v] = n
+                leg_sites[v] = 1
             end
+
+            idx += 2
         elseif qmc_state isa BinaryGroundState || isbondoperator(H, op)  # diagonal bond operator
             site1, site2 = bond = getbondsites(H, op)
             spins = spin_prop[site1], spin_prop[site2]
