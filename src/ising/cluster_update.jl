@@ -1,4 +1,3 @@
-
 function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance::Function, lsize::Int, qmc_state::BinaryQMCState, H::AbstractIsing, d::Diagnostics)
     Ns = nspins(H)
     operator_list = qmc_state.operator_list
@@ -24,17 +23,10 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
             ccount += 1
             push!(cstack, i)
             in_cluster[i] = ccount
-            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
-                left_flips = empty!(qmc_state.trialstate.left_flips)
-                right_flips = empty!(qmc_state.trialstate.right_flips)
-            end
 
             empty!(current_cluster)
             push!(current_cluster, i)
             lnA = 0.0
-            if qmc_state isa BinaryGroundState
-                lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
-            end
 
             while !isempty(cstack)
                 leg = LinkList[pop!(cstack)]
@@ -42,9 +34,6 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
                 if iszero(in_cluster[leg])
                     in_cluster[leg] = ccount  # add the new leg and flip it
                     push!(current_cluster, leg)
-                    if qmc_state isa BinaryGroundState
-                        lnA += trialstate_weight_change(qmc_state, lsize, Ns, i)
-                    end
                     a = Associates[leg]
 
                     a == 0 && continue
@@ -57,11 +46,6 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
                         - getlogweight(H.op_sampler, w + preflip_bond_type)
                     )
                 end
-            end
-
-            if qmc_state isa BinaryGroundState && !(qmc_state.trialstate isa AbstractProductState)
-                lnA += logweightchange(qmc_state.trialstate, qmc_state.left_config, left_flips)
-                lnA += logweightchange(qmc_state.trialstate, qmc_state.right_config, right_flips)
             end
 
             A = acceptance(H, lnA)

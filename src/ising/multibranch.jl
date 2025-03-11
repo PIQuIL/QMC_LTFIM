@@ -1,24 +1,3 @@
-function trialstate_weight_change(qmc_state::BinaryGroundState, lsize::Int, Ns::Int, i::Int)
-    if !(qmc_state.trialstate isa AbstractProductState)
-        if i <= Ns
-            push!(qmc_state.trialstate.left_flips, i)
-        elseif i > (lsize - Ns)
-            push!(qmc_state.trialstate.right_flips, i - lsize + Ns)
-        end
-        return 0.0
-    else
-        if i <= Ns
-            return logweightchange(qmc_state.trialstate, qmc_state.left_config[i])
-        elseif i > (lsize - Ns)
-            return logweightchange(qmc_state.trialstate, qmc_state.right_config[i])
-        else
-            return 0.0
-        end
-    end
-end
-trialstate_weight_change(qmc_state::BinaryThermalState, lsize::Int, Ns::Int, i::Int) = 0.0
-
-#############################################################################
 @inline function multibranch_kernel!(qmc_state::BinaryQMCState, H::AbstractIsing, ccount::Int, leg::Int, a::Int)
     Ns = nspins(H)
     LegType, Associates, leg_sites = qmc_state.leg_types, qmc_state.associates, qmc_state.leg_sites
