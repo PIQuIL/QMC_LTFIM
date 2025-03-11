@@ -1,6 +1,8 @@
 include("TFIM.jl")
 include("LTFIM.jl")
 include("Rydberg.jl")
+include("linklist.jl")
+include("cluster_update.jl")
 include("multibranch.jl")
 include("line.jl")
 include("groundstate.jl")
