@@ -27,7 +27,9 @@ function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω:
 
     for i in eachindex(Ω)
         if !iszero(Ω[i])
-            push!(ops, makediagonalsiteop(AbstractLTFIM, i))
+            push!(ops, makediagonalsiteop(H, i))
+            push!(p, Ω[i] / 2)
+            push!(ops, makeoffdiagonalsiteop(H, i))
             push!(p, Ω[i] / 2)
             energy_shift += Ω[i] / 2
         end
@@ -60,9 +62,11 @@ function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω:
         p_spins .+= C
         energy_shift += C
 
+        # @show p_spins
+
         for (t, p_t) in enumerate(p_spins)
             push!(p, p_t)
-            push!(ops, (2, t, length(p), site1, site2))
+            push!(ops, makebondop(H, length(p), t, site1, site2))
         end
     end
 
@@ -168,6 +172,7 @@ end
 function Rydberg(V::AbstractMatrix{T}, Ω::AbstractVector{T}, δ::AbstractVector{T}, lattice::Lattice; epsilon=zero(T)) where T
     ops, p, energy_shift = make_prob_vector(AbstractRydberg, V, Ω, δ, epsilon=epsilon)
     op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
+    # op_sampler = OperatorSampler(ops, p)
     return Rydberg{typeof(op_sampler), typeof(V), typeof(Ω), typeof(δ), typeof(lattice)}(op_sampler, V, Ω, δ, lattice, energy_shift)
 end
 

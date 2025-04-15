@@ -53,6 +53,8 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::Abst
         if !iszero(hx[i])
             push!(ops, makediagonalsiteop(AbstractLTFIM, i))
             push!(p, hx[i])
+            push!(ops, makeoffdiagonalsiteop(AbstractLTFIM, i))
+            push!(p, hx[i])
             energy_shift += hx[i]
         end
     end
@@ -104,7 +106,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::Abst
 
         for (t, p_t) in enumerate(p_spins)
             push!(p, p_t)
-            push!(ops, (2, t, length(p), site1, site2))
+            push!(ops, makebondop(AbstractLTFIM, length(p), t, site1, site2))
         end
     end
 
@@ -122,7 +124,7 @@ function LTFIM(dims::NTuple{N, Int}, J::Float64, hx::Float64, hz::Float64, pbc=t
     return LTFIM{typeof(op_sampler)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)
 end
 
-function GeneralLTFIM(J::UpperTriangular{Float64}, hx::AbstractVector{Float64}, hz::AbstractVector{Float64}) where N
+function GeneralLTFIM(J::UpperTriangular{Float64}, hx::AbstractVector{Float64}, hz::AbstractVector{Float64})
     ops, p, energy_shift = make_prob_vector(J, hx, hz)
     op_sampler = ImprovedOperatorSampler(AbstractLTFIM, ops, p)
     return GeneralLTFIM{typeof(op_sampler),typeof(J),typeof(hx),typeof(hz)}(op_sampler, J, hx, hz, Ns, Nb, energy_shift)

@@ -10,12 +10,10 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
     in_cluster = fill!(qmc_state.in_cluster, 0)
     cstack = qmc_state.cstack # This is the stack of vertices in a cluster
     current_cluster = qmc_state.current_cluster
-    runstats = d.runstats
 
     ccount = 0  # cluster number counter
 
-    num_accept = 0
-    num_reject = 0
+    C = d.runstats.cluster_update
 
     @inbounds for i in 1:lsize
         # Add a new leg onto the cluster
@@ -38,8 +36,10 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
 
                     a == 0 && continue
                     # from this point on, we know we're on a bond op
-                    op = operator_list[op_indices[leg]]
-                    w = getweightindex(H, op) - getoperatortype(H, op)
+                    op_index = operator_list[op_indices[leg]]
+                    op = getoperatortuple(H, op_index)
+                    # op = operator_list[div(leg-1, 4) + 1]
+                    w = op_index - getoperatortype(H, op)
                     preflip_bond_type, postflip_bond_type = update_kernel!(qmc_state, H, ccount, leg, a)
                     lnA += (
                         getlogweight(H.op_sampler, w + postflip_bond_type)
@@ -49,26 +49,17 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
             end
 
             A = acceptance(H, lnA)
-            fit!(runstats, :cluster_update_accept, A)
 
-            if rand(rng) < A
+            if check_prob(rng, A, C.cluster_update_accept)
                 @inbounds for j in current_cluster
                     LegType[j] ⊻= 1  # spinflip
                 end
-                fit!(runstats, :accepted_cluster_sizes, length(current_cluster))
-                num_accept += 1
+                add_accepted_cluster_size!(C, length(current_cluster))
             else
-                fit!(runstats, :rejected_cluster_sizes, length(current_cluster))
-                num_reject += 1
+                add_rejected_cluster_size!(C, length(current_cluster))
             end
-            fit!(runstats, :cluster_sizes, length(current_cluster))
+            add_cluster_size!(C, length(current_cluster))
         end
-    end
-
-    if !(runstats isa NoStats)
-        fit!(runstats, :accepted_cluster_count, num_accept+1)
-        fit!(runstats, :rejected_cluster_count, num_reject+1)
-        fit!(runstats, :cluster_count, ccount+1)
     end
 
     # map back basis states and operator list

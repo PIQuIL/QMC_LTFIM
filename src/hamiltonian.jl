@@ -3,9 +3,9 @@ abstract type Hamiltonian{D,O<:AbstractOperatorSampler} end
 localdim(::Hamiltonian{D}) where {D} = D
 
 zero(H::Hamiltonian{2}) = zeros(Bool, nspins(H))
-zero(H::Hamiltonian) = zeros(Int, nspins(H))
+# zero(H::Hamiltonian) = zeros(Int, nspins(H))
 one(H::Hamiltonian{2}) = ones(Bool, nspins(H))
-one(H::Hamiltonian) = ones(Int, nspins(H))
+# one(H::Hamiltonian) = ones(Int, nspins(H))
 
 nspins(H::Hamiltonian) = H.Ns
 nbonds(H::Hamiltonian) = H.Nb
@@ -34,11 +34,11 @@ energy_density(qmc_state::BinaryQMCState, args...; kwargs...) = energy_density(t
 
 function BinaryGroundState(H::Hamiltonian{2,O}, M::Int, trialstate::Union{Nothing, AbstractTrialState}=nothing) where {K, O <: AbstractOperatorSampler{K}}
     z = zero(H)
-    BinaryGroundState(z, init_op_list(2*M, Val{K}()), trialstate)::BinaryGroundState{K, typeof(z)}
+    BinaryGroundState(z, init_op_list(2*M, Val{K}()), trialstate)::BinaryGroundState{typeof(z)}
 end
 
 
 function BinaryThermalState(H::Hamiltonian{2,O}, cutoff::Int) where {K, O <: AbstractOperatorSampler{K}}
     z = zero(H)
-    BinaryThermalState(z, init_op_list(cutoff, Val{K}()))::BinaryThermalState{K, typeof(z)}
+    BinaryThermalState(z, init_op_list(cutoff, Val{K}()))::BinaryThermalState{typeof(z)}
 end

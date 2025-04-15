@@ -24,40 +24,56 @@ const ISING_OP_SIZE = 5
 ###############################################################################
 
 # TFIM ops:
-#  (1,2,1,0,i) is an off-diagonal site operator h*sigma^x_i
-#  (1,1,1,0,i) is a diagonal site operator h
+#  (w,1,-2,0,i) is an off-diagonal site operator h*sigma^x_i
+#  (w,1,1,0,i) is a diagonal site operator h
 #  (0,0,0,0,0) is the identity operator I - NOT USED IN THE PROJECTOR CASE
-#  (2,1,w,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
+#  (w,2,t,i,j) is a diagonal bond operator J(sigma^z_i sigma^z_j)
+@inline getweightindex(::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds op[2]
+@inline getweightindex(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = getweightindex(typeof(H), op)
 @inline getoperatorlocality(::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds op[1]
 @inline getoperatorlocality(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = getoperatorlocality(typeof(H), op)
-@inline getoperatortype(::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds op[2]
+@inline getoperatortype(::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds op[3]
 @inline getoperatortype(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = getoperatortype(typeof(H), op)
-@inline getweightindex(::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds op[3]
-@inline getweightindex(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = getweightindex(typeof(H), op)
 @inline getsite(::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds op[end]
 @inline getsite(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = getsite(typeof(H), op)
 @inline getbondsites(::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds (op[end-1], op[end])
 @inline getbondsites(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = getbondsites(typeof(H), op)
 
-@inline convertoperatortype(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) =
-    @inbounds (op[1], new_t, getweightindex(H, op) - getoperatortype(H, op) + new_t, op[4], op[5])
-@inline convertoperatortype(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) = convertoperatortype(typeof(H), op, new_t)
-
 @inline isidentity(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = (getoperatorlocality(H, op) == 0)
 @inline isidentity(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = isidentity(typeof(H), op)
+@inline isidentity(H::Type{<:AbstractIsing}, op_index::Int) = iszero(op_index)
+@inline isidentity(H::AbstractIsing, op_index::Int) = isidentity(typeof(H), op_index)
 @inline issiteoperator(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = (getoperatorlocality(H, op) == 1)
 @inline issiteoperator(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = issiteoperator(typeof(H), op)
 @inline isbondoperator(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = (getoperatorlocality(H, op) == 2)
 @inline isbondoperator(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = isbondoperator(typeof(H), op)
-@inline isdiagonal(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = (getoperatortype(H, op) != -2)
+@inline isdiagonal(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}) = (getoperatortype(H, op) != -1)
 @inline isdiagonal(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = isdiagonal(typeof(H), op)
 
 @inline makeidentity(::Type{<:AbstractIsing})::NTuple{ISING_OP_SIZE, Int} = (0, 0, 0, 0, 0)
-@inline makediagonalsiteop(::Type{<:AbstractIsing}, i::Int)::NTuple{ISING_OP_SIZE, Int} = (1, 1, i, 0, i)
-@inline makeoffdiagonalsiteop(::Type{<:AbstractIsing}, i::Int)::NTuple{ISING_OP_SIZE, Int} = (1, -2, i, 0, i)
 @inline makeidentity(H::AbstractIsing) = makeidentity(typeof(H))
+@inline makediagonalsiteop(::Type{<:AbstractIsing}, i::Int)::NTuple{ISING_OP_SIZE, Int} = (1, 2i-1, 1, 0, i)
 @inline makediagonalsiteop(H::AbstractIsing, i::Int) = makediagonalsiteop(typeof(H), i)
+@inline makeoffdiagonalsiteop(::Type{<:AbstractIsing}, i::Int)::NTuple{ISING_OP_SIZE, Int} = (1, 2i, -1, 0, i)
 @inline makeoffdiagonalsiteop(H::AbstractIsing, i::Int) = makeoffdiagonalsiteop(typeof(H), i)
+@inline makebondop(::Type{<:AbstractIsing}, w::Int, t::Int, i::Int, j::Int) = (2, w, t, i, j)
+@inline makebondop(H::AbstractIsing, w::Int, t::Int, i::Int, j::Int) = makebondop(typeof(H), w, t, i, j)
+
+
+@inline convertsiteweightindex(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) =
+    @inbounds ((getoperatortype(H, op) == new_t) ? getweightindex(H, op) : (getweightindex(H, op) - new_t)) 
+@inline convertsiteweightindex(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) = convertsiteweightindex(typeof(H), op, new_t)
+@inline convertsitetype(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) =
+    @inbounds (new_t > 0) ? makediagonalsiteop(H, getsite(H, op)) : makeoffdiagonalsiteop(H, getsite(H, op))
+@inline convertsitetype(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) = convertsitetype(typeof(H), op, new_t)
+
+
+@inline convertbondweightindex(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) =
+    @inbounds getweightindex(H, op) - getoperatortype(H, op) + new_t
+@inline convertbondweightindex(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) = convertbondweightindex(typeof(H), op, new_t)
+@inline convertbondtype(H::Type{<:AbstractIsing}, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) =
+    @inbounds makebondop(H, convertbondweightindex(H, op, new_t), new_t, op[4], op[5])
+@inline convertbondtype(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}, new_t::Int) = convertbondtype(typeof(H), op, new_t)
 
 @inline getbondtype(::AbstractTFIM, s1::Bool, s2::Bool) = 1
 
@@ -65,6 +81,16 @@ const ISING_OP_SIZE = 5
 @inline diagonaloperator(H::AbstractIsing) = diagonaloperator(typeof(H))
 
 @inline getlogweight(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds getlogweight(H.op_sampler, getweightindex(H, op))
+@inline getrelativelogweight(H::AbstractIsing, op::NTuple{ISING_OP_SIZE, Int}) = @inbounds getrelativelogweight(H.op_sampler, getweightindex(H, op))
+@inline getrelativelogweight(H::AbstractIsing, op::Nothing) = zero(eltype(H.op_sampler.op_rel_log_weights))
+
+@inline getrelativelogweight(H::AbstractIsing, op1::NTuple{ISING_OP_SIZE, Int}, op2::NTuple{ISING_OP_SIZE, Int}) = 
+    getrelativelogweight(H, op1) - getrelativelogweight(H, op2)
+@inline getrelativelogweight(H::AbstractIsing, op1::NTuple{ISING_OP_SIZE, Int}, op2::Nothing) = getrelativelogweight(H, op1)
+@inline getrelativelogweight(H::AbstractIsing, op1::Nothing, op2::NTuple{ISING_OP_SIZE, Int}) = -getrelativelogweight(H, op2)
+@inline getrelativelogweight(H::AbstractIsing, op1::Nothing, op2::Nothing) = getrelativelogweight(H, op)
+
+Base.@propagate_inbounds getoperatortuple(H::AbstractIsing, w::Int) = iszero(w) ? makeidentity(H) : getoperatortuple(H.op_sampler, w)
 
 ###############################################################################
 
@@ -79,6 +105,8 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}) where T
         if !iszero(hx[i])
             push!(ops, makediagonalsiteop(AbstractTFIM, i))
             push!(p, hx[i])
+            push!(ops, makeoffdiagonalsiteop(AbstractTFIM, i))
+            push!(p, hx[i])
             energy_shift += hx[i]
         end
     end
@@ -88,7 +116,7 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}) where T
         if i < j  # i != j: we don't want self-interactions
             if J[i, j] != 0
                 push!(p, 2*abs(J[i, j]))
-                push!(ops, (2, 1, length(p), i, j))
+                push!(ops, makebondop(AbstractTFIM, length(p), 1, i, j))
                 energy_shift += abs(J[i, j])
             end
         end

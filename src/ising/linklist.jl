@@ -35,7 +35,9 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
     spin_prop = copyto!(qmc_state.propagated_config, spin_left)  # the propagated spin state
 
     # Now, add the 2M operators to the linked list. Each has either 2 or 4 legs
-    @inbounds for (n, op) in enumerate(qmc_state.operator_list)
+    @inbounds for (n, op_index) in enumerate(qmc_state.operator_list)
+        iszero(op_index) && continue
+        op = getoperatortuple(H.op_sampler, op_index)
         if issiteoperator(H, op)
             site = getsite(H, op)
             # lower or left leg
@@ -161,20 +163,24 @@ link_list_update!(qmc_state, H, d::Diagnostics) =
 
     # if we build an array that maps n to ocount, this loop will become
     #   very easy to parallelize
-    @inbounds for (n, op) in enumerate(operator_list)
+    @inbounds for n in 1:length(operator_list)
+        op_index = operator_list[n]
+        iszero(op_index) && continue
+
+        op = getoperatortuple(H.op_sampler, op_index)
+        # o = 4*(n-1) + ocount
         if isbondoperator(H, op)
             if H isa AbstractLTFIM
                 s1, s2 = LegType[ocount], LegType[ocount+1]
-                t = getbondtype(H, s1, s2)
-                operator_list[n] = convertoperatortype(H, op, t)
+                operator_list[n] = convertbondweightindex(H, op, getbondtype(H, s1, s2))
                 fit!(d.tmatrix, op, operator_list[n])
             end
             ocount += 4
         elseif issiteoperator(H, op)
             if LegType[ocount] == LegType[ocount+1]  # diagonal
-                operator_list[n] = makediagonalsiteop(H, getsite(H, op))
+                operator_list[n] = convertsiteweightindex(H, op, 1)  #getweightindex(H, makediagonalsiteop(H, getsite(H, op)))
             else  # off-diagonal
-                operator_list[n] = makeoffdiagonalsiteop(H, getsite(H, op))
+                operator_list[n] = convertsiteweightindex(H, op, -1) #getweightindex(H, makeoffdiagonalsiteop(H, getsite(H, op)))
             end
             fit!(d.tmatrix, op, operator_list[n])
             ocount += 2
