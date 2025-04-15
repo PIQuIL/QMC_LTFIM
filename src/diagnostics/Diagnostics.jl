@@ -1,3 +1,6 @@
+include("update_stats.jl")
+include("diag_update_stats.jl")
+include("cluster_update_stats.jl")
 include("runstats.jl")
 include("transition_matrix.jl")
 

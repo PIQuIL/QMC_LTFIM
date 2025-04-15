@@ -4,7 +4,7 @@ using ProgressMeter
 
 using Measurements
 using Statistics
-import Statistics: var, mean
+import Statistics: var, mean, std
 using Distributions
 using FFTW
 
