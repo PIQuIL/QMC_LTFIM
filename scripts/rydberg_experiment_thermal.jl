@@ -142,13 +142,12 @@ function thermalstate(parsed_args)
 
     l = floor(Int, log10(batches) + 1)
     nsteps = (starting_batch == 0) ? EQS : MCS
-    measurements = zeros(Bool, nspins(H), nsteps)
+    measurements_trace = zeros(Bool, nspins(H), nsteps)
+    measurements_slice = zeros(Bool, nspins(H), nsteps)
     observables = DataFrame(
         batch = zeros(Int, nsteps),
         n_sso = zeros(Int, nsteps),
-        n_ops = zeros(Int, nsteps),
-        chk = zeros(Float64, nsteps),
-        mag = zeros(Float64, nsteps)
+        n_ops = zeros(Int, nsteps)
     )
 
     for b in starting_batch:batches
@@ -158,33 +157,29 @@ function thermalstate(parsed_args)
         nsteps = eq ? EQS : MCS
 
         for i in 1:nsteps  # Monte Carlo Production Steps
-            n_ops = mc_step_beta!(rng, qmc_state, H, beta, d; eq = eq, p=mb_prob) do _, qmc_state, H
-                msmt_slice = rand_slice ? rand(rng, 1:length(qmc_state.operator_list)) : 1
-                spin_prop = sample(H, qmc_state, msmt_slice)
-                measurements[:, i] = spin_prop
+            observables[i, :n_ops] = mc_step_beta!(rng, qmc_state, H, beta, d; eq = eq, p=mb_prob) do _, qmc_state, H
+                measurements_slice[:, i] = sample(H, qmc_state, rand(rng, 1:length(qmc_state.operator_list)))
+                measurements_trace[:, i] = qmc_state.left_config
 
                 observables[i, :n_sso] = num_single_site_offdiag(H, qmc_state.operator_list)
-                observables[i, :chk] = staggered_magnetization(H, spin_prop)
-                observables[i, :mag] = magnetization(spin_prop)
                 observables[i, :batch] = b
             end
-            observables[i, :n_ops] = n_ops
         end
 
         data_file = joinpath(path, "batch_$(lpad(b, l, "0"))_raw_observables.csv")
         CSV.write(data_file, observables)
 
-        samples_file = joinpath(path, "batch_$(lpad(b, l, "0"))_samples.csv")
-        writedlm(samples_file, Int.(transpose(measurements)), ',')
+        samples_file = joinpath(path, "batch_$(lpad(b, l, "0"))_trace_samples.csv")
+        writedlm(samples_file, Int.(transpose(measurements_trace)), ',')
+        samples_file = joinpath(path, "batch_$(lpad(b, l, "0"))_slice_samples.csv")
+        writedlm(samples_file, Int.(transpose(measurements_slice)), ',')
 
         if eq  # resize measurements arrays if no longer equilibrating
             measurements = zeros(Bool, nspins(H), MCS)
             observables = DataFrame(
                 batch = zeros(Int, MCS),
                 n_sso = zeros(Int, MCS),
-                n_ops = zeros(Int, MCS),
-                chk = zeros(Float64, MCS),
-                mag = zeros(Float64, MCS)
+                n_ops = zeros(Int, MCS)
             )
         end
 

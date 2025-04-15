@@ -23,11 +23,12 @@ using JSON
 using JLD2
 using Printf
 
-using Lattices
+# using Lattices
 
 using DataStructures
 using ArgParse
 
+using Plots
 
 ###############################################################################
 
@@ -84,7 +85,7 @@ function init_mc_cli(parsed_args)
 
     # NOTE: why is this 2M?
     if haskey(parsed_args, "beta")
-        qmc_state = BinaryThermalState(H, 2M)
+        qmc_state = BinaryThermalState(H, round(Int, parsed_args["beta"] * QMC.diag_update_normalization(H), RoundUp))
     else
         qmc_state = BinaryGroundState(H, M)
     end
@@ -182,17 +183,30 @@ function mixedstate(parsed_args)
     sqr_mags = LogBinner(capacity=binner_capacity)
     energy = LogBinner(capacity=binner_capacity)
 
-    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta; eq=true, p=mb_prob) for i in 1:EQ_MCS])
+    diag = Diagnostics()
+
+    # max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta, diag; eq=true, p=mb_prob) for i in 1:EQ_MCS])
+
+    println("Initial operator list length: $(length(qmc_state.operator_list))")
+    eq_ns = @showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); eq=true, p=mb_prob) for i in 1:EQ_MCS]
+    max_ns = maximum(eq_ns)
+    mean_ns = mean(eq_ns[end - div(EQ_MCS, 10) : end])
+
+    ns = zeros(MCS)
+    
+    norm_const = QMC.diag_update_normalization(H)
 
     resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS # Monte Carlo Steps
-        n = mc_step_beta!(rng, qmc_state, H, beta, runstats; p=mb_prob) do lsize, qmc_state, H
+        n = mc_step_beta!(rng, qmc_state, H, beta, diag; p=mb_prob) do lsize, qmc_state, H
             m = magnetization(sample(H, qmc_state))
             push!(mags, m)
             push!(abs_mags, abs(m))
             push!(sqr_mags, m ^ 2)
         end
+
+        ns[i] = n
 
         push!(energy, energy_density(qmc_state, H, beta, n))
 
@@ -200,6 +214,18 @@ function mixedstate(parsed_args)
             mc_step_beta!(rng, qmc_state, H, beta; p=mb_prob)
         end
     end
+
+    gr()
+    histogram(ns[end - div(EQ_MCS, 10) : end], label = "operator count histogram")
+    vspan!([mean(ns), max_ns]; alpha = 0.5, label = "ok zone (<n>, n_max)", color=:green)
+    vspan!([max_ns, 1.5max_ns]; alpha = 0.5, label = "danger zone (n_max, 1.5*n_max)", color=:red)
+    vline!([beta*norm_const], label = "beta * norm", color=:black)
+    vline!([2*beta*norm_const], label = "2 * beta * norm", color=:black, linestyle=:dot)
+    vline!([beta*norm_const + mean(ns)], label = "beta * norm + <n>", color=:black, linestyle=:dash)
+    png("ising_hx$(parsed_args["hx"])_beta$(parsed_args["beta"])_histogram.png")
+
+    @show max_ns, 1.5*max_ns
+    @show mean(ns), beta*norm_const, beta*norm_const + mean(ns) 
 
     runtime_stats = Dict{Symbol, Any}([k => measurementtodict(getproperty(runstats, k)) for k in fieldnames(typeof(runstats))])
 

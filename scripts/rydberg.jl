@@ -24,6 +24,7 @@ using Printf
 using DataStructures
 using ArgParse
 
+using Plots
 
 ###############################################################################
 
@@ -54,7 +55,9 @@ function init_mc_cli(parsed_args)
     mc_opts = @ntuple M MCS EQ_MCS skip
 
     if haskey(parsed_args, "beta")
-        qmc_state = BinaryThermalState(H, M)
+        beta = (!isinf(parsed_args["beta"])) ? parsed_args["beta"] : 10.0
+        @show round(Int, 2beta * QMC.diag_update_normalization(H), RoundUp)
+        qmc_state = BinaryThermalState(H, round(Int, 2beta * QMC.diag_update_normalization(H), RoundUp))
     else
         qmc_state = BinaryGroundState(H, M)
     end
@@ -122,10 +125,19 @@ end
 
 
 using BinningAnalysis
+using Distributions
+using StatsPlots
 
 function mixedstate(parsed_args)
     H, qmc_state, sname, mc_opts, rng, runstats = init_mc_cli(parsed_args)
     beta = parsed_args["beta"]
+
+    gs = isinf(beta)
+
+    if gs
+        beta = 10.0  # set starting beta
+    end
+
 
     if runstats isa Val{true}
         d = Diagnostics(RunStats(), CombinedTransitionMatrix(nspins(H), 1:length(H.op_sampler.op_log_weights)))
@@ -142,11 +154,50 @@ function mixedstate(parsed_args)
     smags = zeros(MCS)
     ns = zeros(MCS)
 
-    max_ns = maximum(@showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); eq=true, p=0.0) for i in 1:EQ_MCS])
+    println("Initial operator list length: $(length(qmc_state.operator_list))")
+    eq_ns = @showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); eq=true, p=0.0) for i in 1:EQ_MCS]
+    max_ns = maximum(eq_ns)
+    mean_ns = mean(eq_ns[end - div(EQ_MCS, 10) : end])
+    @show mean(eq_ns), mean_ns
+    
+    norm_const = QMC.diag_update_normalization(H)
+
+    if gs
+        C_converged = false
+        i = 0
+        while i < 5
+            C_err = QMC.jackknife(eq_ns .^ 2, eq_ns) do n2, n
+                return n2 - n^2 - n
+            end
+            if (C_err.err / abs(C_err.val)) > 0.95
+                C_converged = true
+                delta_beta = abs(C_err.val)/(C_err.err * beta^2)
+                @show beta, C_err.val, C_err.err, C_converged
+
+                @show delta_beta
+                beta += delta_beta
+            else
+                C_converged = false
+                delta_beta = C_err.val/(C_err.err * beta^2)
+                @show beta, C_err.val, C_err.err, C_converged
+                
+                @show delta_beta
+                beta += delta_beta
+            end
+            
+            resize_op_list!(qmc_state, H, round(Int, beta*norm_const + mean_ns, RoundUp))
+            eq_ns = @showprogress "Running at beta=$(beta)..." [mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); eq=true, p=0.0) for i in 1:EQ_MCS]
+            eq_ns = eq_ns[div(length(eq_ns), 2):end]  # assume first half of samples are equilibrating
+
+            i += C_converged
+        end
+    end
+
 
     # TODO: bug with 3//2. Using 1.5 instead
     #resize_op_list!(qmc_state, H, round(Int, (3//2)*max_ns, RoundUp))
-    resize_op_list!(qmc_state, H, round(Int, (1.5)*max_ns, RoundUp))
+    # resize_op_list!(qmc_state, H, round(Int, max((1.5)*max_ns, beta*norm_const + mean_ns), RoundUp))
+    resize_op_list!(qmc_state, H, round(Int, beta*norm_const + mean_ns, RoundUp))
 
     @showprogress "MCMC...   " for i in 1:MCS  # Monte Carlo Steps
         ns[i] = mc_step_beta!(rng, qmc_state, H, beta, d; p=0.0) do lsize, qmc_state, H
@@ -155,16 +206,61 @@ function mixedstate(parsed_args)
             mags[i] = magnetization(spin_prop)
             smags[i] = staggered_magnetization(H, spin_prop)
         end
-
+        # if i == 1
+        #     @show collect(zip(qmc_state.op_indices, qmc_state.associates))
+        # end
         for _ in 1:skip
             mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); p=0.0)
         end
     end
 
+    gr()
+    range = minimum(ns):maximum(ns)
+    if beta > 3
+        histogram(ns, normalize=:pdf, bins=range[1:2:end], label = "operator count histogram")
+    else
+        histogram(ns, normalize=:pdf, bins=minimum((length(range), 100)), label = "operator count histogram")
+    end
+    pois = Poisson(mean(ns))
+    plot!(range, pdf(pois, range), color=:red, label="Poisson(<n>)")
+    vspan!([mean(ns), max_ns]; alpha = 0.5, label = "ok zone (<n>, n_max)", color=:green)
+    vspan!([max_ns, 1.5max_ns]; alpha = 0.5, label = "danger zone (n_max, 1.5*n_max)", color=:red)
+    vline!([var(ns)], label="var(n)", color=:red, linestyle=:dash)
+    vline!([beta*norm_const], label = "beta * norm", color=:black)
+    vline!([2*beta*norm_const], label = "2 * beta * norm", color=:black, linestyle=:dot)
+    vline!([beta*norm_const + mean(ns)], label = "beta * norm + <n>", color=:black, linestyle=:dash)
+    png("rydberg_test_omega$(parsed_args["omega"])_beta$(parsed_args["beta"])_histogram.png")
+
+    plot(qqplot(ns, pois))
+    png("rydberg_test_omega$(parsed_args["omega"])_beta$(parsed_args["beta"])_qq.png")
+
+    @show max_ns, 1.5*max_ns
+    @show mean(ns), beta*norm_const, beta*norm_const + mean(ns) 
+
+    @show maximum(ns)
     mag = mean_and_stderr(smags)
     abs_mag = mean_and_stderr(abs, smags)
     mag_sqr = mean_and_stderr(abs2, smags)
 
+    mns = mean(ns)
+
+    function moments_of_H(n, k_max, beta)
+        cumprod(m/mns for m in n:-1:(n-k_max+1))
+    end
+
+    energy_moments = permutedims(hcat(moments_of_H.(ns, 20, beta)...))[:, end-5:end]
+    @show size(energy_moments)
+    energy_moments_val = dropdims(mean(energy_moments, dims=1), dims=1)
+    energy_moments_std = dropdims(std(energy_moments, dims=1)/sqrt(size(energy_moments, 1)), dims=1)
+    energy_moments_err = [std_error(LogBinner(energy_moments[:, k])) for k in 1:size(energy_moments, 2)]
+    energy_moments_tau = [2tau(LogBinner(energy_moments[:, k]))+1 for k in 1:size(energy_moments, 2)]
+    @show energy_moments_val
+    @show energy_moments_std
+    @show energy_moments_err
+    @show energy_moments_tau
+
+    @show (@. energy_moments_err / abs(energy_moments_val))
+    @show (@. energy_moments_std / abs(energy_moments_val))
     # energy = energy_density(qmc_state, H, beta, ns)
 
     binder_cumulant = QMC.bootstrap_alt(smags) do M
@@ -188,13 +284,19 @@ function mixedstate(parsed_args)
     @show tau(lb) #, std_error(lb)
     # @show mean(lb)
 
-    c = QMC.bootstrap_alt(ns) do n
-        m = mean(n)
-        v = varm(n, m)
+    c = QMC.jackknife((@. ns*(ns-1)), ns) do n2, n  # these are already averaged
+        # C = <n^2> - <n>^2 - <n> = <n*(n-1)> - <n>^2 = n2 - n^2
 
-        return v - m
+        # normalizing C by <n>^2
+        # C/(n^2) = n2/n^2 - 1
+
+        # in terms of physical qtys, C = beta^2 (<H^2> - <H>^2)
+        # dividing this by <H>^2 gives
+        # C/(<H>^2) = beta^2 ()
+
+        return n2/(n^2) - 1
     end 
-    c /= nspins(H)
+    # c /= nspins(H)  # normalizing c already takes care of this
 
     observables = (mag, abs_mag, mag_sqr, binder_cumulant, mean(lb) ± std_error(lb), c)
 
