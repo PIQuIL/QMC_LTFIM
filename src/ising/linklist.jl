@@ -100,11 +100,18 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
                 Associates[v] = v + 1
                 if H isa AbstractLTFIM
                     op_indices[v] = n
+                    # @assert div(v-1, 4) + 1 == n
                     leg_sites[v] = m
                 end
             end
             Associates[idx + num_legs] = idx + 1
             idx += num_legs
+        # else
+        #     for i in 1:4
+        #         idx += 1
+        #         Associates[idx] = 0
+        #         op_indices[idx] = n
+        #     end
         end
     end
 
@@ -137,6 +144,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
     @debug("Link List basis state propagation status: $(spin_prop == qmc_state.right_config)",
            spin_prop,
            qmc_state.right_config)
+    
 
     return idx
 end
@@ -170,7 +178,10 @@ link_list_update!(qmc_state, H, d::Diagnostics) =
             end
             fit!(d.tmatrix, op, operator_list[n])
             ocount += 2
+        # else
+            # ocount += 4
         end
+        # ocount += 4
     end
 end
 
