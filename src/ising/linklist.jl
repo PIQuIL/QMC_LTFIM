@@ -62,7 +62,7 @@ function link_list_update!(::AbstractRNG, qmc_state::BinaryQMCState, H::Abstract
             end
 
             # upper or right leg
-            idk += 1
+            idx += 1
             First[site] = idx
             LegType[idx] = spin_prop[site]
             Associates[idx] = 0
