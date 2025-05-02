@@ -58,9 +58,10 @@ function cluster_update!(rng::AbstractRNG, update_kernel!::Function, acceptance:
             else
                 add_rejected_cluster_size!(C, length(current_cluster))
             end
-            add_cluster_size!(C, length(current_cluster))
         end
     end
+
+    end_step!(C)
 
     # map back basis states and operator list
     ocount = _map_back_basis_states!(rng, lsize, qmc_state, H)

@@ -24,6 +24,9 @@ function make_prob_vector(H::Type{<:AbstractRydberg}, V::UpperTriangular{T}, Ω:
     ops = Vector{NTuple{ISING_OP_SIZE, Int}}()
     p = Vector{T}()
     energy_shift = zero(T)
+    
+    push!(ops, makeidentity(H))
+    push!(p, one(T))
 
     for i in eachindex(Ω)
         if !iszero(Ω[i])

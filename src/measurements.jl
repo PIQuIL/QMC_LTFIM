@@ -7,7 +7,8 @@ function sample(H::AbstractIsing, qmc_state::BinaryQMCState, M::Int=length(qmc_s
     spin_prop = copy!(qmc_state.propagated_config, qmc_state.left_config)
 
     @inbounds for i in 1:M
-        op = operator_list[i]
+        op_index = operator_list[i]
+        op = getoperatortuple(H, op_index)
         if !isdiagonal(H, op)
             spin_prop[getsite(H, op)] ⊻= 1 #spinflip
         end

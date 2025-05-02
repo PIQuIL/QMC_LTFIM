@@ -15,7 +15,8 @@ function accept_diagonal_operator(rng::AbstractRNG, H::AbstractIsing{<:AbstractO
 end
 
 
-function accept_diagonal_operator(
+
+function accept_diagonal_operator_replacement(
         rng::AbstractRNG, H::AbstractLTFIM{<:AbstractImprovedOperatorSampler{K, T}}, 
         spin_prop, op::NTuple{K, Int}, old_op::Union{NTuple{K, Int}, Nothing}, 
         stat::AbstractUpdateStat)::Union{NTuple{K, Int}, Nothing} where {K, T}
@@ -41,8 +42,14 @@ function accept_diagonal_operator(
     end
 end
 
+@inline function accept_diagonal_operator_insertion(
+        rng::AbstractRNG, H::AbstractLTFIM{<:AbstractImprovedOperatorSampler{K, T}}, 
+        spin_prop, op::NTuple{K, Int},
+        stat::AbstractUpdateStat)::Union{NTuple{K, Int}, Nothing} where {K, T}
+    return accept_diagonal_operator_replacement(rng, H, spin_prop, op, nothing, stat)
+end
 
-function accept_diagonal_operator_twostep(
+function accept_diagonal_operator_replacement(
         rng::AbstractRNG, H::AbstractLTFIM{<:AbstractImprovedOperatorSampler{K, T}}, 
         spin_prop, op::NTuple{K, Int}, old_op::Union{NTuple{K, Int}, Nothing}, raw_removal_prob::T,
         stat::AbstractUpdateStat)::Union{NTuple{K, Int}, Nothing} where {K, T}
@@ -56,15 +63,24 @@ function accept_diagonal_operator_twostep(
         t = getoperatortype(H, op)
         site1, site2 = getbondsites(H, op)
         real_t = getbondtype(H, spin_prop[site1], spin_prop[site2])
-        if t == real_t  # largest matrix element turned out to be the correct one
+        op = convertbondtype(H, op, real_t)
+        
+        lw_old = getrelativelogweight(H, old_op)
+        lw_new = getrelativelogweight(H, op)
+
+        if lw_old == lw_new
+            # short-circuit (SC) if relative weights are the same
+            #   this covers the case of both old_op and op being maximal matrix elements
+            #   but is also a bit more general
+            # only using regular equality instead of approx equality bc 
+            #   dont wanna spend too much compute on a short-circuit check,
+            #   if the two values are identically 0 (i.e. maximal mat-elems) then we'll SC
+            #   otherwise just do the math
             add_unit_prob!(stat)
             return op
         end
 
-        op = convertbondtype(H, op, real_t)
-        r = exp(getrelativelogweight(H, op, old_op))
-
-        prob = r * (1 - min(1, raw_removal_prob/r))/(1 - min(1, raw_removal_prob))
+        prob = exp(lw_new - lw_old) * (1 - min(1, raw_removal_prob/exp(lw_new)))/(1 - min(1, raw_removal_prob/exp(lw_old)))
 
         return (check_prob(rng, prob, stat) ? op : nothing)
     end
@@ -73,37 +89,26 @@ end
 
 #################################################
 
-function diagonal_operator_replacement_improved!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, spin_prop, n::Int, d::AbstractDiagonalUpdateStats; max_iter::Int=5)
-    for i in 1:max_iter
-        op = accept_diagonal_operator(
-            rng, H, spin_prop, rand(rng, H.op_sampler),
-            (@inbounds getoperatortuple(H.op_sampler, qmc_state.operator_list[n])), d.replace
-        )
-        if op !== nothing
-            @inbounds qmc_state.operator_list[n] = getweightindex(H, op)
-            return i
-        end
-    end
-    return 0
-end
-
-function diagonal_operator_replacement_improved_twostep!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, spin_prop, n::Int, removal_prob, d::AbstractDiagonalUpdateStats; max_iter::Int=5)
-    for i in 1:max_iter
-        op = accept_diagonal_operator_twostep(
-            rng, H, spin_prop, rand(rng, H.op_sampler), 
-            (@inbounds getoperatortuple(H.op_sampler, qmc_state.operator_list[n])), removal_prob, d.replace
-        )
-        if op !== nothing
-            @inbounds qmc_state.operator_list[n] = getweightindex(H, op)
-            return i
-        end
-    end
-    return 0
-end
-
 function diagonal_operator_replacement!(rng::AbstractRNG, qmc_state::BinaryQMCState, H::AbstractIsing, spin_prop, n::Int, d::AbstractDiagonalUpdateStats; max_iter::Int=5)
+    current_op = @inbounds getoperatortuple(H.op_sampler, qmc_state.operator_list[n])
     for i in 1:max_iter
-        op = accept_diagonal_operator(rng, H, spin_prop, rand(rng, H.op_sampler), nothing, d.replace)
+        op = accept_diagonal_operator_replacement(
+            rng, H, spin_prop, rand(rng, H.op_sampler), current_op, d.replace
+        )
+        if op !== nothing
+            @inbounds qmc_state.operator_list[n] = getweightindex(H, op)
+            return i
+        end
+    end
+    return 0
+end
+
+function diagonal_operator_replacement!(rng::AbstractRNG, qmc_state::BinaryThermalState, H::AbstractIsing, spin_prop, n::Int, raw_removal_prob, d::AbstractDiagonalUpdateStats; max_iter::Int=5)
+    current_op = @inbounds getoperatortuple(H.op_sampler, qmc_state.operator_list[n])
+    for i in 1:max_iter
+        op = accept_diagonal_operator_replacement(
+            rng, H, spin_prop, rand(rng, H.op_sampler), current_op, raw_removal_prob, d.replace
+        )
         if op !== nothing
             @inbounds qmc_state.operator_list[n] = getweightindex(H, op)
             return i
@@ -131,18 +136,14 @@ function full_diagonal_update_threestep!(rng::AbstractRNG, qmc_state::BinaryTher
                 qmc_state.operator_list[n] = 0 #makeidentity(H)
                 num_ids += 1
             else
-                if max_iter > 0
-                    iters = diagonal_operator_replacement!(rng, qmc_state, H, spin_prop, n, d, max_iter=max_iter)
-                else
-                    iters = diagonal_operator_replacement_improved!(rng, qmc_state, H, spin_prop, n, d, max_iter=(-max_iter))
-                end
+                iters = diagonal_operator_replacement!(rng, qmc_state, H, spin_prop, n, d, max_iter=max_iter)
                 if iters > 0
-                    fit!(d.replace_steps, iters)
+                    update_replacement_attempts!(d, iters)
                 end
             end
         else
             if check_prob(rng, P_norm/num_ids, d.operator_insertion)  # insert the diagonal op
-                op = accept_diagonal_operator(rng, H, spin_prop, rand(rng, H.op_sampler), nothing, d.matelem_insertion)
+                op = accept_diagonal_operator_insertion(rng, H, spin_prop, rand(rng, H.op_sampler), d.matelem_insertion)
                 if op !== nothing
                     qmc_state.operator_list[n] = getweightindex(H, op)
                     num_ids -= 1
@@ -176,16 +177,17 @@ function full_diagonal_update_twostep!(rng::AbstractRNG, qmc_state::BinaryTherma
         op = getoperatortuple(H, op_index)
         if !isdiagonal(H, op)
             spin_prop[getsite(H, op)] ⊻= 1  # spinflip
-        elseif !isidentity(H, op_index)
-            lw = getrelativelogweight(H, op)
-            removal_prob = (num_ids + 1)/(P_norm*exp(lw))
+        elseif !isidentity(H, op)
+            rw = exp(getrelativelogweight(H, op))
+            raw_removal_prob = (num_ids + 1)/P_norm
+            removal_prob = raw_removal_prob/rw
             if check_prob(rng, removal_prob, d.removal)  # remove operator, insert identity
                 qmc_state.operator_list[n] = 0 #getweightindex(makeidentity(H))
                 num_ids += 1
             else
-                iters = diagonal_operator_replacement_improved_twostep!(rng, qmc_state, H, spin_prop, n, removal_prob, d, max_iter=abs(max_iter))
+                iters = diagonal_operator_replacement!(rng, qmc_state, H, spin_prop, n, raw_removal_prob, d, max_iter=max_iter)
                 if iters > 0
-                    fit!(d.replace_steps, iters)
+                    update_replacement_attempts!(d, iters)
                 end
             end
         else
@@ -196,8 +198,10 @@ function full_diagonal_update_twostep!(rng::AbstractRNG, qmc_state::BinaryTherma
                 real_t = getbondtype(H, spin_prop[site1], spin_prop[site2])
                 op = convertbondtype(H, op, real_t)
             end
-            lw = getrelativelogweight(H, op)
-            insert_prob = P_norm*exp(lw)/num_ids
+            rw = exp(getrelativelogweight(H, op))
+            add_prob!(d.matelem_insertion, rw)
+
+            insert_prob = P_norm*rw/num_ids
             if check_prob(rng, insert_prob, d.operator_insertion)  # insert the diagonal op
                 qmc_state.operator_list[n] = getweightindex(H, op)
                 num_ids -= 1
@@ -227,12 +231,10 @@ function full_diagonal_operator_replacement!(rng::AbstractRNG, qmc_state::Binary
             spin_prop[getsite(H, op)] ⊻= 1  # spinflip
         elseif qmc_state isa BinaryGroundState || !isidentity(H, op)
             if max_iter < 0 && !isidentity(H, op)
-                iters = diagonal_operator_replacement_improved!(rng, qmc_state, H, spin_prop, n, d, max_iter=max_iter)
-            else
-                iters = diagonal_operator_replacement!(rng, qmc_state, H, spin_prop, n, d, max_iter=(-max_iter))
+                iters = diagonal_operator_replacement!(rng, qmc_state, H, spin_prop, n, d, max_iter=max_iter)
             end
             if iters > 0
-                fit!(d.replace_steps, iters)
+                update_replacement_attempts!(d, iters)
             end
         end
     end

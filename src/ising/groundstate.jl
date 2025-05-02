@@ -1,5 +1,6 @@
-# cluster_update!(rng, qmc_state, H::Hamiltonian, runstats; kw...) = multibranch_update!(rng, qmc_state, H, runstats)
-function cluster_update!(rng, qmc_state, H::Hamiltonian, d::Diagnostics; p::Float64=0.0, kw...)
+cluster_update!(rng, qmc_state, H::AbstractTFIM, d; kw...) = multibranch_update!(rng, qmc_state, H, d)
+
+function cluster_update!(rng, qmc_state, H::AbstractLTFIM, d::Diagnostics; p::Float64=0.0, kw...)
     if rand(rng) < p
         multibranch_update!(rng, qmc_state, H, d)
     else

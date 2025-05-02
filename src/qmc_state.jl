@@ -1,7 +1,4 @@
-function init_op_list(length, K=Val{ISING_OP_SIZE}())
-    # operator_list = [ntuple(_->0, K) for _ in 1:length]
-    return zeros(Int, length)
-end
+init_op_list(length) = zeros(Int, length)
 
 
 abstract type AbstractStateType end
@@ -107,11 +104,6 @@ QMCState{S, T}(left_config::V, right_config::V, operator_list, trialstate::Union
     QMCState{S, T, V}(left_config, right_config, operator_list, trialstate)
 QMCState{S, T}(left_config::V, operator_list, trialstate::Union{Nothing, AbstractTrialState{Float64, T}}=nothing) where {S, T, V} =
     QMCState{S, T, V}(left_config, operator_list, trialstate)
-
-# QMCState{S, T}(left_config::V, right_config::V, operator_list::Vector{NTuple{K,Int}}, trialstate::Union{Nothing, AbstractTrialState{Float64, T}}=nothing) where {S, T, K, V} =
-#     QMCState{S, T, K}(left_config, right_config, operator_list, trialstate)
-# QMCState{S, T}(left_config, operator_list::Vector{NTuple{K,Int}}, trialstate::Union{Nothing, AbstractTrialState{Float64, T}}=nothing) where {S, T, K} =
-#     QMCState{S, T, K}(left_config, operator_list, trialstate)
 
 QMCState{S}(left_config::V, right_config::V, operator_list, trialstate::Union{Nothing, AbstractTrialState}=nothing) where {S, V} =
     QMCState{S, eltype(left_config)}(left_config, right_config, operator_list, trialstate)

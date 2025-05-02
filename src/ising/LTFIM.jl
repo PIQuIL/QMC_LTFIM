@@ -48,6 +48,9 @@ function make_prob_vector(J::UpperTriangular{T}, hx::AbstractVector{T}, hz::Abst
     ops = Vector{NTuple{ISING_OP_SIZE, Int}}()
     p = Vector{T}()
     energy_shift = zero(T)
+    
+    push!(ops, makeidentity(AbstractLTFIM))
+    push!(p, one(T))
 
     for i in eachindex(hx)
         if !iszero(hx[i])

@@ -20,7 +20,7 @@ using LinearAlgebra
 
 using Random
 
-import Base: zero, one, convert
+import Base: zero, one, convert, eltype
 import Base: length, size, eltype, setindex!, getindex, firstindex, lastindex
 import Base: rand, show, pop!, push!, append!, isempty, empty!, count
 

@@ -39,4 +39,6 @@ function resize_op_list!(qmc_state::BinaryThermalState, H::AbstractIsing, new_si
     resize!(qmc_state.leg_sites, len)
     resize!(qmc_state.op_indices, len)
     resize!(qmc_state.in_cluster, len)
+
+    return length(operator_list)
 end
