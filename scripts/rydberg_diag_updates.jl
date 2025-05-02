@@ -33,7 +33,8 @@ function init_mc_cli(parsed_args)
 
     # MC parameters
     MCS = parsed_args["measurements"] # the number of samples to record
-    EQ_MCS = div(MCS, 10)
+    EQ_MCS = parsed_args["equilibration"]
+    EQ_MCS = (EQ_MCS == 0) ? div(MCS, 10) : EQ_MCS
 
     println("Running Rydberg(R_b=$R_b, Ω=$Ω, δ=$δ)")
     H = Rydberg((nX, nX), R_b, Ω, δ; pbc = (true, true), epsilon=0.0)
@@ -101,6 +102,8 @@ using BinningAnalysis
 using Distributions
 using StatsPlots
 using PrettyPrinting
+using JSON
+using LambertW
 
 
 function thermalstate(parsed_args)
@@ -119,17 +122,60 @@ function thermalstate(parsed_args)
     P = 0.0
 
     println("Initial operator list length: $(length(qmc_state.operator_list))")
-    eq_ns = @showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta, Diagnostics(); eq=true, threestep=threestep, p=P, max_iter=MAX_ITER) for i in 1:EQ_MCS]
+    d_eq = Diagnostics(RunStats())
+    eq_ns = @showprogress "Warm up..." [mc_step_beta!(rng, qmc_state, H, beta, ((i > 0.9*EQ_MCS) ? d_eq : Diagnostics()); eq=false, threestep=threestep, p=P, max_iter=MAX_ITER) for i in 1:EQ_MCS]
     max_ns = maximum(eq_ns[div(EQ_MCS, 10) : end])  # drop first tenth of samples just in case of unfavorable initialization
     mean_ns = mean(eq_ns[end - div(EQ_MCS, 10) : end])
-    @show mean(eq_ns), mean_ns
+    var_ns = var(eq_ns[end - div(EQ_MCS, 10) : end])
+    @show mean(eq_ns), var(eq_ns), mean_ns, var_ns
     
     norm_const = QMC.diag_update_normalization(H)
-    if iszero(parsed_args["M-setting"])
-        resize_op_list!(qmc_state, H, round(Int, beta*norm_const + mean_ns, RoundUp))
-    else
-        resize_op_list!(qmc_state, H, round(Int, parsed_args["M-setting"]*max_ns, RoundUp))
+
+    println("M_opt for 3step is: $(round(Int, beta*norm_const + mean_ns, RoundUp))")
+    
+    avg_mat_elem = mean(d_eq.runstats.diagonal_update.matelem_insertion.prob)
+    println("M_opt for 2step is: $(round(Int, beta*norm_const*avg_mat_elem + mean_ns, RoundUp))")
+
+    println("M for Poisson cquantile 1e-10 is: $(cquantile(Poisson(mean_ns), 1e-10))")
+    println("M for Gaussian approx cquantile 1e-10 is: $(cquantile(Normal(mean_ns, sqrt(var_ns)), 1e-10))")
+
+    function max_poisson_1(λ, n)
+        logn = log(n)
+        x0 = logn/lambertw(logn/(ℯ * λ))
+        numer = log(λ) - λ - (log(2π)/2) - (3/2)log(x0)
+        denom = log(x0) - log(λ)
+        return x0 + (numer/denom)
     end
+
+
+    max_poisson_from_mean = round(Int, max_poisson_1(mean_ns, MCS), RoundUp)
+    println("M for Max Poisson(λ=mean(n)) is: $(max_poisson_from_mean) (Poisson log_10-prob of anything larger: $(logccdf(Poisson(mean_ns), max_poisson_from_mean)/log(10)))")
+    println("\t Empirical max is: $(max_ns) (Poisson log_10-prob of anything larger: $(logccdf(Poisson(mean_ns), max_ns)/log(10)))")
+
+    max_poisson_from_var = round(Int, max_poisson_1(var_ns, MCS), RoundUp)
+    println("M for Max Poisson(λ=var(n)) is: $(max_poisson_from_var) (Poisson log_10-prob of anything larger: $(logccdf(Poisson(var_ns), max_poisson_from_var)/log(10)))")
+    println("\t Empirical max is: $(max_ns) (Poisson log_10-prob of anything larger: $(logccdf(Poisson(var_ns), max_ns)/log(10)))")
+
+    println("M computed using max-heuristic, for c=1.5, is: $(round(Int, 1.5*max_ns, RoundUp))")
+
+    if iszero(parsed_args["M-setting"]) || parsed_args["M-setting"] == -3
+        println("Setting M to maximize 3step insertion+removal probabilities...")
+        M = resize_op_list!(qmc_state, H, round(Int, beta*norm_const + mean_ns, RoundUp))
+    elseif parsed_args["M-setting"] == -2
+        println("Setting M to maximize 2step insertion+removal probabilities...")
+        avg_mat_elem = mean(d_eq.runstats.diagonal_update.matelem_insertion.prob)
+        M = resize_op_list!(qmc_state, H, round(Int, beta*norm_const*avg_mat_elem + mean_ns, RoundUp))
+    elseif -1 < parsed_args["M-setting"] < 0
+        println("Setting M using Poisson quantile function...")
+        M = resize_op_list!(qmc_state, H, cquantile(Poisson(mean_ns), abs(parsed_args["M-setting"])))
+    else
+        println("Setting M using scaled max heuristic...")
+        M = resize_op_list!(qmc_state, H, round(Int, abs(parsed_args["M-setting"])*max_ns, RoundUp))
+    end
+
+
+
+    println("M = $M")
 
     # d = Diagnostics(parsed_args["runstats-hist"] ? RunStatsHistogram(1000) : RunStats())
     d = Diagnostics(RunStats())
@@ -176,19 +222,9 @@ function thermalstate(parsed_args)
     mag_sqr = mean_and_stderr(abs2, smags)
 
     rs = QMC.summarize(d.runstats)
-    # @show rs
-    pprint(rs)
-    # @show rs.diagonal_update.operator_insertion
-    # @show rs.diagonal_update.matelem_insertion
-    # @show rs.diagonal_update.removal
-    # @show rs.diagonal_update.replace
-    # @show rs.diagonal_update.replace_steps
-
-
-    # @show rs.cluster_update_accept
-    # @show rs.cluster_sizes
-    # @show rs.accepted_cluster_sizes
-    # @show rs.rejected_cluster_sizes
+    # println()
+    JSON.print(rs, 2)
+    # println()
 
     # plot_cluster_sizes(d.runstats)
 
@@ -202,15 +238,17 @@ function thermalstate(parsed_args)
     @show size(energy_moments)
     energy_moments_val = dropdims(mean(energy_moments, dims=1), dims=1)
     energy_moments_std = dropdims(std(energy_moments, dims=1)/sqrt(size(energy_moments, 1)), dims=1)
+    energy_moments_std_rel = (@. energy_moments_std / abs(energy_moments_val))
     energy_moments_err = [std_error(LogBinner(energy_moments[:, k])) for k in 1:size(energy_moments, 2)]
+    energy_moments_err_rel = (@. energy_moments_err / abs(energy_moments_val))
     energy_moments_tau = [2tau(LogBinner(energy_moments[:, k]))+1 for k in 1:size(energy_moments, 2)]
     @show energy_moments_val
     @show energy_moments_std
+    @show energy_moments_std_rel
     @show energy_moments_err
+    @show energy_moments_err_rel
     @show energy_moments_tau
 
-    @show (@. energy_moments_err / abs(energy_moments_val))
-    @show (@. energy_moments_std / abs(energy_moments_val))
     # energy = energy_density(qmc_state, H, beta, ns)
 
 
@@ -295,7 +333,7 @@ end
         default = 1.5
         
     "--max-replace"
-        help = "Maximum number of iterations for diagonal replacement move. If negative uses Metropolis Acceptance, otherwise ignores the current config."
+        help = "Maximum number of iterations for diagonal replacement move."
         arg_type = Int
         default = 0
 
@@ -307,6 +345,11 @@ end
         help = "Number of samples to record"
         arg_type = Int
         default = 100_000
+
+    "--equilibration", "-e"
+        help = "Number of samples to record"
+        arg_type = Int
+        default = 0
 
     "--seed"
         help = "Random seed"

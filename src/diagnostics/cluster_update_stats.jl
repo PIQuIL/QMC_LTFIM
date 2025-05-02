@@ -10,6 +10,11 @@ add_cluster_size!(C::NoClusterUpdateStats, size::Int) = C
 Base.getproperty(::NoClusterUpdateStats, ::Symbol) = NoUpdateStat()
 summarize(::NoClusterUpdateStats) = NamedTuple()
 
+OnlineStats.merge!(S_a::NoClusterUpdateStats, S_b::NoClusterUpdateStats) = S_a
+OnlineStats.merge!(S_a::NoClusterUpdateStats, S_b::AbstractClusterUpdateStats) = deepcopy(S_b)
+OnlineStats.merge!(S_a::AbstractClusterUpdateStats, S_b::NoClusterUpdateStats) = S_a
+
+#########################################################################################
 
 struct ClusterUpdateStats{T <: Real} <: AbstractClusterUpdateStats
     cluster_update_accept::UpdateStat{T}
@@ -42,10 +47,17 @@ ClusterUpdateHistograms(size::Int) = ClusterUpdateHistograms{Float64}(size)
 
 #########################################################################################
 
+function OnlineStats.merge!(C_a::U, C_b::U) where {U <: AbstractClusterUpdateStats}
+    merge!(C_a.cluster_update_accept, C_b.cluster_update_accept)
+    merge!(C_a.cluster_sizes, C_b.cluster_sizes)
+    merge!(C_a.accepted_cluster_sizes, C_b.accepted_cluster_sizes)
+    merge!(C_a.rejected_cluster_sizes, C_b.rejected_cluster_sizes)
+    return C_a
+end
+
 end_step!(C::AbstractClusterUpdateStats) = (end_step!(C.cluster_update_accept); C)
-add_accepted_cluster_size!(C::AbstractClusterUpdateStats, size::Int) = (fit!(C.accepted_cluster_sizes, size); C)
-add_rejected_cluster_size!(C::AbstractClusterUpdateStats, size::Int) = (fit!(C.rejected_cluster_sizes, size); C)
-add_cluster_size!(C::AbstractClusterUpdateStats, size::Int) = (fit!(C.cluster_sizes, size); C)
+add_accepted_cluster_size!(C::AbstractClusterUpdateStats, size::Int) = (fit!(C.accepted_cluster_sizes, size); fit!(C.cluster_sizes, size); C)
+add_rejected_cluster_size!(C::AbstractClusterUpdateStats, size::Int) = (fit!(C.rejected_cluster_sizes, size); fit!(C.cluster_sizes, size); C)
 
 summarize(C::AbstractClusterUpdateStats) = (
     cluster_update_accept = summarize(C.cluster_update_accept),

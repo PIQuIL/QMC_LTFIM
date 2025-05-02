@@ -1,7 +1,7 @@
 using OnlineStats
 
-std_error(v::Variance) = std(v)/sqrt(nobs(v))
-summarize(V::Variance) = (mean(V), std_error(V))
+std_error(v::Variance) = sqrt(var(v) / nobs(v))
+summarize(V::Variance) = (mean=mean(V), error=std_error(V))
 
 #########################################################################################
 
@@ -18,7 +18,7 @@ function OnlineStats.fit!(V::VectorHistogram, val::Int)
     hist = V.hist
     size_diff = val+1 - length(hist)
     if size_diff > 0
-        append!(hist, zeros(Int, length(hist)))
+        append!(hist, zeros(Int, 2size_diff))
     end
     hist[val+1] += 1
 
@@ -35,12 +35,24 @@ function var(V::VectorHistogram)
 end
 std(V::VectorHistogram) = sqrt(var(V))
 std_error(V::VectorHistogram) = sqrt(var(V) / nobs(V))
-summarize(V::VectorHistogram) = (mean(V), std_error(V))
+summarize(V::VectorHistogram) = (mean=mean(V), error=std_error(V))
+
+# update V_a with data from V_b
+function OnlineStats.merge!(V_a::VectorHistogram, V_b::VectorHistogram)
+    size_diff = length(V_b.hist) - length(V_a.hist)
+    if size_diff > 0
+        append!(V_a.hist, zeros(Int, size_diff))
+    end
+    for i in eachindex(V_a.hist, V_b.hist)
+        V_a.hist[i] += V_b.hist[i]
+    end
+    return V_a
+end
 
 #########################################################################################
 
 std_error(h::Hist) = sqrt(var(h) / nobs(h))
-summarize(h::Hist) = (mean(h), std_error(h))
+summarize(h::Hist) = (mean=mean(h), error=std_error(h))
 
 #########################################################################################
 
@@ -100,8 +112,11 @@ struct NoUpdateStat <: AbstractUpdateStat; end
 @inline add_fail!(stat::NoUpdateStat) = stat
 @inline add_unit_prob!(stat::NoUpdateStat) = stat
 @inline end_step!(stat::NoUpdateStat) = stat
-# @inline OnlineStats.fit!(stat::NoUpdateStat, val) = stat
 summarize(::NoUpdateStat) = NamedTuple()
+
+OnlineStats.merge!(S_a::NoUpdateStat, S_b::NoUpdateStat) = S_a
+OnlineStats.merge!(S_a::NoUpdateStat, S_b::AbstractUpdateStat) = deepcopy(S_b)
+OnlineStats.merge!(S_a::AbstractUpdateStat, S_b::NoUpdateStat) = S_a
 
 #########################################################################################
 
@@ -126,7 +141,7 @@ end
 UpdateStat() = UpdateStat{Float64}()
 UpdateStat(T::Type) = UpdateStat{T}()
 
-Base.eltype(::Type{UpdateStat{T}}) where T = T
+eltype(::Type{UpdateStat{T}}) where T = T
 
 #########################################################################################
 
@@ -158,9 +173,26 @@ UpdateHistogram{T}(size::Int) where T = UpdateHistogram{T}(
 UpdateHistogram(size::Int) = UpdateHistogram{Float64}(size::Int)
 UpdateHistogram(T::Type, size::Int) = UpdateHistogram{T}(size::Int)
 
-Base.eltype(::Type{UpdateHistogram{T}}) where T = T
+eltype(::Type{UpdateHistogram{T, R}}) where {T, R} = T
+
 
 #########################################################################################
+
+# update U_a with data from U_b
+function OnlineStats.merge!(U_a::U, U_b::U) where {U <: AbstractUpdateStat}
+    merge!(U_a.prob, U_b.prob)
+    
+    merge!(U_a.success_rate_step, U_b.success_rate_step)
+    merge!(U_a.fail_rate_step, U_b.fail_rate_step)
+
+    merge!(U_a.nsuccess_step, U_b.nsuccess_step)
+    merge!(U_a.nfail_step, U_b.nfail_step)
+    merge!(U_a.step_success_rate, U_b.step_success_rate)
+    merge!(U_a.total_success_rate, U_b.total_success_rate)
+
+    return U_a
+end
+
 
 @inline add_prob!(stat::AbstractUpdateStat, p::T) where {T <: Real} = (fit!(stat.prob, p); stat)
 @inline add_success!(stat::AbstractUpdateStat) = (add_success!(stat.step_success_rate); stat)
@@ -182,14 +214,15 @@ Base.eltype(::Type{UpdateHistogram{T}}) where T = T
 end
 
 summarize(stat::AbstractUpdateStat) = (
-    prob = summarize(stat.prob),
-    success_rate_step = summarize(stat.success_rate_step),
-    fail_rate_step = summarize(stat.fail_rate_step),
-    
-    nsuccess_step = summarize(stat.nsuccess_step),
-    nfail_step = summarize(stat.nfail_step),
+    success_probability = summarize(stat.prob),
 
-    total_success_rate = summarize(stat.total_success_rate),
+    single_step_success_rate = summarize(stat.success_rate_step),
+    single_step_fail_rate = summarize(stat.fail_rate_step),
+    
+    single_step_success_count = summarize(stat.nsuccess_step),
+    single_step_fail_count = summarize(stat.nfail_step),
+
+    NamedTuple(Symbol("overall_", k) => v for (k,v) in pairs(summarize(stat.total_success_rate)))...
 )
 
 

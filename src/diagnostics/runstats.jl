@@ -14,6 +14,11 @@ function Base.getproperty(R::NoStats, s::Symbol)
 end
 summarize(R::NoStats) = NamedTuple()
 
+OnlineStats.merge!(S_a::NoStats, S_b::NoStats) = S_a
+OnlineStats.merge!(S_a::NoStats, S_b::AbstractRunStats) = deepcopy(S_b)
+OnlineStats.merge!(S_a::AbstractRunStats, S_b::NoStats) = S_a
+
+#########################################################################################
 
 struct RunStats{T <: Real} <: AbstractRunStats
     diagonal_update::DiagonalUpdateStats{T}
@@ -23,6 +28,8 @@ struct RunStats{T <: Real} <: AbstractRunStats
         DiagonalUpdateStats(T), ClusterUpdateStats(T))
 end
 RunStats(T::Type=Float64) = RunStats{T}()
+
+#########################################################################################
 
 struct RunStatsHistogram{T <: Real, R <: StepRangeLen} <: AbstractRunStats
     diagonal_update::DiagonalUpdateHistograms{T, R}
@@ -39,8 +46,13 @@ RunStatsHistogram(size::Int) = RunStatsHistogram{Float64}(size::Int)
 
 #########################################################################################
 
-@inline OnlineStats.fit!(R::AbstractRunStats, field::Symbol, val) = 
-    (fit!(getproperty(R, field), val); R)
+
+function OnlineStats.merge!(R_a::S, R_b::S) where {S <: AbstractRunStats}
+    merge!(R_a.diagonal_update, R_b.diagonal_update)
+    merge!(R_a.cluster_update, R_b.cluster_update)
+    return R_a
+end
+
 summarize(R::AbstractRunStats) = (
     diagonal_update = summarize(R.diagonal_update),
     cluster_update = summarize(R.cluster_update)
